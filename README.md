@@ -1,11 +1,12 @@
-# 💰 FlowPay: x402 + Streaming Payments for AI Agents
+# 💰 FlowPay: x402 + Streaming Payments + RWA Yield
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![MNEE](https://img.shields.io/badge/Powered%20by-MNEE%20Stablecoin-green.svg)
 ![x402](https://img.shields.io/badge/x402-Compatible-purple.svg)
 ![Ethereum](https://img.shields.io/badge/Network-Ethereum%20Sepolia-blue.svg)
+![RWA](https://img.shields.io/badge/RWA-Yield%20Streaming-orange.svg)
 
-FlowPay combines **x402's HTTP-native service discovery** with **continuous payment streaming** for AI agents using MNEE stablecoin. The best of both worlds: standardized discovery + efficient streaming.
+FlowPay combines **x402's HTTP-native service discovery**, **continuous MNEE payment streaming for AI agents**, and **Real World Asset (RWA) yield streaming** — all in one protocol. Inspired by [Continuum Protocol](https://github.com/ola-893/Continuum) on Aptos, adapted for Ethereum with MNEE stablecoin.
 
 **🏆 Built for the MNEE Hackathon: Programmable Money for Agents, Commerce, and Automated Finance**
 
@@ -22,45 +23,27 @@ FlowPay combines **x402's HTTP-native service discovery** with **continuous paym
 
 ---
 
-## 🏁 Quick Start (5 Minutes)
+## 🏁 Quick Start
 
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) v18+
 - [MetaMask](https://metamask.io/) browser extension
 
-### Step 1: Clone & Install
-
 ```bash
 git clone https://github.com/ola-893/flowpay.git
 cd flowpay
 npm run install:all
-```
-
-### Step 2: Run the App
-
-```bash
 npm run dev
 ```
 
-Open http://localhost:5173 in your browser.
+Open http://localhost:5173. Contracts are already deployed on Sepolia — no deployment needed.
 
-### Step 3: Connect & Test
+### Connect & Test
 
-1. **Add Sepolia to MetaMask** (if not already added):
-   - Network: Sepolia
-   - RPC: `https://sepolia.infura.io/v3/YOUR_KEY` or use MetaMask's default
-   - Chain ID: `11155111`
-
-2. **Get Sepolia ETH** for gas fees:
-   - [Sepolia Faucet](https://sepoliafaucet.com/)
-   - [Alchemy Faucet](https://sepoliafaucet.com/)
-
-3. **Connect wallet** and click "Mint MNEE" to get free test tokens
-
-4. **Create a stream** and watch payments flow in real-time!
-
-That's it! The contracts are already deployed on Sepolia - no deployment needed.
+1. Add Sepolia to MetaMask (Chain ID: `11155111`)
+2. Get Sepolia ETH from [Sepolia Faucet](https://sepoliafaucet.com/)
+3. Connect wallet → click **Mint MNEE** → create a stream or rent an RWA
 
 ---
 
@@ -73,309 +56,167 @@ That's it! The contracts are already deployed on Sepolia - no deployment needed.
 
 ---
 
-## �  Advanced Setup
+## 🚀 What's New: RWA Yield Streaming
 
-### Environment Variables (Optional)
+Inspired by [Continuum Protocol](https://github.com/ola-893/Continuum), FlowPay now supports **tokenized Real World Assets** with live per-second yield streaming.
 
-Copy `.env.example` to `.env` and fill in your values:
+### The Problem It Solves
 
-```bash
-cp .env.example .env
+- A landlord owns a $1M property generating $5,000/month but can't access future income today without a bank loan
+- When a tokenized asset is sold, the income stream doesn't automatically follow the new owner
+- Traditional RWA protocols can't enforce compliance at the exact moment of withdrawal
+
+### How FlowPay RWA Works
+
+```
+1. Asset is tokenized (Real Estate, Vehicle, Commodity)
+2. Yield is locked in FlowPayStream contract
+3. Income streams per-second to the current token holder
+4. Tenant streams rent directly to the asset owner via IoT-style access
+5. Cancel anytime — unused MNEE refunded instantly
 ```
 
-```env
-# Only needed if deploying your own contracts
-SEPOLIA_RPC_URL="https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY"
-PRIVATE_KEY="YOUR_DEPLOYER_PRIVATE_KEY"
+### Yield Formula
 
-# AI Features (Optional)
-GEMINI_API_KEY="your_gemini_api_key"
+```
+Claimable = (flow_rate × seconds_elapsed) − amount_withdrawn
 ```
 
-### Deploy Your Own Contracts
+Live balance ticks up every second in the dashboard — no manual claims needed.
 
-```bash
-npx hardhat run scripts/deploy.js --network sepolia
-```
+### Asset Types
 
-### Run Tests
-
-```bash
-npm test                    # Run all tests
-npm run test:contracts      # Smart contract tests only
-npm run test:sdk           # SDK tests only
-```
-
-### Available Scripts
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start frontend dev server |
-| `npm run build:web` | Build for production |
-| `npm run test` | Run all tests |
-| `npm run deploy:sepolia` | Deploy contracts to Sepolia |
-| `npm run demo:provider` | Run provider demo |
-| `npm run demo:consumer` | Run consumer demo |
+| Type | Examples | Yield Model |
+|------|----------|-------------|
+| Real Estate | Properties, apartments | Monthly rent → per-second stream |
+| Vehicles | Car fleets, EVs | Hourly rental → per-second stream |
+| Commodities | Machinery, equipment | Daily rate → per-second stream |
 
 ---
 
-## 🔄 The Hybrid Approach: x402 Discovery + MNEE Streaming
+## 🔄 The Full Stack: x402 + Streaming + RWA
 
-### Why Both?
-
-| Approach | Best For | Limitation |
-|----------|----------|------------|
-| **x402 Per-Request** | Few API calls | Payment overhead per request |
-| **Streaming** | High-volume usage | Requires upfront deposit |
-| **FlowPay Hybrid** | **Any usage pattern** | **None - best of both!** |
-
-### How It Works
-
-```
-1. Agent makes HTTP request to API
-2. Server returns HTTP 402 with x402-compatible payment requirements
-3. FlowPay SDK parses requirements, uses Gemini AI to decide:
-   - Few requests expected? → Use x402 per-request mode
-   - Many requests expected? → Create MNEE payment stream
-4. Agent pays and accesses service
-5. AI continuously optimizes payment mode based on actual usage
-```
-
----
-
-## 🤖 The AI Agent Payment Problem
-
-**The Challenge:** AI agents need to make thousands of micropayments per second for:
-- API calls ($0.0001 per call)
-- Compute resources ($0.01/second)
-- Data feeds ($0.001/second)
-- Content consumption (per-token pricing)
-
-**Traditional Solutions Fail:**
-- ❌ Discrete transactions: Too expensive (gas fees exceed payment value)
-- ❌ Batching: Creates settlement delays (30+ seconds)
-- ❌ Off-chain solutions: Requires trusted intermediaries
-
-**FlowPay Solution:**
-- ✅ x402 discovery: Standard HTTP 402 for universal agent interoperability
-- ✅ Streaming payments: Efficient for high-volume usage
-- ✅ MNEE stablecoin: Sub-cent fees + instant settlement
-- ✅ AI-powered: Gemini decides optimal payment mode
-
----
-
-## 🚀 Key Features
-
-### x402-Compatible Service Discovery
-- **HTTP 402 responses** - Standard payment required responses
-- **Universal interoperability** - Works with any x402-compatible agent
-- **Payment requirements** - Clear pricing in response headers
-- **Flexible modes** - Support both per-request and streaming
-
-### Efficient MNEE Payment Streaming
-- **Per-second value transfer** - Money flows continuously for high-volume usage
-- **Instant withdrawals** - Recipients claim funds anytime
-- **Live balance counters** - Watch payments stream in real-time
-- **Micropayment support** - Rates as low as $0.0001/second
-
-### x402 Express Middleware
-```javascript
-// Add payment requirements to any Express endpoint
-app.use(flowPayMiddleware({
-    endpoints: {
-        "GET /api/weather": {
-            price: "0.0001",
-            mode: "streaming",  // or "per-request"
-            minDeposit: "1.00",
-            description: "Real-time weather data"
-        }
-    }
-}));
-```
-
-### AI Agent SDK with x402 Support
-- **Automatic 402 handling** - SDK parses payment requirements automatically
-- **Smart mode selection** - Gemini AI chooses streaming vs per-request
-- **Auto-discovery** - Agents find and connect to services via HTTP 402
-- **Budget management** - Spending limits and safety controls
-
-### Intelligent Decision Making (Gemini AI)
-- **Payment mode optimization** - AI recommends streaming vs per-request
-- **Spending analysis** - Analyzes usage and recommends adjustments
-- **Service quality evaluation** - Automatically switch providers
-- **Natural language queries** - Ask your agent about payment status
-
-### Human Oversight Dashboard
-- **Real-time monitoring** - See all active streams with live updates
-- **x402 discovery logs** - Track payment requirement responses
-- **Agent console** - Configure and test AI agents
-- **Emergency controls** - Pause or cancel streams instantly
-
----
-
-## 🎯 Use Cases
-
-### 1. x402 Service Discovery + Streaming
-```javascript
-import { FlowPayAgent } from 'flowpay-sdk';
-
-const agent = new FlowPayAgent({
-  privateKey: process.env.AGENT_PRIVATE_KEY,
-  geminiApiKey: process.env.GEMINI_API_KEY
-});
-
-// SDK automatically handles x402 flow:
-// 1. Makes request → receives HTTP 402
-// 2. Parses payment requirements
-// 3. AI decides: streaming (high volume) or per-request (low volume)
-// 4. Creates MNEE stream if streaming mode
-// 5. Retries request with payment proof
-const weather = await agent.fetch('https://api.weather-agent.com/forecast');
-console.log(await weather.json());
-```
-
-### 2. Provider with x402 Middleware
-```javascript
-import express from 'express';
-import { flowPayMiddleware } from 'flowpay-sdk';
-
-const app = express();
-
-// One line to add payment requirements!
-app.use(flowPayMiddleware({
-    endpoints: {
-        "GET /api/weather": {
-            price: "0.0001",
-            mode: "streaming",
-            minDeposit: "1.00",
-            description: "Weather data API"
-        },
-        "POST /api/translate": {
-            price: "0.001",
-            mode: "per-request",
-            description: "Translation service"
-        }
-    },
-    mneeAddress: process.env.MNEE_ADDRESS,
-    flowPayContract: process.env.FLOWPAY_CONTRACT
-}));
-
-app.get('/api/weather', (req, res) => {
-    // Only reached if payment verified!
-    res.json({ temp: 28, city: 'Lagos' });
-});
-```
-
-### 3. AI-Powered Payment Mode Selection
-```javascript
-// Gemini analyzes usage and recommends optimal mode
-const agent = new FlowPayAgent({
-  geminiApiKey: process.env.GEMINI_API_KEY,
-  dailyBudget: '50.00'
-});
-
-// First request: AI analyzes expected usage
-// "I expect to make 1000 API calls" → Streaming mode (more efficient)
-// "I need just one translation" → Per-request mode (simpler)
-
-const recommendation = await agent.recommendPaymentMode({
-  service: 'weather-api',
-  expectedCalls: 1000,
-  duration: '1 hour'
-});
-
-console.log(recommendation);
-// { mode: 'streaming', reason: 'High volume usage - streaming saves 90% on gas' }
-```
-
-### 4. GPU Compute with Streaming
-```javascript
-// Rent GPU resources with real-time payment
-const computeStream = await agent.createStream({
-  recipient: gpuProviderAddress,
-  ratePerSecond: '0.01', // $36/hour
-  deposit: '36.00',      // 1 hour prepaid
-  metadata: { purpose: 'ML training' }
-});
-
-// Cancel early? Get unused funds back automatically
-await computeStream.cancel(); // Refunds remaining deposit
-```
-
----
-
-## 💡 Why x402 + MNEE Streaming?
-
-| Feature | x402 Only | Streaming Only | FlowPay Hybrid |
-|---------|-----------|----------------|----------------|
-| Discovery | ✅ Standard HTTP 402 | ❌ Custom | ✅ Standard HTTP 402 |
-| Low-volume efficiency | ✅ Pay per request | ❌ Deposit overhead | ✅ Per-request mode |
-| High-volume efficiency | ❌ Gas per request | ✅ One stream | ✅ Streaming mode |
-| AI optimization | ❌ | ❌ | ✅ Gemini selects mode |
-| Interoperability | ✅ x402 ecosystem | ❌ Custom | ✅ x402 compatible |
-| MNEE native | ❌ Generic | ✅ | ✅ |
+| Layer | What It Does |
+|-------|-------------|
+| **x402 Discovery** | HTTP 402 responses tell agents what payment is required |
+| **MNEE Streaming** | Funds flow per-second — one signature, unlimited requests |
+| **RWA Yield** | Tokenized assets stream income to holders continuously |
+| **Gemini AI** | Decides streaming vs per-request based on usage patterns |
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    FlowPay Hybrid Architecture                   │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌──────────────┐         HTTP Request          ┌────────────┐ │
-│  │   Consumer   │ ─────────────────────────────▶│  Provider  │ │
-│  │    Agent     │                               │    API     │ │
-│  └──────┬───────┘                               └─────┬──────┘ │
-│         │                                             │        │
-│         │ ◀─────── HTTP 402 Payment Required ─────────┘        │
-│         │          (x402 compatible headers)                    │
-│         │                                                       │
-│         ▼                                                       │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                    FlowPay SDK                            │  │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │  │
-│  │  │ x402 Parser │  │ Gemini AI   │  │ Payment Manager │  │  │
-│  │  │             │  │ Mode Select │  │ Stream/Request  │  │  │
-│  │  └─────────────┘  └─────────────┘  └─────────────────┘  │  │
-│  └──────────────────────────┬───────────────────────────────┘  │
-│                             │                                   │
-│         ┌───────────────────┼───────────────────┐              │
-│         │                   │                   │              │
-│  ┌──────▼──────┐    ┌──────▼──────┐    ┌──────▼──────┐       │
-│  │   FlowPay   │    │    MNEE     │    │    Web      │       │
-│  │  Contract   │◀──▶│   Token     │    │  Dashboard  │       │
-│  │  (Streams)  │    │  (ERC-20)   │    │ (Oversight) │       │
-│  └─────────────┘    └─────────────┘    └─────────────┘       │
-│                                                                  │
-│                    Ethereum Sepolia Testnet                      │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                     FlowPay Architecture                         │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  ┌─────────────┐   HTTP Request    ┌─────────────┐              │
+│  │  AI Agent   │ ────────────────▶ │ Provider API│              │
+│  │  (Consumer) │ ◀── HTTP 402 ──── │             │              │
+│  └──────┬──────┘                   └─────────────┘              │
+│         │                                                         │
+│         ▼                                                         │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │                      FlowPay SDK                          │   │
+│  │   x402 Parser  │  Gemini AI Mode Select  │  Pay Manager  │   │
+│  └──────────────────────────┬─────────────────────────────┘    │
+│                              │                                    │
+│         ┌────────────────────┼────────────────────┐             │
+│         │                    │                    │             │
+│  ┌──────▼──────┐    ┌───────▼──────┐    ┌───────▼──────┐      │
+│  │  FlowPay    │    │     MNEE     │    │  RWA Module  │      │
+│  │  Contract   │◀──▶│   Token      │    │  (Yield +    │      │
+│  │  (Streams)  │    │  (ERC-20)    │    │   Rentals)   │      │
+│  └─────────────┘    └──────────────┘    └──────────────┘      │
+│                                                                   │
+│                      Ethereum Sepolia Testnet                     │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-### x402 Payment Flow
+---
+
+## 📁 Project Structure
 
 ```
-Consumer Agent                Provider API                FlowPay Contract
-      │                            │                            │
-      │──── GET /api/weather ─────▶│                            │
-      │                            │                            │
-      │◀─── 402 Payment Required ──│                            │
-      │     X-Payment-Required:    │                            │
-      │     X-FlowPay-Mode: stream │                            │
-      │     X-FlowPay-Rate: 0.0001 │                            │
-      │                            │                            │
-      │ [SDK parses, AI decides]   │                            │
-      │                            │                            │
-      │────────── createStream ────────────────────────────────▶│
-      │◀───────── Stream #1234 ─────────────────────────────────│
-      │                            │                            │
-      │── GET /api/weather ───────▶│                            │
-      │   X-FlowPay-Stream: 1234   │                            │
-      │                            │── verify stream ──────────▶│
-      │                            │◀─ balance OK ──────────────│
-      │◀─── 200 OK + Data ─────────│                            │
-      │                            │                            │
+flowpay/
+├── contracts/
+│   ├── FlowPayStream.sol          # Core MNEE streaming contract
+│   └── MockMNEE.sol               # Test token for Sepolia
+├── sdk/src/
+│   ├── FlowPaySDK.ts              # Agent SDK with x402 handling
+│   ├── GeminiPaymentBrain.ts      # AI payment decisions
+│   └── SpendingMonitor.ts         # Budget management
+├── server/middleware/
+│   └── flowPayMiddleware.js        # x402 Express middleware
+├── demo/
+│   ├── consumer.ts                # AI agent demo (consumer)
+│   └── provider.ts                # API provider demo
+├── vite-project/
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── Dashboard.jsx      # App dashboard (streams + RWA overview)
+│   │   │   ├── Streams.jsx        # Create/manage payment streams
+│   │   │   ├── RWA.jsx            # RWA yield streaming (Continuum-inspired)
+│   │   │   ├── AgentConsolePage.jsx
+│   │   │   └── Docs.jsx
+│   │   ├── components/            # UI components
+│   │   ├── context/WalletContext.jsx
+│   │   └── contactInfo.js         # Contract addresses
+│   └── Continuum/                 # Reference: Continuum Protocol (Aptos)
+├── test/
+│   └── FlowPayStream.test.js
+├── scripts/deploy.js
+└── hardhat.config.js
+```
+
+---
+
+## 🤖 Agent SDK Usage
+
+### Create a Payment Stream
+
+```javascript
+import { FlowPayAgent } from 'flowpay-sdk';
+
+const agent = new FlowPayAgent({
+  privateKey: process.env.AGENT_PRIVATE_KEY,
+  geminiApiKey: process.env.GEMINI_API_KEY,
+  dailyBudget: '50.00'
+});
+
+// SDK handles x402 automatically:
+// request → 402 response → AI picks mode → stream or pay-per-request
+const data = await agent.fetch('https://api.weather-agent.com/forecast');
+```
+
+### x402 Provider Middleware
+
+```javascript
+import { flowPayMiddleware } from 'flowpay-sdk';
+
+app.use(flowPayMiddleware({
+  endpoints: {
+    "GET /api/weather": { price: "0.0001", mode: "streaming", minDeposit: "1.00" },
+    "POST /api/translate": { price: "0.001", mode: "per-request" }
+  }
+}));
+```
+
+### RWA Rental Stream
+
+```javascript
+// Tenant streams rent to asset owner per-second
+const stream = await agent.createStream({
+  recipient: assetOwnerAddress,
+  ratePerSecond: '0.0139',  // ~$50/hour
+  deposit: '50.00',
+  metadata: { purpose: 'Tesla Model S rental' }
+});
+
+// Cancel early → unused MNEE refunded automatically
+await stream.cancel();
 ```
 
 ---
@@ -391,167 +232,57 @@ Consumer Agent                Provider API                FlowPay Contract
 | Agent SDK | TypeScript |
 | Server Middleware | Express.js |
 | AI Integration | Google Gemini API |
-| Frontend | React (Vite), JavaScript |
+| Frontend | React (Vite), Tailwind CSS |
 | Blockchain Interaction | Ethers.js v6 |
-| Styling | Tailwind CSS |
+| RWA Reference | [Continuum Protocol](https://github.com/ola-893/Continuum) (Aptos/Move) |
+
+---
+
+## ⚙️ Advanced Setup
+
+```bash
+cp .env.example .env
+```
+
+```env
+SEPOLIA_RPC_URL="https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY"
+PRIVATE_KEY="YOUR_DEPLOYER_PRIVATE_KEY"
+GEMINI_API_KEY="your_gemini_api_key"
+```
+
+```bash
+npm test                     # All tests
+npm run test:contracts        # Smart contract tests
+npm run test:sdk              # SDK tests
+npm run deploy:sepolia        # Deploy your own contracts
+```
 
 ---
 
 ## 🔄 Mainnet Migration
 
-When ready for production with real MNEE:
-
 | Feature | Testnet (Sepolia) | Mainnet |
 |---------|-------------------|---------|
-| Token | MockMNEE (free mint) | Real MNEE |
+| Token | MockMNEE (free mint) | Real MNEE (`0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF`) |
 | Network | Sepolia (11155111) | Ethereum (1) |
 | Gas | Free testnet ETH | Real ETH |
 
-**MNEE Mainnet Contract:** `0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF`
-
-Update `vite-project/src/contactInfo.js` with mainnet addresses and deploy FlowPayStream to mainnet.
-
----
-
-## 🤖 Agent SDK Usage
-
-### Basic Stream Creation
-
-```javascript
-import { FlowPayAgent } from 'flowpay-sdk';
-
-const agent = new FlowPayAgent({
-  privateKey: process.env.AGENT_PRIVATE_KEY,
-  network: 'sepolia'
-});
-
-// Create a payment stream
-const stream = await agent.createStream({
-  recipient: '0x1234...5678',
-  ratePerSecond: '0.0001',
-  deposit: '10.00',
-  metadata: {
-    agentId: 'weather_bot_01',
-    purpose: 'API Metering'
-  }
-});
-
-console.log(`Stream #${stream.id} created!`);
-```
-
-### AI-Powered Agent
-
-```javascript
-import { FlowPayAgent } from 'flowpay-sdk';
-
-const agent = new FlowPayAgent({
-  privateKey: process.env.AGENT_PRIVATE_KEY,
-  geminiApiKey: process.env.GEMINI_API_KEY,
-  dailyBudget: '50.00'
-});
-
-// Let AI optimize your spending
-const decision = await agent.optimizeSpending();
-console.log(`AI Decision: ${decision.action}`);
-console.log(`Reasoning: ${decision.reasoning}`);
-
-// Natural language queries
-const response = await agent.ask("Should I subscribe to the translation API?");
-console.log(response);
-```
-
----
-
-## 📊 Demo Scenario
-
-**Watch two AI agents transact autonomously:**
-
-1. **Agent Alice** (Consumer) needs weather data
-2. **Agent Bob** (Provider) offers weather API at $0.0001/call
-3. Alice opens a FlowPay stream to Bob
-4. Alice makes 1,000 API calls over 10 minutes
-5. Bob's balance increases in real-time: $0.00 → $0.10
-6. Bob withdraws earnings anytime
-7. Alice cancels stream when done, gets unused deposit back
-
-**All payments happen automatically, no human intervention!**
-
----
-
-## 🔒 Security Features
-
-- **Spending Limits**: Daily and per-stream caps
-- **Emergency Pause**: Instantly stop all agent activity
-- **Auto-cancellation**: Streams cancel when services fail
-- **Suspicious Activity Detection**: AI monitors for anomalies
-- **Human Override**: Dashboard controls for manual intervention
-
----
-
-## 📁 Project Structure
-
-```
-flowpay/
-├── contracts/
-│   ├── FlowPayStream.sol      # MNEE streaming contract
-│   └── MockMNEE.sol           # Test token for Sepolia
-├── scripts/
-│   └── deploy.js              # Deployment script
-├── sdk/
-│   └── src/
-│       ├── FlowPaySDK.ts      # Agent SDK with x402 handling
-│       ├── GeminiPaymentBrain.ts  # AI payment decisions
-│       └── SpendingMonitor.ts # Budget management
-├── server/
-│   └── middleware/
-│       └── flowPayMiddleware.js  # x402 Express middleware
-├── demo/
-│   ├── consumer.ts            # AI agent demo (consumer)
-│   └── provider.ts            # API provider demo
-├── vite-project/
-│   ├── src/
-│   │   ├── components/        # React components
-│   │   ├── pages/             # Dashboard, Streams, Docs
-│   │   ├── context/           # Wallet context
-│   │   └── contactInfo.js     # Contract addresses
-│   └── netlify.toml           # Deployment config
-├── test/
-│   └── FlowPayStream.test.js  # Contract tests
-├── hardhat.config.js
-├── package.json
-├── LICENSE                    # MIT License
-└── README.md
-```
+Update `vite-project/src/contactInfo.js` with mainnet addresses.
 
 ---
 
 ## 🏆 Hackathon Track
 
-**AI & Agent Payments** - Agents or automated systems paying for services or data
-
-### How MNEE is Used
-
-FlowPay uses MNEE stablecoin as the payment token for all streaming payments:
-- **Payment Streams**: MNEE tokens are locked in the FlowPayStream smart contract and streamed per-second to recipients
-- **x402 Protocol**: AI agents pay for API access using MNEE via the x402 HTTP payment negotiation standard
-- **Testnet**: Uses MockMNEE (`0x96B1FE54Ee89811f46ecE4a347950E0D682D3896`) on Sepolia
-- **Mainnet Ready**: Designed to work with real MNEE (`0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF`) on Ethereum mainnet
+**AI & Agent Payments** — Agents or automated systems paying for services or data
 
 FlowPay demonstrates:
 - ✅ x402-compatible service discovery (HTTP 402 standard)
 - ✅ AI agents transacting autonomously with MNEE
 - ✅ Hybrid payment modes (per-request + streaming)
+- ✅ RWA yield streaming — tokenized assets with live income distribution
+- ✅ Pay-as-you-go asset rentals (IoT-style access via payment streams)
 - ✅ Intelligent decision-making with Gemini AI
-- ✅ Multi-agent service coordination
-- ✅ Human oversight and safety controls
-
-### Why FlowPay Stands Out
-
-1. **x402 Compatibility** - Works with the emerging agent payment ecosystem
-2. **Streaming Efficiency** - 90% gas savings for high-volume usage
-3. **AI-Powered** - Gemini automatically optimizes payment mode
-4. **MNEE Native** - Built specifically for MNEE stablecoin
-5. **Production Ready** - Express middleware for easy integration
+- ✅ Human oversight dashboard with emergency controls
 
 ---
 
@@ -565,26 +296,23 @@ FlowPay demonstrates:
 | [Tailwind CSS](https://tailwindcss.com/) | Styling | MIT |
 | [Hardhat](https://hardhat.org/) | Smart contract development | MIT |
 | [Google Gemini API](https://ai.google.dev/) | AI payment decisions | Google API Terms |
-| [Axios](https://axios-http.com/) | HTTP client | MIT |
-
-All third-party dependencies are used in accordance with their respective licenses.
+| [Continuum Protocol](https://github.com/ola-893/Continuum) | RWA streaming reference | MIT |
 
 ---
 
 ## 📜 License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
 ## 🙏 Acknowledgments
 
-- [MNEE](https://mnee.io) - USD-backed stablecoin powering this project
-- [Google Gemini](https://ai.google.dev) - AI decision-making capabilities
-- [Ethereum](https://ethereum.org) - Blockchain infrastructure
+- [MNEE](https://mnee.io) — USD-backed stablecoin powering this project
+- [Continuum Protocol](https://github.com/ola-893/Continuum) — RWA streaming architecture reference (Aptos)
+- [Google Gemini](https://ai.google.dev) — AI decision-making
+- [Ethereum](https://ethereum.org) — Blockchain infrastructure
 
 ---
 
-**Built with 💙 for the MNEE Hackathon**
-
-*Enabling the autonomous economy, one stream at a time.*
+**Built with 💙 for the MNEE Hackathon** · *Enabling the autonomous economy, one stream at a time.*

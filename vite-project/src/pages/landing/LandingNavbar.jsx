@@ -30,7 +30,7 @@ export default function LandingNavbar() {
 
         {/* Desktop nav */}
         <div className="hidden md:flex items-center gap-8">
-          {['Protocol', 'Use Cases', 'Developers', 'Docs'].map((link) => (
+          {['Protocol', 'Use Cases', 'Developers'].map((link) => (
             <a
               key={link}
               href={`#${link.toLowerCase().replace(' ', '-')}`}
@@ -42,17 +42,7 @@ export default function LandingNavbar() {
         </div>
 
         <div className="hidden md:flex items-center gap-3">
-          <Link
-            to="/app"
-            className="text-surface-200 hover:text-white text-sm transition-colors duration-200"
-          >
-            Dashboard
-          </Link>
-          <Link
-            to="/app"
-            className="px-5 py-2 bg-flowpay-500 hover:bg-flowpay-600 text-white text-sm font-semibold rounded-lg shadow-glow-sm animate-glow-pulse transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-flowpay-500/50"
-            aria-label="Launch Stream Engine app"
-          >
+          <Link to="/app" className="px-5 py-2 bg-flowpay-500 hover:bg-flowpay-600 text-white text-sm font-semibold rounded-lg shadow-glow-sm animate-glow-pulse transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-flowpay-500/50" aria-label="Launch Stream Engine app">
             Launch App
           </Link>
         </div>
@@ -77,7 +67,7 @@ export default function LandingNavbar() {
       {/* Mobile overlay */}
       {menuOpen && (
         <div className="md:hidden bg-surface-950 border-b border-surface-700 px-4 py-6 flex flex-col gap-4 animate-slide-down">
-          {['Protocol', 'Use Cases', 'Developers', 'Docs'].map((link, i) => (
+          {['Protocol', 'Use Cases', 'Developers'].map((link, i) => (
             <a
               key={link}
               href={`#${link.toLowerCase().replace(' ', '-')}`}

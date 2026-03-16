@@ -1,47 +1,45 @@
-
-
 const FEATURES = [
   {
     title: 'x402 Service Discovery',
-    desc: 'Standard HTTP 402 responses with x402 manifests. Any agent hits your API and gets DOT payment requirements automatically.',
+    desc: 'Standard HTTP 402 responses. Any AI agent hits your API and gets MNEE payment requirements automatically — no custom integration.',
     color: 'text-flowpay-400', span: 'md:col-span-2',
     extra: (
       <div className="mt-4 rounded-lg bg-surface-900 border border-surface-700 p-3 font-mono text-xs space-y-1">
         <div><span className="text-surface-500">GET</span> <span className="text-flowpay-300">/api/weather</span></div>
         <div><span className="text-warning-400">← 402</span> <span className="text-surface-300">Payment Required</span></div>
         <div className="pl-2 text-surface-400">X-Payment-Mode: <span className="text-success-400">streaming</span></div>
-        <div className="pl-2 text-surface-400">X-FlowPay-Rate: <span className="text-flowpay-400">0.0001 DOT/sec</span></div>
+        <div className="pl-2 text-surface-400">X-FlowPay-Rate: <span className="text-flowpay-400">0.0001 MNEE/sec</span></div>
         <div><span className="text-success-400">→ 200</span> <span className="text-surface-300">OK + Data</span></div>
       </div>
     ),
   },
   {
-    title: 'Autonomous DOT Payments',
-    desc: 'Agents pay for API access with DOT on Polkadot — no human intervention, no gas surprises.',
+    title: 'Autonomous MNEE Payments',
+    desc: 'Agents pay for API access with MNEE stablecoin on Ethereum — no human intervention, no gas surprises.',
     color: 'text-flowpay-400', span: '',
   },
   {
-    title: 'Hybrid Payment Modes',
-    desc: 'Per-request for low volume, streaming for high frequency. SDK switches automatically based on usage.',
-    color: 'text-flowpay-300', span: '',
+    title: 'RWA Physical Access',
+    desc: 'Stream MNEE to unlock real-world assets — smart locks, IoT ignition, PLC controllers. Owner keeps the NFT and all financial rights.',
+    color: 'text-success-400', span: '',
   },
   {
     title: 'Gemini AI Engine',
-    desc: 'Google Gemini analyzes usage patterns and selects the optimal payment mode in real-time.',
+    desc: 'Google Gemini analyzes usage patterns and selects streaming vs per-request payment mode in real-time.',
     color: 'text-accent-400', span: '', glow: 'hover:shadow-glow-accent',
   },
   {
-    title: 'Multi-Agent Coordination',
-    desc: 'Multiple AI agents orchestrate service calls across Polkadot parachains with shared payment streams.',
+    title: 'Hybrid Payment Modes',
+    desc: 'Per-request for low volume, streaming for high frequency. SDK switches automatically — one signature, unlimited requests.',
     color: 'text-flowpay-300', span: '',
   },
   {
     title: 'Human Safety Controls',
-    desc: 'Kill switches, rate limiters, daily budget caps, and emergency pause — full oversight at all times.',
+    desc: 'Kill switches, rate limiters, daily budget caps, fleet freeze, and emergency pause — full oversight at all times.',
     color: 'text-success-400', span: 'md:col-span-2',
     extra: (
       <div className="mt-4 flex flex-wrap gap-3">
-        {[{ label: 'Rate Limit', on: true }, { label: 'KYC Gate', on: true }, { label: 'Budget Cap', on: true }, { label: 'Emergency Pause', on: false }].map(t => (
+        {[{ label: 'Rate Limit', on: true }, { label: 'Budget Cap', on: true }, { label: 'Fleet Freeze', on: true }, { label: 'Emergency Pause', on: false }].map(t => (
           <div key={t.label} className="flex items-center gap-2 bg-surface-900 border border-surface-700 rounded-lg px-3 py-1.5 font-mono text-xs">
             <span className={`w-2 h-2 rounded-full ${t.on ? 'bg-success-500 animate-pulse' : 'bg-surface-600'}`} aria-hidden="true" />
             <span className="text-surface-300">{t.label}</span>
@@ -51,7 +49,7 @@ const FEATURES = [
       </div>
     ),
   },
-]
+];
 
 export default function LandingFeatures() {
   return (
@@ -72,5 +70,5 @@ export default function LandingFeatures() {
         </div>
       </div>
     </section>
-  )
+  );
 }

@@ -12,7 +12,7 @@ const DURATION_PRESETS = [
 
 // Token options
 const TOKENS = [
-  { symbol: paymentTokenSymbol, name: paymentTokenDisplayName, Icon: Coins, balance: '0.00' },
+  { symbol: paymentTokenSymbol, name: paymentTokenDisplayName, Icon: Coins },
 ];
 
 // Progress Step Component
@@ -71,7 +71,7 @@ const RecipientInput = ({ value, onChange, isValid }) => {
 };
 
 // Token Selector
-const TokenSelector = ({ selected, onSelect }) => (
+const TokenSelector = ({ selected, onSelect, balance }) => (
   <div className="space-y-2">
     <label className="text-sm font-medium text-white/80">Select Token</label>
     <div className="grid grid-cols-2 gap-3">
@@ -97,7 +97,7 @@ const TokenSelector = ({ selected, onSelect }) => (
               </div>
             </div>
             <div className="mt-2 text-xs text-white/60">
-              Balance: <span className="font-mono text-white/80">{token.balance}</span>
+              Balance: <span className="font-mono text-white/80">{parseFloat(balance || 0).toFixed(4)}</span>
             </div>
           </button>
         );
@@ -197,6 +197,7 @@ export default function CreateStreamForm({
   setAmountEth,
   durationSeconds,
   setDurationSeconds,
+  balance = '0.00',
   onSubmit,
 }) {
   const [currentStep, setCurrentStep] = useState(1);
@@ -289,7 +290,7 @@ export default function CreateStreamForm({
         {/* Step 2: Token & Amount */}
         {currentStep === 2 && (
           <div className="animate-fade-in space-y-4">
-            <TokenSelector selected={selectedToken} onSelect={setSelectedToken} />
+            <TokenSelector selected={selectedToken} onSelect={setSelectedToken} balance={balance} />
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-white/80">Amount</label>
@@ -308,11 +309,11 @@ export default function CreateStreamForm({
                 </div>
               </div>
               <div className="flex justify-between text-xs text-white/50">
-                <span>Balance: {selectedToken?.balance} {selectedToken?.symbol}</span>
+                <span>Balance: {parseFloat(balance || 0).toFixed(4)} {selectedToken?.symbol}</span>
                 <button
                   type="button"
                   className="text-flowpay-400 hover:text-flowpay-300"
-                  onClick={() => setAmountEth(selectedToken?.balance || '0')}
+                  onClick={() => setAmountEth(parseFloat(balance || 0).toFixed(6))}
                 >
                   Max
                 </button>

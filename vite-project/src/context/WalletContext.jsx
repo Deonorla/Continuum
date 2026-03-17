@@ -208,18 +208,18 @@ export function WalletProvider({ children }) {
   }, [availableWallets, ensureCorrectNetwork, openWalletPicker, refreshAvailableWallets, resetWalletState, toast]);
 
   const fetchMneeBalance = useCallback(async () => {
-    if (!provider || !walletAddress) return;
+    if (!walletAddress) return;
     try {
-      const paymentTokenContract = new ethers.Contract(paymentTokenAddress, paymentTokenABI, provider);
-      const balance = await paymentTokenContract.balanceOf(walletAddress);
-      setMneeBalance(ethers.formatUnits(balance, paymentTokenDecimals));
+      const nativeAssetBalance = await readNativeAssetBalance(walletAddress, paymentAssetId);
+      setMneeBalance(ethers.formatUnits(nativeAssetBalance, paymentTokenDecimals));
     } catch (error) {
       console.error(`Failed to fetch ${paymentTokenSymbol} balance:`, error);
       try {
-        const nativeAssetBalance = await readNativeAssetBalance(walletAddress, paymentAssetId);
-        setMneeBalance(ethers.formatUnits(nativeAssetBalance, paymentTokenDecimals));
+        const paymentTokenContract = new ethers.Contract(paymentTokenAddress, paymentTokenABI, provider);
+        const balance = await paymentTokenContract.balanceOf(walletAddress);
+        setMneeBalance(ethers.formatUnits(balance, paymentTokenDecimals));
       } catch (fallbackError) {
-        console.error(`Failed to fetch ${paymentTokenSymbol} balance via substrate fallback:`, fallbackError);
+        console.error(`Failed to fetch ${paymentTokenSymbol} balance via EVM fallback:`, fallbackError);
       }
     }
   }, [paymentAssetId, paymentTokenDecimals, paymentTokenSymbol, provider, walletAddress]);
@@ -362,15 +362,25 @@ export function WalletProvider({ children }) {
       }
       setStatus(`Approving ${paymentTokenSymbol}...`);
       const paymentTokenContract = new ethers.Contract(paymentTokenAddress, paymentTokenABI, signer);
-      const currentAllowance = await paymentTokenContract.allowance(await signer.getAddress(), contractAddress);
-      if (currentAllowance < totalAmountWei) {
-        const approveTx = await paymentTokenContract.approve(contractAddress, totalAmountWei);
+      // The USDC precompile on Westend Asset Hub may not support allowance() — always approve
+      let needsApproval = true;
+      try {
+        const currentAllowance = await paymentTokenContract.allowance(await signer.getAddress(), contractAddress);
+        needsApproval = currentAllowance < totalAmountWei;
+      } catch {
+        // precompile doesn't support allowance(), proceed with approve
+      }
+      if (needsApproval) {
+        const approveTx = await paymentTokenContract.approve(contractAddress, totalAmountWei, {
+          gasLimit: 200000n,
+        });
         await approveTx.wait();
         setStatus(`${paymentTokenSymbol} approved.`);
-      }
-      setStatus('Creating stream...');
+      }      setStatus('Creating stream...');
       setIsProcessing(true);
-      const tx = await contractWithSigner.createStream(recipient, parsedDuration, totalAmountWei, metadata);
+      const tx = await contractWithSigner.createStream(recipient, parsedDuration, totalAmountWei, metadata, {
+        gasLimit: 500000n,
+      });
       const receipt = await tx.wait();
       let createdId = null;
       try {
@@ -510,19 +520,12 @@ export function WalletProvider({ children }) {
     if (!walletAddress || !contractWithProvider) return;
     refreshStreamsRef.current();
     fetchMneeBalanceRef.current();
-    const listener = () => refreshStreamsRef.current();
-    contractWithProvider.on('StreamCreated', listener);
-    contractWithProvider.on('StreamCancelled', listener);
-    contractWithProvider.on('Withdrawn', listener);
-    return () => {
-      try {
-        contractWithProvider.off('StreamCreated', listener);
-        contractWithProvider.off('StreamCancelled', listener);
-        contractWithProvider.off('Withdrawn', listener);
-      } catch {
-        // Ignore listener cleanup failures.
-      }
-    };
+    // Westend Asset Hub doesn't support eth_newFilter, so poll instead of subscribing
+    const id = setInterval(() => {
+      refreshStreamsRef.current();
+      fetchMneeBalanceRef.current();
+    }, 15000);
+    return () => clearInterval(id);
   }, [walletAddress, contractWithProvider]);
 
   const value = {

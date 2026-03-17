@@ -61,7 +61,7 @@ export default function WalletPickerModal({
                     ? 'border-flowpay-500/40 bg-flowpay-500/10'
                     : 'border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.05]'
                 } ${!wallet.isAvailable ? 'cursor-not-allowed opacity-60' : ''}`}
-                onClick={() => wallet.isAvailable && onSelect(wallet.id)}
+                onClick={() => wallet.isAvailable && onSelect(wallet)}
                 disabled={isConnecting || !wallet.isAvailable}
               >
                 <WalletIcon wallet={wallet} />

@@ -10,7 +10,7 @@ import {
 } from '../contactInfo.js';
 import { useToast } from '../components/ui';
 import { ACTIVE_NETWORK } from '../networkConfig.js';
-import { createWalletConnectProvider, getAvailableWallets } from '../lib/wallets.js';
+import { createWalletConnectProvider, getAvailableWallets, resolveWalletSelection } from '../lib/wallets.js';
 
 const WalletContext = createContext(null);
 
@@ -152,14 +152,14 @@ export function WalletProvider({ children }) {
     }
   }, [activeWallet, resetWalletState, toast]);
 
-  const connectWallet = useCallback(async (walletId) => {
-    if (!walletId) {
+  const connectWallet = useCallback(async (walletSelection) => {
+    if (!walletSelection) {
       await openWalletPicker();
       return;
     }
 
     const wallets = availableWallets.length ? availableWallets : await refreshAvailableWallets();
-    const walletOption = wallets.find((wallet) => wallet.id === walletId);
+    const walletOption = await resolveWalletSelection(walletSelection, wallets);
 
     if (!walletOption) {
       toast.error('Selected wallet was not found in this browser.', { title: 'Wallet Error' });

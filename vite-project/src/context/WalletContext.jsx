@@ -36,7 +36,7 @@ export function WalletProvider({ children }) {
   const [status, setStatus] = useState('Choose a wallet to connect');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isConnectingWallet, setIsConnectingWallet] = useState(false);
-  const [mneeBalance, setMneeBalance] = useState('0.0');
+  const [paymentBalance, setPaymentBalance] = useState('0.0');
   const [availableWallets, setAvailableWallets] = useState([]);
   const [activeWallet, setActiveWallet] = useState(null);
   const [isWalletPickerOpen, setIsWalletPickerOpen] = useState(false);
@@ -77,7 +77,7 @@ export function WalletProvider({ children }) {
     setSigner(null);
     setWalletAddress(null);
     setChainId(null);
-    setMneeBalance('0.0');
+    setPaymentBalance('0.0');
     setIncomingStreams([]);
     setOutgoingStreams([]);
     setIsInitialLoad(true);
@@ -207,46 +207,29 @@ export function WalletProvider({ children }) {
     }
   }, [availableWallets, ensureCorrectNetwork, openWalletPicker, refreshAvailableWallets, resetWalletState, toast]);
 
-  const fetchMneeBalance = useCallback(async () => {
+  const fetchPaymentBalance = useCallback(async () => {
     if (!provider || !walletAddress) return;
     try {
       const paymentTokenContract = new ethers.Contract(paymentTokenAddress, paymentTokenABI, provider);
       const balance = await paymentTokenContract.balanceOf(walletAddress);
-      setMneeBalance(ethers.formatUnits(balance, paymentTokenDecimals));
+      setPaymentBalance(ethers.formatUnits(balance, paymentTokenDecimals));
     } catch (error) {
       console.error(`Failed to fetch ${paymentTokenSymbol} balance:`, error);
       try {
         const nativeAssetBalance = await readNativeAssetBalance(walletAddress, paymentAssetId);
-        setMneeBalance(ethers.formatUnits(nativeAssetBalance, paymentTokenDecimals));
+        setPaymentBalance(ethers.formatUnits(nativeAssetBalance, paymentTokenDecimals));
       } catch (fallbackError) {
         console.error(`Failed to fetch ${paymentTokenSymbol} balance via substrate fallback:`, fallbackError);
       }
     }
   }, [paymentAssetId, paymentTokenDecimals, paymentTokenSymbol, provider, walletAddress]);
 
-  const mintMneeTokens = async (amount = '1000') => {
-    if (!signer || !walletAddress) {
-      toast.warning('Please connect your wallet first');
-      return;
-    }
-    try {
-      setIsProcessing(true);
-      setStatus(`Requesting test ${paymentTokenSymbol}...`);
-      const loadingToast = toast.transaction.pending(`Requesting test ${paymentTokenSymbol}...`);
-      const mneeContract = new ethers.Contract(paymentTokenAddress, paymentTokenABI, signer);
-      const tx = await mneeContract.mint(walletAddress, ethers.parseUnits(amount, paymentTokenDecimals));
-      await tx.wait();
-      toast.dismiss(loadingToast);
-      toast.success(`Minted ${amount} ${paymentTokenSymbol}!`, { title: 'Mint Successful' });
-      setStatus(`Minted ${amount} ${paymentTokenSymbol}.`);
-      await fetchMneeBalance();
-    } catch (error) {
-      console.error('Mint failed:', error);
-      toast.error(error?.shortMessage || error?.message || 'Mint failed', { title: 'Mint Failed' });
-      setStatus(error?.shortMessage || error?.message || 'Mint failed.');
-    } finally {
-      setIsProcessing(false);
-    }
+  const requestTestFunds = async () => {
+    toast.info(
+      `Circle ${paymentTokenSymbol} is not mintable in-app on Westend. Fund this account externally, then refresh the balance.`,
+      { title: 'External Funding Required' }
+    );
+    setStatus(`Waiting for external ${paymentTokenSymbol} funding.`);
   };
 
   const fetchStreamsFromEvents = useCallback(async (me) => {
@@ -430,9 +413,9 @@ export function WalletProvider({ children }) {
   };
 
   const refreshStreamsRef = useRef(refreshStreams);
-  const fetchMneeBalanceRef = useRef(fetchMneeBalance);
+  const fetchPaymentBalanceRef = useRef(fetchPaymentBalance);
   useEffect(() => { refreshStreamsRef.current = refreshStreams; }, [refreshStreams]);
-  useEffect(() => { fetchMneeBalanceRef.current = fetchMneeBalance; }, [fetchMneeBalance]);
+  useEffect(() => { fetchPaymentBalanceRef.current = fetchPaymentBalance; }, [fetchPaymentBalance]);
 
   useEffect(() => {
     refreshAvailableWallets();
@@ -488,7 +471,7 @@ export function WalletProvider({ children }) {
       }
       setStatus(`Connected via ${activeWallet?.name || 'wallet'}`);
       refreshStreamsRef.current();
-      fetchMneeBalanceRef.current();
+      fetchPaymentBalanceRef.current();
     };
 
     const handleDisconnect = async () => {
@@ -509,7 +492,7 @@ export function WalletProvider({ children }) {
   useEffect(() => {
     if (!walletAddress || !contractWithProvider) return;
     refreshStreamsRef.current();
-    fetchMneeBalanceRef.current();
+    fetchPaymentBalanceRef.current();
     const listener = () => refreshStreamsRef.current();
     contractWithProvider.on('StreamCreated', listener);
     contractWithProvider.on('StreamCancelled', listener);
@@ -535,7 +518,7 @@ export function WalletProvider({ children }) {
     isProcessing,
     setIsProcessing,
     isConnectingWallet,
-    mneeBalance,
+    paymentBalance,
     incomingStreams,
     setIncomingStreams,
     outgoingStreams,
@@ -552,8 +535,8 @@ export function WalletProvider({ children }) {
     availableWallets,
     activeWallet,
     refreshAvailableWallets,
-    fetchMneeBalance,
-    mintMneeTokens,
+    fetchPaymentBalance,
+    requestTestFunds,
     refreshStreams,
     withdraw,
     cancel,

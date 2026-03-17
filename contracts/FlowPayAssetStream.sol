@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import "./utils/Owned.sol";
 import "./utils/ReentrancyGuardLite.sol";
 
-interface IFlowPayMNEE {
+interface IFlowPayPaymentToken {
     function transfer(address recipient, uint256 amount) external returns (bool);
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
 }
@@ -31,7 +31,7 @@ contract FlowPayAssetStream is Owned, ReentrancyGuardLite {
         bool isActive;
     }
 
-    IFlowPayMNEE public immutable mneeToken;
+    IFlowPayPaymentToken public immutable mneeToken;
     IFlowPayAssetNFT public immutable assetNFT;
     IFlowPayComplianceGuardView public complianceGuard;
     address public hub;
@@ -62,10 +62,10 @@ contract FlowPayAssetStream is Owned, ReentrancyGuardLite {
         _;
     }
 
-    constructor(address mneeToken_, address assetNFT_) {
-        require(mneeToken_ != address(0), "FlowPayAssetStream: token is zero");
+    constructor(address paymentToken_, address assetNFT_) {
+        require(paymentToken_ != address(0), "FlowPayAssetStream: token is zero");
         require(assetNFT_ != address(0), "FlowPayAssetStream: nft is zero");
-        mneeToken = IFlowPayMNEE(mneeToken_);
+        mneeToken = IFlowPayPaymentToken(paymentToken_);
         assetNFT = IFlowPayAssetNFT(assetNFT_);
     }
 

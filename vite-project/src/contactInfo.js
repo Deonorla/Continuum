@@ -8,11 +8,7 @@ export const contractAddress = env.VITE_CONTRACT_ADDRESS
   || '0x75edbf3d9857521f5fb2f581c896779f5110a8a0';
 
 export const paymentTokenAddress = env.VITE_FLOWPAY_PAYMENT_TOKEN_ADDRESS
-  || env.VITE_MNEE_TOKEN_ADDRESS
   || '0x00007a6900000000000000000000000001200000';
-
-// Compatibility export for older components that still import `mneeTokenAddress`.
-export const mneeTokenAddress = paymentTokenAddress;
 
 export const paymentTokenSymbol = env.VITE_FLOWPAY_PAYMENT_TOKEN_SYMBOL || 'USDC';
 export const paymentTokenDisplayName = env.VITE_FLOWPAY_PAYMENT_TOKEN_NAME || 'Circle USDC';
@@ -134,7 +130,7 @@ export const contractABI = (typeof import.meta !== 'undefined' && import.meta.en
   : hardcodedABI;
 
 // Circle USDC precompile ABI subset.
-export const mneeTokenABI = [
+export const paymentTokenABI = [
   {
     "inputs": [],
     "stateMutability": "nonpayable",
@@ -195,16 +191,6 @@ export const mneeTokenABI = [
     "type": "function"
   },
   {
-    "inputs": [
-      { "internalType": "address", "name": "to", "type": "address" },
-      { "internalType": "uint256", "name": "amount", "type": "uint256" }
-    ],
-    "name": "mint",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
     "inputs": [],
     "name": "name",
     "outputs": [{ "internalType": "string", "name": "", "type": "string" }],
@@ -247,5 +233,3 @@ export const mneeTokenABI = [
     "type": "function"
   }
 ];
-
-export const paymentTokenABI = mneeTokenABI;

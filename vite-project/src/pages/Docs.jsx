@@ -21,37 +21,43 @@ import { ACTIVE_NETWORK } from "../networkConfig.js";
 
 const DEPLOYED_CONTRACT_DEFAULTS = {
   stream: {
-    name: "FlowPayStream",
+    name: "Stream Engine Stream",
+    onchainName: "FlowPayStream",
     group: "Payment Rail",
     address: "0x75edbf3d9857521f5fb2f581c896779f5110a8a0",
     role: "Reusable payment stream rail for x402-compatible API and access payments.",
   },
   rwaHub: {
-    name: "FlowPayRWAHub",
+    name: "Stream Engine RWA Hub",
+    onchainName: "FlowPayRWAHub",
     group: "RWA Rail",
     address: "0x1286a0fe3413dd70083df2d654677a7c39096753",
     role: "Main RWA orchestrator for minting, yield funding, claims, flash advance, and admin actions.",
   },
   assetNft: {
-    name: "FlowPayAssetNFT",
+    name: "Stream Engine Asset NFT",
+    onchainName: "FlowPayAssetNFT",
     group: "RWA Rail",
     address: "0x0340b3f493bae901f740c494b2f7744f5fffe348",
     role: "ERC-721 digital twin contract for productive real-world rental assets.",
   },
   assetRegistry: {
-    name: "FlowPayAssetRegistry",
+    name: "Stream Engine Asset Registry",
+    onchainName: "FlowPayAssetRegistry",
     group: "RWA Rail",
     address: "0x9db31d67bd603508cfac61dcd31d98dfbd46cf5f",
     role: "Onchain provenance registry for CID hashes, tag hashes, issuer data, and active stream linkage.",
   },
   assetStream: {
-    name: "FlowPayAssetStream",
+    name: "Stream Engine Asset Stream",
+    onchainName: "FlowPayAssetStream",
     group: "RWA Rail",
     address: "0x2d6bda7095b2d6c9d4eee9f754f2a1eba6114396",
     role: "Asset-linked yield engine that keeps future revenue coupled to NFT ownership.",
   },
   complianceGuard: {
-    name: "FlowPayComplianceGuard",
+    name: "Stream Engine Compliance Guard",
+    onchainName: "FlowPayComplianceGuard",
     group: "RWA Rail",
     address: "0x72a979756061c5993a4c9c95e87519e9492dd721",
     role: "Compliance and freeze control layer for regulated RWA actions.",
@@ -127,7 +133,7 @@ function buildContractRows(catalog) {
   return getDeployedContractDescriptors(catalog).map((contract) => [
     contract.name,
     contract.address || "Not configured",
-    contract.role,
+    `${contract.role} Onchain deployment id: ${contract.onchainName}.`,
   ]);
 }
 
@@ -141,7 +147,7 @@ function buildContractLinks(catalog) {
       label: contract.name,
       value: contract.address,
       href: `${explorerBase}/account/${contract.address}`,
-      note: "View on explorer",
+      note: `Onchain deployment id: ${contract.onchainName}`,
     }));
 }
 
@@ -446,6 +452,11 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
           question: "Why not just use API keys?",
           answer:
             "API keys identify a client. They do not solve pricing, per-route payment terms, or onchain settlement for autonomous agents.",
+        },
+        {
+          question: "Why do some payment headers still say FlowPay?",
+          answer:
+            "Those are legacy wire-format names kept for compatibility with the current runtime and SDK. Product-facing branding is Stream Engine, but the live HTTP header keys still use the older X-FlowPay-* prefix today.",
         },
       ],
     },
@@ -1013,27 +1024,27 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
           headers: ["RWA piece", "What it stores or controls", "Why the system needs it"],
           rows: [
             [
-              "FlowPayAssetNFT",
+              "Stream Engine Asset NFT",
               "The digital twin and current owner",
               "Without it there is no durable ownership anchor for the productive asset",
             ],
             [
-              "FlowPayAssetRegistry",
+              "Stream Engine Asset Registry",
               "CID hash, verification tag hash, issuer facts, linked stream facts",
               "Without it buyers and auditors cannot prove the physical asset story is consistent",
             ],
             [
-              "FlowPayAssetStream",
+              "Stream Engine Asset Stream",
               "Time-based yield logic, flash-advance behavior, future revenue state",
               "Without it the asset becomes just another static NFT with no revenue engine",
             ],
             [
-              "FlowPayComplianceGuard",
+              "Stream Engine Compliance Guard",
               "Freeze and compliance flags",
               "Without it there is no contract-level stop switch for regulated or disputed actions",
             ],
             [
-              "FlowPayRWAHub",
+              "Stream Engine RWA Hub",
               "High-level orchestration across minting, funding, claims, and admin actions",
               "Without it the app would need to coordinate too many raw calls manually",
             ],
@@ -1044,32 +1055,32 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
           headers: ["Contract", "Why it exists", "What breaks without it"],
           rows: [
             [
-              "FlowPayStream",
+              "Stream Engine Stream",
               "Create, cancel, and settle reusable payment streams",
               "Agents fall back to repeated checkout and high-fee per-request settlement",
             ],
             [
-              "FlowPayAssetNFT",
+              "Stream Engine Asset NFT",
               "Mint the productive rental asset NFT",
               "There is no durable digital twin for the real asset",
             ],
             [
-              "FlowPayAssetRegistry",
+              "Stream Engine Asset Registry",
               "Store CID hash, tag hash, issuer, and active stream mapping",
               "Verifiers cannot prove that QR, NFC, and IPFS metadata match onchain truth",
             ],
             [
-              "FlowPayAssetStream",
+              "Stream Engine Asset Stream",
               "Handle asset-linked yield and flash advance behavior",
               "Future rental revenue cannot be streamed or coupled cleanly to NFT ownership",
             ],
             [
-              "FlowPayComplianceGuard",
+              "Stream Engine Compliance Guard",
               "Store compliance and freeze state",
               "Admins cannot block claims or withdrawals when policy or regulation requires intervention",
             ],
             [
-              "FlowPayRWAHub",
+              "Stream Engine RWA Hub",
               "Coordinate minting, funding, claims, and admin actions",
               "Frontend and backend would need to orchestrate too many raw contract calls directly",
             ],
@@ -1113,7 +1124,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
             [
               "Rent",
               "User funds access and pays only for actual usage time",
-              "FlowPayStream + app access controls",
+              "Stream Engine Stream + app access controls",
             ],
             [
               "Generate yield",
@@ -1170,6 +1181,12 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
             "Why include the contract addresses directly in the handbook?",
           answer:
             "Because readers should not have to trust screenshots or slide decks. They should be able to open the live deployed addresses themselves and verify that the system is actually implemented as Solidity contracts onchain.",
+        },
+        {
+          question:
+            "Why do the onchain deployment ids still say FlowPay?",
+          answer:
+            "Those are the actual deployed Solidity contract identifiers. The product is now Stream Engine, but the deployed contract names were kept so the existing chain deployment, ABI references, and tooling did not have to be broken or redeployed just for naming.",
         },
         {
           question:
@@ -1945,6 +1962,9 @@ function DeployedContractCards({ catalog }) {
                 </div>
                 <div className="mt-1 text-xs uppercase tracking-[0.18em] text-cyan-300">
                   {contract.group} · Solidity contract
+                </div>
+                <div className="mt-2 text-[11px] uppercase tracking-[0.16em] text-white/35">
+                  Onchain deployment id: {contract.onchainName}
                 </div>
               </div>
               <a

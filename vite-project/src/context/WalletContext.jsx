@@ -308,7 +308,7 @@ export function WalletProvider({ children }) {
       setStatus('Withdrawing...');
       setIsProcessing(true);
       const loadingToast = toast.transaction.pending('Processing withdrawal...');
-      const tx = await contractWithSigner.withdrawFromStream(streamId);
+      const tx = await contractWithSigner.withdrawFromStream(streamId, { gasLimit: 300000n });
       await tx.wait();
       toast.dismiss(loadingToast);
       setStatus('Withdrawn.');
@@ -329,7 +329,7 @@ export function WalletProvider({ children }) {
       setStatus('Cancelling stream...');
       setIsProcessing(true);
       const loadingToast = toast.transaction.pending('Cancelling stream...');
-      const tx = await contractWithSigner.cancelStream(streamId);
+      const tx = await contractWithSigner.cancelStream(streamId, { gasLimit: 300000n });
       await tx.wait();
       toast.dismiss(loadingToast);
       setStatus('Stream cancelled.');
@@ -362,15 +362,12 @@ export function WalletProvider({ children }) {
       }
       setStatus(`Approving ${paymentTokenSymbol}...`);
       const paymentTokenContract = new ethers.Contract(paymentTokenAddress, paymentTokenABI, signer);
-      const currentAllowance = await paymentTokenContract.allowance(await signer.getAddress(), contractAddress);
-      if (currentAllowance < totalAmountWei) {
-        const approveTx = await paymentTokenContract.approve(contractAddress, totalAmountWei);
-        await approveTx.wait();
-        setStatus(`${paymentTokenSymbol} approved.`);
-      }
+      const approveTx = await paymentTokenContract.approve(contractAddress, totalAmountWei, { gasLimit: 100000n });
+      await approveTx.wait();
+      setStatus(`${paymentTokenSymbol} approved.`);
       setStatus('Creating stream...');
       setIsProcessing(true);
-      const tx = await contractWithSigner.createStream(recipient, parsedDuration, totalAmountWei, metadata);
+      const tx = await contractWithSigner.createStream(recipient, parsedDuration, totalAmountWei, metadata, { gasLimit: 500000n });
       const receipt = await tx.wait();
       let createdId = null;
       try {

@@ -542,12 +542,8 @@ export function WalletProvider({ children }) {
           }),
         );
         return {
-          incoming: streamCards.filter(
-            (stream) => stream.recipient.toLowerCase() === normalizedAddress,
-          ),
-          outgoing: streamCards.filter(
-            (stream) => stream.sender.toLowerCase() === normalizedAddress,
-          ),
+          incoming: unique.filter(s => s.recipient.toLowerCase() === normalizedAddress),
+          outgoing: unique.filter(s => s.sender.toLowerCase() === normalizedAddress),
         };
       } catch (error) {
         console.error("Failed to fetch events:", error);

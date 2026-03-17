@@ -174,6 +174,40 @@ function createApp(config = defaultConfig) {
         });
     });
 
+    app.get("/api/engine/catalog", (req, res) => {
+        const routes = Object.entries(resolvedConfig.routes || {}).map(([path, route]) => ({
+            path,
+            price: route.price,
+            mode: route.mode,
+            description: route.description || "",
+        }));
+
+        res.json({
+            appName: "Stream Engine",
+            network: {
+                name: resolvedConfig.networkName,
+                chainId: resolvedConfig.chainId,
+                rpcUrl: resolvedConfig.rpcUrl,
+            },
+            payments: {
+                tokenAddress: resolvedConfig.paymentTokenAddress,
+                tokenSymbol: resolvedConfig.tokenSymbol,
+                tokenDecimals: resolvedConfig.tokenDecimals,
+                paymentAssetId: resolvedConfig.paymentAssetId,
+                recipientAddress: resolvedConfig.recipientAddress,
+                contractAddress: resolvedConfig.flowPayContractAddress,
+            },
+            rwa: {
+                hubAddress: resolvedConfig.rwa?.hubAddress || "",
+                assetNFTAddress: resolvedConfig.rwa?.assetNFTAddress || "",
+                assetRegistryAddress: resolvedConfig.rwa?.assetRegistryAddress || "",
+                assetStreamAddress: resolvedConfig.rwa?.assetStreamAddress || "",
+                complianceGuardAddress: resolvedConfig.rwa?.complianceGuardAddress || "",
+            },
+            routes,
+        });
+    });
+
     app.get("/api/rwa/assets", asyncHandler(async (req, res) => {
         const services = await app.locals.ready;
         await services.indexer.sync();

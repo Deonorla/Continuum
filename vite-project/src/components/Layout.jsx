@@ -45,7 +45,7 @@ export default function Layout({ children }) {
         tabs={tabs}
       />
 
-      <main className="mx-auto w-full max-w-7xl px-4 pb-24 md:pb-16">
+      <main className="mx-auto w-full max-w-7xl px-4 pb-36 md:pb-24">
         <div className="mt-6 md:mt-8">
           <ErrorBoundary>
             {children}

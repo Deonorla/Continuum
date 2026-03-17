@@ -177,19 +177,13 @@ function StudioSidebar({ activeTab, setActiveTab, walletAddress, activeRentals, 
     <aside className="space-y-4 lg:sticky lg:top-24 lg:h-fit">
       <div className="card-glass border border-white/10 p-4">
         <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">RWA Studio</div>
-        <h1 className="mt-3 text-2xl font-black tracking-tight text-white">Mint, verify, rent, and manage.</h1>
-        <p className="mt-3 text-sm leading-6 text-white/62">
-          The asset owner keeps the NFT and financial rights. Renters stream payment for physical access, and buyers
-          can verify provenance before they move.
-        </p>
-
         <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-            <div className="rounded-2xl bg-white/5 p-3">
-            <div className="text-xs uppercase tracking-[0.18em] text-white/45">Indexed Assets</div>
+          <div className="rounded-2xl bg-white/5 p-3">
+            <div className="text-xs uppercase tracking-[0.18em] text-white/45">Indexed</div>
             <div className="mt-2 text-2xl font-black text-white">{indexedAssetCount}</div>
           </div>
           <div className="rounded-2xl bg-white/5 p-3">
-            <div className="text-xs uppercase tracking-[0.18em] text-white/45">Studio Mints</div>
+            <div className="text-xs uppercase tracking-[0.18em] text-white/45">Minted</div>
             <div className="mt-2 text-2xl font-black text-cyan-300">{studioMintCount}</div>
           </div>
           <div className="rounded-2xl bg-white/5 p-3">
@@ -214,14 +208,11 @@ function StudioSidebar({ activeTab, setActiveTab, walletAddress, activeRentals, 
                     : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/7'
                 }`}
               >
-                <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 rounded-xl p-2 ${isActive ? 'bg-flowpay-500/20 text-cyan-200' : 'bg-white/8 text-white/50'}`}>
+                <div className="flex items-center gap-3">
+                  <div className={`rounded-xl p-2 ${isActive ? 'bg-flowpay-500/20 text-cyan-200' : 'bg-white/8 text-white/50'}`}>
                     <Icon className="h-4 w-4" />
                   </div>
-                  <div className="min-w-0">
-                    <div className={`text-sm font-semibold ${isActive ? 'text-white' : 'text-white/78'}`}>{label}</div>
-                    <div className="mt-1 text-xs leading-5 text-white/48">{description}</div>
-                  </div>
+                  <div className={`text-sm font-semibold ${isActive ? 'text-white' : 'text-white/78'}`}>{label}</div>
                 </div>
               </button>
             );
@@ -287,44 +278,11 @@ function MintPanel({
 
   return (
     <div className="space-y-6">
-      <div className="card-glass border border-white/10 p-6">
-        <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">RWA Studio</div>
-        <h2 className="mt-3 text-3xl font-black tracking-tight text-white">
-          Mint rental assets and prepare them for trading and verification.
-        </h2>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-white/62">
-          Start here to create the asset NFT, attach IPFS metadata, and generate the QR / NFC verification payload.
-        </p>
-
-        <div className="mt-6 grid gap-3 md:grid-cols-3">
-          {[
-            {
-              title: '1. Mint the digital twin',
-              body: 'Create the rental asset NFT and pin standard metadata to IPFS.',
-            },
-            {
-              title: '2. Fund the yield stream',
-              body: 'Attach the cash-flow stream so ownership and yield stay coupled.',
-            },
-            {
-              title: '3. Share the verification payload',
-              body: 'Use the generated QR / NFC payload for provenance and authenticity checks.',
-            },
-          ].map((step) => (
-            <div key={step.title} className="rounded-2xl bg-white/5 p-4">
-              <div className="text-sm font-semibold text-white">{step.title}</div>
-              <div className="mt-2 text-sm leading-6 text-white/55">{step.body}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
       <div className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
         <form onSubmit={handleSubmit} className="card-glass border border-white/10 p-6">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Issuer Form</div>
-              <h3 className="mt-2 text-xl font-black tracking-tight text-white">Mint a rental asset in one pass.</h3>
+              <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Mint Asset</div>
             </div>
             {walletAddress ? (
               <div className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-300">
@@ -336,11 +294,6 @@ function MintPanel({
               </button>
             )}
           </div>
-
-          <p className="mt-3 text-sm leading-6 text-white/58">
-            The backend handles IPFS metadata and the hub mints the asset NFT. You only need the asset story and the
-            tag seed you want to bind to QR or NFC.
-          </p>
 
           <div className="mt-6 space-y-5">
             <div>
@@ -437,17 +390,13 @@ function MintPanel({
             <div className="grid gap-3 md:grid-cols-2">
               <button type="button" className="btn-default w-full justify-center" onClick={() => onPrepareMetadata(form)} disabled={isPreparingMetadata}>
                 <Link2 className="h-4 w-4" />
-                {isPreparingMetadata ? 'Pinning metadata...' : 'Prepare IPFS metadata'}
+                {isPreparingMetadata ? 'Pinning...' : 'Prepare IPFS'}
               </button>
 
               <button type="submit" className="btn-primary w-full justify-center" disabled={isMinting}>
                 <Plus className="h-4 w-4" />
-                {isMinting ? 'Minting asset...' : 'Mint asset'}
+                {isMinting ? 'Minting...' : 'Mint asset'}
               </button>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/58">
-              {appName} will pin metadata to IPFS, mint the NFT, and return the verification payload.
             </div>
 
             {preparedMetadata && (
@@ -492,14 +441,8 @@ function MintPanel({
 
           <div className="card-glass border border-white/10 p-6">
             <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">After Minting</div>
-            <div className="mt-4 space-y-3 text-sm leading-6 text-white/62">
-              <div>1. Open the asset workspace and fund its rental stream.</div>
-              <div>2. Share the verification URL in a QR code or write the payload to NFC.</div>
-              <div>3. Use the verification screen whenever a buyer or auditor needs proof.</div>
-            </div>
-
-            {lastMint && (
-              <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/8 p-4">
+            {lastMint ? (
+              <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/8 p-4">
                 <div className="flex items-center gap-2 text-sm font-semibold text-emerald-300">
                   <CheckCircle2 className="h-4 w-4" />
                   Asset #{lastMint.id} prepared
@@ -509,13 +452,15 @@ function MintPanel({
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button type="button" className="btn-default text-sm" onClick={() => onOpenVerify(lastMint)}>
-                    Open verification workspace
+                    Verify
                   </button>
                   <button type="button" className="btn-secondary text-sm" onClick={() => onOpenWorkspace(lastMint)}>
-                    Open asset workspace
+                    Workspace
                   </button>
                 </div>
               </div>
+            ) : (
+              <div className="mt-4 text-sm text-white/45">Mint an asset to see the verification payload here.</div>
             )}
           </div>
         </div>
@@ -523,13 +468,9 @@ function MintPanel({
 
       <div className="card-glass border border-white/10 p-6">
         <div className="flex items-center justify-between gap-4">
-          <div>
+          <div className="flex items-center gap-3">
             <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Registry</div>
-            <h3 className="mt-2 text-xl font-black tracking-tight text-white">Browse indexed rental assets.</h3>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-white/58">
-              Use this list to jump into the asset workspace for stream funding, ownership checks, or verification.
-            </p>
-            {isRegistryLoading && <p className="mt-2 text-xs uppercase tracking-[0.18em] text-white/40">Refreshing registry...</p>}
+            {isRegistryLoading && <span className="text-xs text-white/40">Syncing...</span>}
           </div>
 
           <div className="flex gap-2 rounded-full border border-white/10 bg-white/5 p-1">
@@ -603,43 +544,9 @@ function VerifyPanel({ form, setForm, result, onVerify, networkName, isVerifying
 
   return (
     <div className="space-y-6">
-      <div className="card-glass border border-white/10 p-6">
-        <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Verification</div>
-        <h2 className="mt-3 text-3xl font-black tracking-tight text-white">Confirm authenticity from QR, NFC, or IPFS metadata.</h2>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-white/62">
-          Cross-check the on-chain registry, verification hashes, and indexed activity trail in one pass.
-        </p>
-
-        <div className="mt-6 grid gap-3 md:grid-cols-3">
-          {[
-            {
-              title: 'QR or NFC payload',
-              body: `Fastest path. Paste the full payload and ${appName} will derive the token, CID, and tag hash for you.`,
-            },
-            {
-              title: 'IPFS URI or raw CID',
-              body: 'Use this when the payload is unavailable but you still have the metadata reference.',
-            },
-            {
-              title: 'Token id + optional tag seed',
-              body: 'Best for internal reviews when the buyer already knows which asset they want to inspect.',
-            },
-          ].map((item) => (
-            <div key={item.title} className="rounded-2xl bg-white/5 p-4">
-              <div className="text-sm font-semibold text-white">{item.title}</div>
-              <div className="mt-2 text-sm leading-6 text-white/55">{item.body}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
       <div className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
         <div className="card-glass border border-white/10 p-6">
           <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Verification Input</div>
-          <h3 className="mt-2 text-xl font-black tracking-tight text-white">Paste what you have and let Stream Engine fill in the rest.</h3>
-          <p className="mt-3 text-sm leading-6 text-white/58">
-            If you have the full payload, use only that. The token id and CID fields are the fallback path.
-          </p>
 
           <div className="mt-6 space-y-4">
             <label className="block">
@@ -693,13 +600,8 @@ function VerifyPanel({ form, setForm, result, onVerify, networkName, isVerifying
 
         <div className="space-y-6">
           <div className="card-glass border border-white/10 p-6">
-            <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">What the verifier checks</div>
-            <div className="mt-4 space-y-3 text-sm leading-6 text-white/62">
-              <div>1. Fetch metadata from IPFS.</div>
-              <div>2. Compare CID and tag hashes against the on-chain registry.</div>
-              <div>3. Show the indexed activity trail so provenance is easy to audit.</div>
-            </div>
-            <div className="mt-5 rounded-2xl bg-white/5 p-4 text-sm text-white/55">Connected to {networkName}.</div>
+            <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Network</div>
+            <div className="mt-3 rounded-2xl bg-white/5 p-3 text-sm text-white/55">{networkName}</div>
           </div>
 
           {result && (
@@ -775,20 +677,6 @@ function RentPanel({ assets, onOpenRental }) {
 
   return (
     <div className="space-y-6">
-      <div className="card-glass border border-white/10 p-6">
-        <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Rent Real World Assets</div>
-        <h2 className="mt-3 text-3xl font-black tracking-tight text-white">
-          Pay-as-you-go physical access.
-        </h2>
-        <p className="mt-3 max-w-4xl text-sm leading-6 text-white/62">
-          Stream money to use cars, apartments, equipment in real life.
-        </p>
-        <p className="mt-3 max-w-4xl text-sm leading-6 text-white/62">
-          How it works: Asset owner keeps the NFT and financial rights. You stream payment to unlock physical access
-          to the real-world asset. Cancel anytime and get refunded instantly.
-        </p>
-      </div>
-
       <div className="flex flex-wrap gap-2">
         {[
           { key: 'all', label: 'All Assets' },
@@ -823,29 +711,41 @@ function RentPanel({ assets, onOpenRental }) {
           const Icon = TYPE_ICONS[asset.type];
           const meta = TYPE_META[asset.type];
           return (
-            <div key={asset.id} className={`card-glass border ${meta.border} bg-gradient-to-br ${meta.gradient} p-5`}>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className={`inline-flex items-center gap-2 text-xs font-medium ${meta.color}`}>
-                    <Icon className="h-3.5 w-3.5" />
-                    {meta.rentLabel}
+            <div key={asset.id} className={`card-glass border ${meta.border} overflow-hidden`}>
+              {/* Color band */}
+              <div className={`h-1.5 w-full bg-gradient-to-r ${meta.gradient.replace('from-', 'from-').replace('/20', '/80')}`} />
+
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${meta.color} ${meta.border} bg-white/5`}>
+                      <Icon className="h-3 w-3" />
+                      {meta.rentLabel}
+                    </div>
+                    <div className="mt-3 text-lg font-bold text-white leading-tight">{asset.name}</div>
+                    <div className="mt-1 text-xs text-white/50">{asset.location}</div>
                   </div>
-                  <div className="mt-3 text-sm font-semibold text-white">
-                    Asset #{asset.id}
+                  <div className="text-right shrink-0">
+                    <div className={`text-lg font-black ${meta.color}`}>{formatPerHour(asset.pricePerHour)}</div>
+                    <div className="text-xs text-white/35 mt-0.5">per hour</div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-sm font-semibold text-cyan-300">{formatPerHour(asset.pricePerHour)}</div>
+
+                <p className="mt-4 text-sm text-white/60 line-clamp-2 leading-relaxed">{asset.description}</p>
+
+                <div className="mt-4 flex items-center gap-2 text-xs text-white/35">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                  {asset.accessMechanism}
                 </div>
-              </div>
 
-              <p className="mt-4 text-sm leading-6 text-white/62">{asset.description}</p>
-
-              <div className="mt-5 flex items-center justify-between gap-3">
-                <div className="text-xs text-white/45">Per-second billing</div>
-                <button type="button" className="btn-primary text-sm" onClick={() => onOpenRental(asset)}>
-                  Start Rental
-                </button>
+                <div className="mt-5 flex items-center justify-between gap-3 pt-4 border-t border-white/8">
+                  <div className="text-xs text-white/40">
+                    <span className="text-white/70 font-mono">{formatPerSecond(asset.yieldRatePerSecond || asset.pricePerHour / 3600)}</span>
+                  </div>
+                  <button type="button" className="btn-primary text-sm" onClick={() => onOpenRental(asset)}>
+                    Rent Now
+                  </button>
+                </div>
               </div>
             </div>
           );
@@ -858,37 +758,16 @@ function RentPanel({ assets, onOpenRental }) {
 function ActiveRentalsPanel({ rentals, nowMs, onBrowseRentals, onEndRental }) {
   return (
     <div className="space-y-6">
-      <div className="card-glass border border-white/10 p-6">
-        <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Active Rentals</div>
-        <h2 className="mt-3 text-3xl font-black tracking-tight text-white">My Active Rentals</h2>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-white/62">
-          Manage your ongoing rental streams. Cancel anytime to get refunded for unused time.
-        </p>
-      </div>
-
       {rentals.length === 0 ? (
-        <div className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
-          <div className="card-glass border border-dashed border-white/15 bg-white/[0.03] px-6 py-12 text-center">
-            <div className="text-2xl font-semibold text-white">No Active Rentals</div>
-            <div className="mt-3 text-sm text-white/55">Start renting real world assets to see them here.</div>
-            <button type="button" className="btn-primary mt-6" onClick={onBrowseRentals}>
-              Browse Rentals
-            </button>
-          </div>
-
-          <div className="card-glass border border-white/10 p-6">
-            <div className="text-lg font-semibold text-white">How Rental Cancellation Works</div>
-            <div className="mt-4 space-y-3 text-sm leading-6 text-white/58">
-              <div>Click "End Rental" to stop the money stream.</div>
-              <div>Contract calculates exact time used down to the second.</div>
-              <div>Unused funds are refunded instantly to your wallet.</div>
-              <div>Asset access is immediately revoked.</div>
-            </div>
-          </div>
+        <div className="card-glass border border-dashed border-white/15 bg-white/[0.03] px-6 py-12 text-center">
+          <div className="text-2xl font-semibold text-white">No Active Rentals</div>
+          <div className="mt-3 text-sm text-white/55">Start renting real world assets to see them here.</div>
+          <button type="button" className="btn-primary mt-6" onClick={onBrowseRentals}>
+            Browse Rentals
+          </button>
         </div>
       ) : (
-        <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
-          <div className="space-y-4">
+        <div className="space-y-4">
             {rentals.map((rental) => {
               const metrics = calculateRentalMetrics(rental, nowMs);
               const meta = TYPE_META[rental.asset.type];
@@ -897,11 +776,12 @@ function ActiveRentalsPanel({ rentals, nowMs, onBrowseRentals, onEndRental }) {
                 <div key={rental.asset.id} className="card-glass border border-white/10 p-6">
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div>
-                      <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Asset #{rental.asset.id}</div>
+                      <div className="text-base font-semibold text-white">{rental.asset.name}</div>
+                      <div className="mt-0.5 text-xs text-white/45">{rental.asset.location}</div>
                       <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
                         ACTIVE
                       </div>
-                      <div className={`mt-3 text-sm ${meta.color}`}>
+                      <div className={`mt-2 text-xs ${meta.color}`}>
                         {meta.label} • {formatPerHour(rental.asset.pricePerHour)}
                       </div>
                     </div>
@@ -943,17 +823,6 @@ function ActiveRentalsPanel({ rentals, nowMs, onBrowseRentals, onEndRental }) {
               );
             })}
           </div>
-
-          <div className="card-glass border border-white/10 p-6">
-            <div className="text-lg font-semibold text-white">How Rental Cancellation Works</div>
-            <div className="mt-4 space-y-3 text-sm leading-6 text-white/58">
-              <div>Click "End Rental" to stop the money stream.</div>
-              <div>Contract calculates exact time used down to the second.</div>
-              <div>Unused funds are refunded instantly to your wallet.</div>
-              <div>Asset access is immediately revoked.</div>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
@@ -962,15 +831,13 @@ function ActiveRentalsPanel({ rentals, nowMs, onBrowseRentals, onEndRental }) {
 function PortfolioPanel({ assets, onRefresh, onOpenVerify, onOpenRental, onOpenWorkspace }) {
   return (
     <div className="space-y-6">
-      <div className="card-glass border border-white/10 p-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
+      <div className="card-glass border border-white/10 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
             <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Portfolio</div>
-            <h2 className="mt-3 text-3xl font-black tracking-tight text-white">My Portfolio</h2>
-            <p className="mt-2 text-sm leading-6 text-white/58">{assets.length} yield-bearing assets</p>
+            <span className="text-sm text-white/45">{assets.length} assets</span>
           </div>
-
-          <button type="button" className="btn-default" onClick={onRefresh}>
+          <button type="button" className="btn-default text-sm" onClick={onRefresh}>
             <RefreshCw className="h-4 w-4" />
             Refresh
           </button>
@@ -992,15 +859,15 @@ function PortfolioPanel({ assets, onRefresh, onOpenVerify, onOpenRental, onOpenW
           return (
             <div key={asset.id} className={`card-glass border ${meta.border} bg-gradient-to-br ${meta.gradient} p-5`}>
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <div className={`inline-flex items-center gap-2 text-xs font-medium ${meta.color}`}>
                     <Icon className="h-3.5 w-3.5" />
                     {meta.label}
                   </div>
-                  <div className="mt-3 text-lg font-semibold text-white">Asset #{asset.id}</div>
-                  <div className="mt-1 font-mono text-xs text-white/45">{asset.displayAddress}</div>
+                  <div className="mt-2 text-base font-semibold text-white leading-snug">{asset.name}</div>
+                  <div className="mt-0.5 text-xs text-white/45">{asset.location}</div>
                 </div>
-                <div className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
+                <div className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300 shrink-0">
                   {asset.status}
                 </div>
               </div>
@@ -1128,9 +995,6 @@ function AssetWorkspacePanel({
             <h2 className="mt-3 text-3xl font-black tracking-tight text-white">
               {asset.name} <span className="text-white/35">#{asset.tokenId}</span>
             </h2>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-white/62">
-              Deep asset view backed by the registry, indexer activity, and the live RWA hub contract.
-            </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -1253,9 +1117,6 @@ function AssetWorkspacePanel({
         <div className="space-y-6">
           <div className="card-glass border border-white/10 p-6">
             <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Admin Controls</div>
-            <p className="mt-3 text-sm leading-6 text-white/58">
-              These actions call the RWA hub contract directly. Connect with the controller wallet to use them.
-            </p>
 
             <div className="mt-5 space-y-5">
               <div className="rounded-2xl bg-white/5 p-4 space-y-3">
@@ -1332,7 +1193,8 @@ function StartRentalModal({ asset, onClose, onConfirm, isProcessing }) {
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Start Rental</div>
-            <h3 className="mt-2 text-2xl font-black tracking-tight text-white">Asset #{asset.id}</h3>
+            <h3 className="mt-2 text-xl font-black tracking-tight text-white">{asset.name}</h3>
+            <div className="mt-1 text-xs text-white/45">{asset.location}</div>
           </div>
           <button type="button" className="text-white/45 transition-colors hover:text-white" onClick={onClose}>
             Close
@@ -1364,11 +1226,6 @@ function StartRentalModal({ asset, onClose, onConfirm, isProcessing }) {
               <span>Total Budget:</span>
               <span className="font-semibold text-cyan-300">{formatMoney(totalBudget)} {paymentTokenSymbol}</span>
             </div>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm leading-6 text-white/58">
-            You rent physical access, not the NFT. Owner keeps NFT ownership and financial rights. Your payment streams
-            per-second for real-world usage. Cancel anytime and get refunded for unused time.
           </div>
         </div>
 

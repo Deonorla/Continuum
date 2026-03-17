@@ -141,7 +141,7 @@ export default function StreamList({
   const [sortBy, setSortBy] = useState('date-desc');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
+  const itemsPerPage = 3;
 
   // Filter streams
   const filteredStreams = useMemo(() => {

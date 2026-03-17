@@ -17,6 +17,7 @@ export const mneeTokenAddress = paymentTokenAddress;
 export const paymentTokenSymbol = env.VITE_FLOWPAY_PAYMENT_TOKEN_SYMBOL || 'USDC';
 export const paymentTokenDisplayName = env.VITE_FLOWPAY_PAYMENT_TOKEN_NAME || 'Circle USDC';
 export const paymentTokenDecimals = Number(env.VITE_FLOWPAY_PAYMENT_TOKEN_DECIMALS || 6);
+export const paymentAssetId = Number(env.VITE_FLOWPAY_PAYMENT_ASSET_ID || 31337);
 export const rwaApiBaseUrl = env.VITE_RWA_API_URL || 'http://localhost:3001';
 
 // 2. Uses the Vercel Environment Variable for the ABI if it exists, otherwise falls back to the hardcoded ABI.

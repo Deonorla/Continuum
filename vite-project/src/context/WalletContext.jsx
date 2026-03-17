@@ -7,10 +7,12 @@ import {
   paymentTokenABI,
   paymentTokenDecimals,
   paymentTokenSymbol,
+  paymentAssetId,
 } from '../contactInfo.js';
 import { useToast } from '../components/ui';
 import { ACTIVE_NETWORK } from '../networkConfig.js';
 import { getAvailableWallets, resolveWalletSelection } from '../lib/wallets.js';
+import { readNativeAssetBalance } from '../lib/substrateAssets.js';
 
 const WalletContext = createContext(null);
 
@@ -213,8 +215,14 @@ export function WalletProvider({ children }) {
       setMneeBalance(ethers.formatUnits(balance, paymentTokenDecimals));
     } catch (error) {
       console.error(`Failed to fetch ${paymentTokenSymbol} balance:`, error);
+      try {
+        const nativeAssetBalance = await readNativeAssetBalance(walletAddress, paymentAssetId);
+        setMneeBalance(ethers.formatUnits(nativeAssetBalance, paymentTokenDecimals));
+      } catch (fallbackError) {
+        console.error(`Failed to fetch ${paymentTokenSymbol} balance via substrate fallback:`, fallbackError);
+      }
     }
-  }, [provider, walletAddress]);
+  }, [paymentAssetId, paymentTokenDecimals, paymentTokenSymbol, provider, walletAddress]);
 
   const mintMneeTokens = async (amount = '1000') => {
     if (!signer || !walletAddress) {

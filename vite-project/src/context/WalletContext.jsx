@@ -12,12 +12,14 @@ import {
 import { useToast } from '../components/ui';
 import { ACTIVE_NETWORK } from '../networkConfig.js';
 import { getAvailableWallets, resolveWalletSelection } from '../lib/wallets.js';
-import { readNativeAssetBalance } from '../lib/substrateAssets.js';
+import { readNativeAssetBalance, substrateApproveTransfer } from '../lib/substrateAssets.js';
 
 const WalletContext = createContext(null);
 
 const TARGET_CHAIN_ID_DEC = ACTIVE_NETWORK.chainId;
 const TARGET_CHAIN_ID_HEX = ACTIVE_NETWORK.chainIdHex;
+const TOKEN_APPROVAL_GAS_LIMIT = 500000n;
+const STREAM_CREATION_GAS_LIMIT = 1200000n;
 
 function formatAddress(address) {
   if (!address) {
@@ -25,6 +27,48 @@ function formatAddress(address) {
   }
 
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+async function ensureTokenApproval({
+  tokenContract,
+  ownerAddress,
+  spenderAddress,
+  amount,
+  tokenSymbol,
+  assetId,
+  setStatus,
+}) {
+  if (ACTIVE_NETWORK.chainId === 420420421) {
+    try {
+      setStatus?.(`Approving ${tokenSymbol} via native asset approval...`);
+      await substrateApproveTransfer(ownerAddress, assetId, spenderAddress, amount);
+      setStatus?.(`${tokenSymbol} approved.`);
+      return true;
+    } catch (error) {
+      console.warn(`[WalletContext] Native ${tokenSymbol} approval failed. Falling back to EVM approval.`, error);
+    }
+  }
+
+  let shouldApprove = true;
+
+  try {
+    const allowance = await tokenContract.allowance(ownerAddress, spenderAddress);
+    shouldApprove = allowance < amount;
+  } catch (error) {
+    console.warn(`[WalletContext] Unable to read ${tokenSymbol} allowance. Falling back to direct approval.`, error);
+  }
+
+  if (!shouldApprove) {
+    return false;
+  }
+
+  setStatus?.(`Approving ${tokenSymbol}...`);
+  const approveTx = await tokenContract.approve(spenderAddress, amount, {
+    gasLimit: TOKEN_APPROVAL_GAS_LIMIT,
+  });
+  await approveTx.wait();
+  setStatus?.(`${tokenSymbol} approved.`);
+  return true;
 }
 
 export function WalletProvider({ children }) {
@@ -343,17 +387,21 @@ export function WalletProvider({ children }) {
         setStatus('Enter a positive amount and duration.');
         return null;
       }
-      setStatus(`Approving ${paymentTokenSymbol}...`);
       const paymentTokenContract = new ethers.Contract(paymentTokenAddress, paymentTokenABI, signer);
-      const currentAllowance = await paymentTokenContract.allowance(await signer.getAddress(), contractAddress);
-      if (currentAllowance < totalAmountWei) {
-        const approveTx = await paymentTokenContract.approve(contractAddress, totalAmountWei);
-        await approveTx.wait();
-        setStatus(`${paymentTokenSymbol} approved.`);
-      }
+      await ensureTokenApproval({
+        tokenContract: paymentTokenContract,
+        ownerAddress: await signer.getAddress(),
+        spenderAddress: contractAddress,
+        amount: totalAmountWei,
+        tokenSymbol: paymentTokenSymbol,
+        assetId: paymentAssetId,
+        setStatus,
+      });
       setStatus('Creating stream...');
       setIsProcessing(true);
-      const tx = await contractWithSigner.createStream(recipient, parsedDuration, totalAmountWei, metadata);
+      const tx = await contractWithSigner.createStream(recipient, parsedDuration, totalAmountWei, metadata, {
+        gasLimit: STREAM_CREATION_GAS_LIMIT,
+      });
       const receipt = await tx.wait();
       let createdId = null;
       try {

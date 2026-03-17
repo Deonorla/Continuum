@@ -28,6 +28,7 @@ import {
   substrateApproveTransfer,
   substrateApproveTransferForSession,
   substrateCallContract,
+  substrateReadContract,
 } from '../lib/substrateAssets.js';
 
 const WalletContext = createContext(null);
@@ -36,6 +37,7 @@ const TARGET_CHAIN_ID_DEC = ACTIVE_NETWORK.chainId;
 const TARGET_CHAIN_ID_HEX = ACTIVE_NETWORK.chainIdHex;
 const TOKEN_APPROVAL_GAS_LIMIT = 500000n;
 const STREAM_CREATION_GAS_LIMIT = 1200000n;
+const STREAM_SCAN_LIMIT = 256;
 
 function formatAddress(address) {
   if (!address) {
@@ -394,12 +396,22 @@ export function WalletProvider({ children }) {
     const balanceAddress = nativeAccountAddress || walletAddress;
     if (!balanceAddress) return;
     try {
-      const balance = await readNativeAssetBalance(balanceAddress, paymentAssetId);
+      let balance;
+      if (activeWallet?.type === 'substrate' && substrateSession?.api && nativeAccountAddress) {
+        const assetAccount = await substrateSession.api.query.assets.account(paymentAssetId, nativeAccountAddress);
+        if (assetAccount?.isSome) {
+          balance = BigInt(assetAccount.unwrap().balance.toString());
+        } else {
+          balance = BigInt(assetAccount?.balance?.toString?.() || 0);
+        }
+      } else {
+        balance = await readNativeAssetBalance(balanceAddress, paymentAssetId);
+      }
       setPaymentBalance(ethers.formatUnits(balance, paymentTokenDecimals));
     } catch (error) {
       console.error(`Failed to fetch ${paymentTokenSymbol} balance:`, error);
     }
-  }, [nativeAccountAddress, paymentAssetId, paymentTokenDecimals, paymentTokenSymbol, walletAddress]);
+  }, [activeWallet?.type, nativeAccountAddress, paymentAssetId, paymentTokenDecimals, paymentTokenSymbol, substrateSession, walletAddress]);
 
   const requestTestFunds = async () => {
     toast.info(
@@ -414,6 +426,72 @@ export function WalletProvider({ children }) {
       if (!contractWithProvider || !provider)
         return { incoming: [], outgoing: [] };
       try {
+        const normalizedAddress = me?.toLowerCase();
+        const readStreamById = async (streamId) => {
+          if (activeWallet?.type === 'substrate' && substrateSession) {
+            return substrateReadContract(substrateSession, {
+              contractAddress,
+              abi: contractABI,
+              functionName: 'streams',
+              args: [streamId],
+            });
+          }
+
+          return contractWithProvider.streams(streamId);
+        };
+
+        if (ACTIVE_NETWORK.chainId === 420420421) {
+          const streamCards = [];
+
+          for (let streamId = 1; streamId <= STREAM_SCAN_LIMIT; streamId += 1) {
+            const stream = await readStreamById(streamId);
+            const sender = stream?.sender ?? stream?.[0];
+            if (!sender || sender === ethers.ZeroAddress) {
+              break;
+            }
+
+            const recipient = stream?.recipient ?? stream?.[1];
+            const totalAmount = stream?.totalAmount ?? stream?.[2];
+            const flowRate = stream?.flowRate ?? stream?.[3];
+            const startTime = stream?.startTime ?? stream?.[4];
+            const stopTime = stream?.stopTime ?? stream?.[5];
+            const amountWithdrawn = stream?.amountWithdrawn ?? stream?.[6];
+            const isActive = stream?.isActive ?? stream?.[7];
+            const metadata = stream?.metadata ?? stream?.[8];
+            const now = Math.floor(Date.now() / 1000);
+            const elapsed = Math.max(0, Math.min(Number(stopTime), now) - Number(startTime));
+            const streamedSoFar = BigInt(elapsed) * BigInt(flowRate);
+            const claimable = isActive
+              ? streamedSoFar > BigInt(amountWithdrawn)
+                ? streamedSoFar - BigInt(amountWithdrawn)
+                : 0n
+              : 0n;
+
+            streamCards.push({
+              id: Number(streamId),
+              sender,
+              recipient,
+              totalAmount: BigInt(totalAmount),
+              flowRate: BigInt(flowRate),
+              startTime: Number(startTime),
+              stopTime: Number(stopTime),
+              amountWithdrawn: BigInt(amountWithdrawn),
+              isActive: Boolean(isActive),
+              metadata,
+              claimableInitial: claimable,
+            });
+          }
+
+          return {
+            incoming: streamCards.filter(
+              (stream) => stream.recipient.toLowerCase() === normalizedAddress,
+            ),
+            outgoing: streamCards.filter(
+              (stream) => stream.sender.toLowerCase() === normalizedAddress,
+            ),
+          };
+        }
+
         const filter = contractWithProvider.filters.StreamCreated();
         const latestBlock = await provider.getBlockNumber();
         const fromBlock = Math.max(0, latestBlock - 49000);
@@ -463,7 +541,6 @@ export function WalletProvider({ children }) {
             };
           }),
         );
-        const normalizedAddress = me?.toLowerCase();
         return {
           incoming: streamCards.filter(
             (stream) => stream.recipient.toLowerCase() === normalizedAddress,
@@ -477,7 +554,7 @@ export function WalletProvider({ children }) {
         return { incoming: [], outgoing: [] };
       }
     },
-    [contractWithProvider, provider],
+    [activeWallet?.type, contractWithProvider, provider, substrateSession],
   );
 
   const refreshStreams = useCallback(async () => {
@@ -873,6 +950,17 @@ export function WalletProvider({ children }) {
     if (!walletAddress || !contractWithProvider) return;
     refreshStreamsRef.current();
     fetchPaymentBalanceRef.current();
+    const interval = setInterval(() => {
+      refreshStreamsRef.current();
+      fetchPaymentBalanceRef.current();
+    }, 15000);
+
+    if (ACTIVE_NETWORK.chainId === 420420421) {
+      return () => {
+        clearInterval(interval);
+      };
+    }
+
     const listener = () => {
       refreshStreamsRef.current();
       fetchPaymentBalanceRef.current();
@@ -880,10 +968,6 @@ export function WalletProvider({ children }) {
     contractWithProvider.on('StreamCreated', listener);
     contractWithProvider.on('StreamCancelled', listener);
     contractWithProvider.on('Withdrawn', listener);
-    const interval = setInterval(() => {
-      refreshStreamsRef.current();
-      fetchPaymentBalanceRef.current();
-    }, 15000);
 
     return () => {
       clearInterval(interval);

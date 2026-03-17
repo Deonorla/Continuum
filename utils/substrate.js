@@ -13,6 +13,33 @@ const DEFAULT_WEIGHT_LIMIT = {
 };
 const DEFAULT_STORAGE_DEPOSIT_LIMIT = "5000000000000000000";
 
+function resolveJsonPathCandidates(jsonPath) {
+    const fallbackName = path.basename(jsonPath || "substrate.json");
+    const candidates = [];
+
+    if (jsonPath) {
+        candidates.push(jsonPath);
+        if (!path.isAbsolute(jsonPath)) {
+            candidates.push(path.resolve(process.cwd(), jsonPath));
+        }
+    }
+
+    candidates.push(path.join(process.cwd(), fallbackName));
+    candidates.push(path.join(process.cwd(), "substrate.json"));
+
+    return [...new Set(candidates)];
+}
+
+function findExistingJsonPath(jsonPath) {
+    const candidates = resolveJsonPathCandidates(jsonPath);
+    const existingPath = candidates.find((candidate) => fs.existsSync(candidate));
+
+    return {
+        existingPath: existingPath || "",
+        candidates,
+    };
+}
+
 function resolveSubstrateConfig(overrides = {}) {
     return {
         rpcUrl:
@@ -84,12 +111,17 @@ async function loadSubstrateSigner(overrides = {}) {
     if (config.suri) {
         pair = keyring.addFromUri(config.suri);
     } else {
-        if (!fs.existsSync(config.jsonPath)) {
-            throw new Error(`Substrate account export not found at ${config.jsonPath}`);
+        const { existingPath, candidates } = findExistingJsonPath(config.jsonPath);
+        if (!existingPath) {
+            throw new Error(
+                `Substrate account export not found. Checked: ${candidates.join(", ")}`
+            );
         }
         if (!config.password) {
             throw new Error("SUBSTRATE_PASSWORD is required to unlock the exported account JSON");
         }
+
+        config.jsonPath = existingPath;
 
         const json = JSON.parse(fs.readFileSync(config.jsonPath, "utf8"));
         pair = keyring.addFromJson(json);

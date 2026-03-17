@@ -36,7 +36,7 @@ export default function WalletPickerModal({
             <div className="text-xs uppercase tracking-[0.22em] text-cyan-300">Wallets</div>
             <h2 className="mt-2 text-2xl font-semibold text-white">Choose a wallet</h2>
             <p className="mt-2 text-sm leading-relaxed text-white/50">
-              Injected wallets like Talisman appear automatically. Nova connects through WalletConnect.
+              Supported injected wallets appear here automatically. Use Talisman, MetaMask, or Rabby.
             </p>
           </div>
 
@@ -69,12 +69,8 @@ export default function WalletPickerModal({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-base font-semibold text-white">{wallet.name}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-mono ${
-                      wallet.type === 'walletconnect'
-                        ? 'bg-purple-500/15 text-purple-300'
-                        : 'bg-cyan-500/15 text-cyan-300'
-                    }`}>
-                      {wallet.type === 'walletconnect' ? 'WalletConnect' : 'Injected'}
+                    <span className="rounded-full bg-cyan-500/15 px-2 py-0.5 text-[11px] font-mono text-cyan-300">
+                      Injected
                     </span>
                     {isActive && (
                       <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-mono text-emerald-300">

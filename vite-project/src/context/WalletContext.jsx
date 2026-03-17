@@ -10,7 +10,7 @@ import {
 } from '../contactInfo.js';
 import { useToast } from '../components/ui';
 import { ACTIVE_NETWORK } from '../networkConfig.js';
-import { createWalletConnectProvider, getAvailableWallets, resolveWalletSelection } from '../lib/wallets.js';
+import { getAvailableWallets, resolveWalletSelection } from '../lib/wallets.js';
 
 const WalletContext = createContext(null);
 
@@ -134,15 +134,6 @@ export function WalletProvider({ children }) {
   }, []);
 
   const disconnectWallet = useCallback(async ({ silent = false } = {}) => {
-    const activeProvider = activeWalletProviderRef.current;
-    if (activeWallet?.type === 'walletconnect' && activeProvider?.disconnect) {
-      try {
-        await activeProvider.disconnect();
-      } catch {
-        // Ignore disconnect errors from WalletConnect.
-      }
-    }
-
     activeWalletProviderRef.current = null;
     resetWalletState();
     setStatus('Choose a wallet to connect');
@@ -171,25 +162,16 @@ export function WalletProvider({ children }) {
       return;
     }
 
-    let ethProvider = null;
-
     try {
       setIsConnectingWallet(true);
       setStatus(`Connecting ${walletOption.name}...`);
-
-      if (walletOption.type === 'walletconnect') {
-        ethProvider = await createWalletConnectProvider();
-      } else {
-        ethProvider = walletOption.provider;
-      }
+      const ethProvider = walletOption.provider;
 
       if (!ethProvider?.request) {
         throw new Error('Selected wallet does not expose an EVM provider.');
       }
 
-      if (walletOption.type !== 'walletconnect') {
-        await ethProvider.request({ method: 'eth_requestAccounts' });
-      }
+      await ethProvider.request({ method: 'eth_requestAccounts' });
 
       await ensureCorrectNetwork(ethProvider);
 
@@ -214,13 +196,6 @@ export function WalletProvider({ children }) {
       toast.success(`Connected to ${formatAddress(address)} via ${walletOption.name}`, { title: 'Wallet Connected' });
     } catch (error) {
       console.error('Connection failed:', error);
-      if (ethProvider?.disconnect) {
-        try {
-          await ethProvider.disconnect();
-        } catch {
-          // Ignore cleanup failures.
-        }
-      }
       activeWalletProviderRef.current = null;
       resetWalletState();
       setStatus('Wallet connection failed.');

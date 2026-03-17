@@ -1,36 +1,47 @@
-import { ACTIVE_NETWORK } from '../networkConfig';
+const SUPPORTED_WALLETS = [
+  {
+    name: 'Talisman',
+    rdns: 'xyz.talisman',
+    matches(info, provider) {
+      return provider?.isTalisman || String(info?.name || '').toLowerCase().includes('talisman') || String(info?.rdns || '').includes('talisman');
+    },
+  },
+  {
+    name: 'MetaMask',
+    rdns: 'io.metamask',
+    matches(info, provider) {
+      return provider?.isMetaMask || String(info?.name || '').toLowerCase().includes('metamask') || String(info?.rdns || '').includes('metamask');
+    },
+  },
+  {
+    name: 'Rabby',
+    rdns: 'io.rabby',
+    matches(info, provider) {
+      return provider?.isRabby || String(info?.name || '').toLowerCase().includes('rabby') || String(info?.rdns || '').includes('rabby');
+    },
+  },
+];
 
-const WALLETCONNECT_PROJECT_ID = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || '';
+function getSupportedWallet(info = {}, provider) {
+  return SUPPORTED_WALLETS.find((wallet) => wallet.matches(info, provider)) || null;
+}
 
 function detectInjectedName(provider) {
-  if (provider?.isTalisman) {
-    return 'Talisman';
-  }
-  if (provider?.isMetaMask) {
-    return 'MetaMask';
-  }
-  if (provider?.isRabby) {
-    return 'Rabby';
-  }
-  return 'Browser Wallet';
+  return getSupportedWallet({}, provider)?.name || '';
 }
 
 function detectInjectedRdns(provider) {
-  if (provider?.isTalisman) {
-    return 'xyz.talisman';
-  }
-  if (provider?.isMetaMask) {
-    return 'io.metamask';
-  }
-  if (provider?.isRabby) {
-    return 'io.rabby';
-  }
-  return 'injected.wallet';
+  return getSupportedWallet({}, provider)?.rdns || '';
 }
 
 function normalizeInjectedWallet(info = {}, provider) {
-  const name = info.name || detectInjectedName(provider);
-  const rdns = info.rdns || detectInjectedRdns(provider);
+  const supportedWallet = getSupportedWallet(info, provider);
+  if (!supportedWallet) {
+    return null;
+  }
+
+  const name = supportedWallet.name;
+  const rdns = supportedWallet.rdns;
   const uuid = info.uuid || `${rdns}:${name}`.toLowerCase();
 
   return {
@@ -53,7 +64,7 @@ function appendProvider(walletMap, info, provider) {
   }
 
   const wallet = normalizeInjectedWallet(info, provider);
-  if (!walletMap.has(wallet.id)) {
+  if (wallet && !walletMap.has(wallet.id)) {
     walletMap.set(wallet.id, wallet);
   }
 }
@@ -82,7 +93,7 @@ function appendLegacyProviders(walletMap) {
 }
 
 function sortWallets(wallets) {
-  const priority = ['Talisman', 'MetaMask', 'Rabby', 'Nova Wallet'];
+  const priority = ['Talisman', 'MetaMask', 'Rabby'];
   return [...wallets].sort((left, right) => {
     const leftIndex = priority.indexOf(left.name);
     const rightIndex = priority.indexOf(right.name);
@@ -129,22 +140,8 @@ export async function discoverInjectedWallets(timeout = 250) {
   return sortWallets(Array.from(walletMap.values()));
 }
 
-export function getWalletConnectOption() {
-  return {
-    id: 'walletconnect:nova',
-    type: 'walletconnect',
-    name: 'Nova Wallet',
-    icon: '',
-    description: WALLETCONNECT_PROJECT_ID
-      ? 'Connect from Nova mobile through WalletConnect'
-      : 'Add VITE_WALLETCONNECT_PROJECT_ID to enable Nova via WalletConnect',
-    isAvailable: Boolean(WALLETCONNECT_PROJECT_ID),
-  };
-}
-
 export async function getAvailableWallets() {
-  const injectedWallets = await discoverInjectedWallets();
-  return [...injectedWallets, getWalletConnectOption()];
+  return discoverInjectedWallets();
 }
 
 export async function resolveWalletSelection(selection, wallets = []) {
@@ -185,57 +182,5 @@ export async function resolveWalletSelection(selection, wallets = []) {
     }, provider);
   }
 
-  if (window.ethereum?.request) {
-    return normalizeInjectedWallet({}, window.ethereum);
-  }
-
   return null;
-}
-
-export async function createWalletConnectProvider() {
-  if (!WALLETCONNECT_PROJECT_ID) {
-    throw new Error('WalletConnect is not configured. Add VITE_WALLETCONNECT_PROJECT_ID.');
-  }
-
-  const walletConnectModule = await import('@walletconnect/ethereum-provider');
-  const EthereumProvider =
-    walletConnectModule.EthereumProvider
-    || walletConnectModule.default?.EthereumProvider
-    || walletConnectModule.default;
-
-  const provider = await EthereumProvider.init({
-    projectId: WALLETCONNECT_PROJECT_ID,
-    chains: [ACTIVE_NETWORK.chainId],
-    optionalChains: [ACTIVE_NETWORK.chainId],
-    rpcMap: {
-      [ACTIVE_NETWORK.chainId]: ACTIVE_NETWORK.rpcUrl,
-    },
-    showQrModal: true,
-    methods: [
-      'eth_sendTransaction',
-      'eth_signTransaction',
-      'personal_sign',
-      'eth_sign',
-      'eth_signTypedData',
-      'eth_signTypedData_v4',
-      'wallet_switchEthereumChain',
-      'wallet_addEthereumChain',
-    ],
-    optionalMethods: [
-      'eth_accounts',
-      'eth_requestAccounts',
-      'eth_chainId',
-      'wallet_watchAsset',
-    ],
-    optionalEvents: ['accountsChanged', 'chainChanged', 'disconnect'],
-    metadata: {
-      name: 'Stream Engine',
-      description: 'Agent payments and rental RWAs on Westend Asset Hub',
-      url: typeof window !== 'undefined' ? window.location.origin : 'https://streamengine.app',
-      icons: [],
-    },
-  });
-
-  await provider.enable();
-  return provider;
 }

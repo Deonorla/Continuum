@@ -16,11 +16,14 @@ import {
   paymentTokenDecimals,
   paymentTokenSymbol,
   paymentAssetId,
-} from '../contactInfo.js';
-import { useToast } from '../components/ui';
-import { ACTIVE_NETWORK } from '../networkConfig.js';
-import { getAvailableWallets, resolveWalletSelection } from '../lib/wallets.js';
-import { inspectSubstrateApprovalAccount, readNativeAssetBalance, substrateApproveTransfer } from '../lib/substrateAssets.js';
+} from "../contactInfo.js";
+import { useToast } from "../components/ui";
+import { ACTIVE_NETWORK } from "../networkConfig.js";
+import { getAvailableWallets, resolveWalletSelection } from "../lib/wallets.js";
+import {
+  readNativeAssetBalance,
+  substrateApproveTransfer,
+} from "../lib/substrateAssets.js";
 
 const WalletContext = createContext(null);
 
@@ -47,16 +50,21 @@ async function ensureTokenApproval({
   setStatus,
 }) {
   if (ACTIVE_NETWORK.chainId === 420420421) {
-    setStatus?.(`Approving ${tokenSymbol} via native asset approval...`);
     try {
-      await substrateApproveTransfer(ownerAddress, assetId, spenderAddress, amount);
+      setStatus?.(`Approving ${tokenSymbol} via native asset approval...`);
+      await substrateApproveTransfer(
+        ownerAddress,
+        assetId,
+        spenderAddress,
+        amount,
+      );
       setStatus?.(`${tokenSymbol} approved.`);
       return true;
     } catch (error) {
-      console.warn(`[WalletContext] Native ${tokenSymbol} approval failed.`, error);
-      const message = error?.message || `${tokenSymbol} approval failed on Westend.`;
-      setStatus?.(message);
-      throw new Error(message);
+      console.warn(
+        `[WalletContext] Native ${tokenSymbol} approval failed. Falling back to EVM approval.`,
+        error,
+      );
     }
   }
 
@@ -101,12 +109,6 @@ export function WalletProvider({ children }) {
   const [availableWallets, setAvailableWallets] = useState([]);
   const [activeWallet, setActiveWallet] = useState(null);
   const [isWalletPickerOpen, setIsWalletPickerOpen] = useState(false);
-  const [nativeApprovalState, setNativeApprovalState] = useState({
-    checked: false,
-    ready: false,
-    message: '',
-    mappedAccountAddress: '',
-  });
 
   const activeWalletProviderRef = useRef(null);
 
@@ -149,12 +151,6 @@ export function WalletProvider({ children }) {
     setOutgoingStreams([]);
     setIsInitialLoad(true);
     setActiveWallet(null);
-    setNativeApprovalState({
-      checked: false,
-      ready: false,
-      message: '',
-      mappedAccountAddress: '',
-    });
   }, []);
 
   const refreshAvailableWallets = useCallback(async () => {
@@ -272,63 +268,79 @@ export function WalletProvider({ children }) {
         const address = await nextSigner.getAddress();
         const nextNetwork = await nextProvider.getNetwork();
 
-      activeWalletProviderRef.current = ethProvider;
-      setProvider(nextProvider);
-      setSigner(nextSigner);
-      setWalletAddress(address);
-      setChainId(Number(nextNetwork.chainId));
-      setActiveWallet({
-        id: walletOption.id,
-        name: walletOption.name,
-        type: walletOption.type,
-        description: walletOption.description,
-      });
-      setIsWalletPickerOpen(false);
-      let nextStatus = `Connected via ${walletOption.name}`;
-      if (Number(nextNetwork.chainId) === 420420421) {
-        const approvalState = await inspectSubstrateApprovalAccount(address);
-        if (approvalState.ready) {
-          setNativeApprovalState({
-            checked: true,
-            ready: true,
-            message: `Native approvals ready via ${approvalState.source || 'Substrate extension'}`,
-            mappedAccountAddress: approvalState.mappedAccountAddress,
-          });
-          nextStatus = `${nextStatus} · native approvals ready`;
-        } else {
-          const message = approvalState.reason || 'Native approval setup is required on Westend.';
-          setNativeApprovalState({
-            checked: true,
-            ready: false,
-            message,
-            mappedAccountAddress: approvalState.mappedAccountAddress || '',
-          });
-          nextStatus = `${nextStatus} · native approval setup needed`;
-          toast.info(message, { title: 'Native Approval Setup' });
-        }
+        activeWalletProviderRef.current = ethProvider;
+        setProvider(nextProvider);
+        setSigner(nextSigner);
+        setWalletAddress(address);
+        setChainId(Number(nextNetwork.chainId));
+        setActiveWallet({
+          id: walletOption.id,
+          name: walletOption.name,
+          type: walletOption.type,
+          description: walletOption.description,
+        });
+        setIsWalletPickerOpen(false);
+        setStatus(`Connected via ${walletOption.name}`);
+        toast.success(
+          `Connected to ${formatAddress(address)} via ${walletOption.name}`,
+          { title: "Wallet Connected" },
+        );
+      } catch (error) {
+        console.error("Connection failed:", error);
+        activeWalletProviderRef.current = null;
+        resetWalletState();
+        setStatus("Wallet connection failed.");
+        toast.error(error?.message || "Failed to connect wallet", {
+          title: "Connection Failed",
+        });
+      } finally {
+        setIsConnectingWallet(false);
       }
-      setStatus(nextStatus);
-      toast.success(`Connected to ${formatAddress(address)} via ${walletOption.name}`, { title: 'Wallet Connected' });
-    } catch (error) {
-      console.error('Connection failed:', error);
-      activeWalletProviderRef.current = null;
-      resetWalletState();
-      setStatus('Wallet connection failed.');
-      toast.error(error?.message || 'Failed to connect wallet', { title: 'Connection Failed' });
-    } finally {
-      setIsConnectingWallet(false);
-    }
-  }, [availableWallets, ensureCorrectNetwork, openWalletPicker, refreshAvailableWallets, resetWalletState, toast]);
+    },
+    [
+      availableWallets,
+      ensureCorrectNetwork,
+      openWalletPicker,
+      refreshAvailableWallets,
+      resetWalletState,
+      toast,
+    ],
+  );
 
   const fetchPaymentBalance = useCallback(async () => {
-    if (!walletAddress) return;
+    if (!provider || !walletAddress) return;
     try {
-      const balance = await readNativeAssetBalance(walletAddress, paymentAssetId);
+      const paymentTokenContract = new ethers.Contract(
+        paymentTokenAddress,
+        paymentTokenABI,
+        provider,
+      );
+      const balance = await paymentTokenContract.balanceOf(walletAddress);
       setPaymentBalance(ethers.formatUnits(balance, paymentTokenDecimals));
     } catch (error) {
       console.error(`Failed to fetch ${paymentTokenSymbol} balance:`, error);
+      try {
+        const nativeAssetBalance = await readNativeAssetBalance(
+          walletAddress,
+          paymentAssetId,
+        );
+        setPaymentBalance(
+          ethers.formatUnits(nativeAssetBalance, paymentTokenDecimals),
+        );
+      } catch (fallbackError) {
+        console.error(
+          `Failed to fetch ${paymentTokenSymbol} balance via EVM fallback:`,
+          fallbackError,
+        );
+      }
     }
-  }, [paymentAssetId, paymentTokenDecimals, paymentTokenSymbol, walletAddress]);
+  }, [
+    paymentAssetId,
+    paymentTokenDecimals,
+    paymentTokenSymbol,
+    provider,
+    walletAddress,
+  ]);
 
   const requestTestFunds = async () => {
     toast.info(
@@ -496,13 +508,11 @@ export function WalletProvider({ children }) {
         setStatus("Enter a positive amount and duration.");
         return null;
       }
-      if (ACTIVE_NETWORK.chainId === 420420421 && nativeApprovalState.checked && !nativeApprovalState.ready) {
-        const message = nativeApprovalState.message || 'Native approval setup is required before creating a stream on Westend.';
-        setStatus(message);
-        toast.error(message, { title: 'Native Approval Setup Needed' });
-        return null;
-      }
-      const paymentTokenContract = new ethers.Contract(paymentTokenAddress, paymentTokenABI, signer);
+      const paymentTokenContract = new ethers.Contract(
+        paymentTokenAddress,
+        paymentTokenABI,
+        signer,
+      );
       await ensureTokenApproval({
         tokenContract: paymentTokenContract,
         ownerAddress: await signer.getAddress(),
@@ -559,9 +569,12 @@ export function WalletProvider({ children }) {
       await refreshStreams();
       return createdId;
     } catch (error) {
-      console.error('Stream creation failed:', error);
-      setStatus(error?.shortMessage || error?.message || 'Transaction failed.');
-        toast.error(error?.shortMessage || error?.message || 'Transaction failed', { title: 'Stream Creation Failed' });
+      console.error("Stream creation failed:", error);
+      setStatus(error?.shortMessage || error?.message || "Transaction failed.");
+      toast.error(
+        error?.shortMessage || error?.message || "Transaction failed",
+        { title: "Stream Creation Failed" },
+      );
       return null;
     } finally {
       setIsProcessing(false);
@@ -634,37 +647,10 @@ export function WalletProvider({ children }) {
       setProvider(nextProvider);
       setSigner(nextSigner);
       setWalletAddress(accounts[0]);
-      if (chainId === 420420421) {
-        const approvalState = await inspectSubstrateApprovalAccount(accounts[0]);
-        if (approvalState.ready) {
-          setNativeApprovalState({
-            checked: true,
-            ready: true,
-            message: `Native approvals ready via ${approvalState.source || 'Substrate extension'}`,
-            mappedAccountAddress: approvalState.mappedAccountAddress,
-          });
-          setStatus(`Connected via ${activeWallet?.name || 'wallet'} · native approvals ready`);
-        } else {
-          const message = approvalState.reason || 'Native approval setup is required on Westend.';
-          setNativeApprovalState({
-            checked: true,
-            ready: false,
-            message,
-            mappedAccountAddress: approvalState.mappedAccountAddress || '',
-          });
-          setStatus(`Connected via ${activeWallet?.name || 'wallet'} · native approval setup needed`);
-          toast.info(message, { title: 'Native Approval Setup' });
-        }
-      } else {
-        setNativeApprovalState({
-          checked: false,
-          ready: false,
-          message: '',
-          mappedAccountAddress: '',
-        });
-        setStatus(`Connected via ${activeWallet?.name || 'wallet'}`);
-      }
-      toast.info(`Active account changed to ${formatAddress(accounts[0])}`, { title: 'Wallet Updated' });
+      setStatus(`Connected via ${activeWallet?.name || "wallet"}`);
+      toast.info(`Active account changed to ${formatAddress(accounts[0])}`, {
+        title: "Wallet Updated",
+      });
     };
 
     const handleChainChanged = async (nextChainIdHex) => {
@@ -672,14 +658,15 @@ export function WalletProvider({ children }) {
       setChainId(nextChainId);
 
       if (nextChainId !== TARGET_CHAIN_ID_DEC) {
-        setNativeApprovalState({
-          checked: false,
-          ready: false,
-          message: '',
-          mappedAccountAddress: '',
-        });
-        setStatus(`Switch ${activeWallet?.name || 'wallet'} back to ${ACTIVE_NETWORK.name}.`);
-        toast.warning(`Wrong network selected. Switch back to ${ACTIVE_NETWORK.name}.`, { title: 'Network Mismatch' });
+        setStatus(
+          `Switch ${activeWallet?.name || "wallet"} back to ${
+            ACTIVE_NETWORK.name
+          }.`,
+        );
+        toast.warning(
+          `Wrong network selected. Switch back to ${ACTIVE_NETWORK.name}.`,
+          { title: "Network Mismatch" },
+        );
         return;
       }
 
@@ -688,18 +675,6 @@ export function WalletProvider({ children }) {
       try {
         const nextSigner = await nextProvider.getSigner();
         setSigner(nextSigner);
-        const nextAddress = await nextSigner.getAddress();
-        if (nextChainId === 420420421) {
-          const approvalState = await inspectSubstrateApprovalAccount(nextAddress);
-          setNativeApprovalState({
-            checked: true,
-            ready: approvalState.ready,
-            message: approvalState.ready
-              ? `Native approvals ready via ${approvalState.source || 'Substrate extension'}`
-              : (approvalState.reason || 'Native approval setup is required on Westend.'),
-            mappedAccountAddress: approvalState.mappedAccountAddress || '',
-          });
-        }
       } catch {
         // Ignore signer refresh failures.
       }
@@ -727,11 +702,19 @@ export function WalletProvider({ children }) {
     if (!walletAddress || !contractWithProvider) return;
     refreshStreamsRef.current();
     fetchPaymentBalanceRef.current();
-    const interval = setInterval(() => {
-      refreshStreamsRef.current();
-      fetchPaymentBalanceRef.current();
-    }, 15000);
-    return () => clearInterval(interval);
+    const listener = () => refreshStreamsRef.current();
+    contractWithProvider.on("StreamCreated", listener);
+    contractWithProvider.on("StreamCancelled", listener);
+    contractWithProvider.on("Withdrawn", listener);
+    return () => {
+      try {
+        contractWithProvider.off("StreamCreated", listener);
+        contractWithProvider.off("StreamCancelled", listener);
+        contractWithProvider.off("Withdrawn", listener);
+      } catch {
+        // Ignore listener cleanup failures.
+      }
+    };
   }, [walletAddress, contractWithProvider]);
 
   const value = {
@@ -760,7 +743,6 @@ export function WalletProvider({ children }) {
     isWalletPickerOpen,
     availableWallets,
     activeWallet,
-    nativeApprovalState,
     refreshAvailableWallets,
     fetchPaymentBalance,
     requestTestFunds,

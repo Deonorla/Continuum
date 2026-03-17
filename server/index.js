@@ -38,6 +38,11 @@ const defaultConfig = {
     appBaseUrl: process.env.FLOWPAY_APP_BASE_URL || "http://localhost:5173",
     postgresUrl: process.env.POSTGRES_URL || "",
     routes: {
+        "/api/free": {
+            price: "0",
+            mode: "free",
+            description: "Public route with no payment requirement.",
+        },
         "/api/weather": {
             price: "0.0001",
             mode: "streaming",

@@ -6,6 +6,168 @@ import StreamList from '../components/StreamList';
 import { CollapsibleSection, SkeletonStreamCard } from '../components/ui';
 import { ArrowRightLeft, Coins, Plus, Wallet, PlugZap, Globe, Shield } from 'lucide-react';
 import { useProtocolCatalog } from '../hooks/useProtocolCatalog';
+import { callRoute } from '../services/routeApi';
+
+const PUBLIC_ROUTE = {
+  path: '/api/free',
+  mode: 'free',
+  price: '0',
+  description: 'Public route with no payment requirement.',
+};
+
+function formatResponseBody(body) {
+  if (body == null) {
+    return 'No response body';
+  }
+
+  if (typeof body === 'string') {
+    return body;
+  }
+
+  try {
+    return JSON.stringify(body, null, 2);
+  } catch {
+    return String(body);
+  }
+}
+
+function RouteExplorer({
+  routes,
+  matchingStreams,
+  selectedRoutePath,
+  setSelectedRoutePath,
+  selectedStreamId,
+  setSelectedStreamId,
+  routeResult,
+  isCallingRoute,
+  onCallRoute,
+}) {
+  const selectedRoute = routes.find((route) => route.path === selectedRoutePath) || routes[0];
+
+  return (
+    <section className="card-glass p-4 md:p-6 border border-white/5">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+            <Globe className="w-5 h-5 text-emerald-300" /> Endpoint Explorer
+          </h3>
+          <p className="text-sm text-white/50 mt-1">
+            Hit every backend route from the frontend. Protected routes can reuse an active stream that pays the service wallet.
+          </p>
+        </div>
+        <div className="text-xs text-white/40 font-mono">
+          {matchingStreams.length} compatible stream{matchingStreams.length === 1 ? '' : 's'}
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-4 lg:grid-cols-[1.15fr,0.85fr]">
+        <div className="space-y-4">
+          <label className="block">
+            <span className="block text-sm text-white/70 mb-1.5">Backend route</span>
+            <select
+              className="input-default w-full"
+              value={selectedRoutePath}
+              onChange={(event) => setSelectedRoutePath(event.target.value)}
+            >
+              {routes.map((route) => (
+                <option key={route.path} value={route.path}>
+                  {route.path} · {route.mode}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold text-white font-mono">{selectedRoute?.path}</span>
+              <span className={`rounded-full px-2 py-0.5 text-[11px] font-mono border ${
+                selectedRoute?.mode === 'streaming'
+                  ? 'border-cyan-500/30 text-cyan-300 bg-cyan-500/10'
+                  : selectedRoute?.mode === 'per-request'
+                    ? 'border-amber-500/30 text-amber-300 bg-amber-500/10'
+                    : 'border-emerald-500/30 text-emerald-300 bg-emerald-500/10'
+              }`}>
+                {selectedRoute?.mode}
+              </span>
+            </div>
+            <div className="text-sm text-white/55 mt-3">{selectedRoute?.description}</div>
+            <div className="text-xs text-white/35 mt-3">
+              {selectedRoute?.mode === 'streaming'
+                ? `${selectedRoute?.price} ${paymentTokenSymbol}/sec`
+                : selectedRoute?.mode === 'per-request'
+                  ? `${selectedRoute?.price} ${paymentTokenSymbol} per request`
+                  : 'No payment required'}
+            </div>
+          </div>
+
+          <label className="block">
+            <span className="block text-sm text-white/70 mb-1.5">Active stream for protected routes</span>
+            <select
+              className="input-default w-full"
+              value={selectedStreamId}
+              onChange={(event) => setSelectedStreamId(event.target.value)}
+              disabled={selectedRoute?.mode === 'free'}
+            >
+              <option value="">
+                {selectedRoute?.mode === 'free' ? 'Not required for /api/free' : 'Call without a stream header'}
+              </option>
+              {matchingStreams.map((stream) => (
+                <option key={stream.id} value={String(stream.id)}>
+                  Stream #{stream.id} · {Number(stream.totalAmount || 0n) > 0 ? paymentTokenSymbol : 'Budgeted'} · active
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <button
+            type="button"
+            className="btn-primary min-h-[44px] px-4"
+            onClick={onCallRoute}
+            disabled={!selectedRoute || isCallingRoute}
+          >
+            {isCallingRoute ? 'Calling route...' : `Call ${selectedRoute?.path}`}
+          </button>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+          <div className="text-xs uppercase tracking-[0.18em] text-white/40 mb-3">Latest response</div>
+          {routeResult ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm text-white/60">{routeResult.path}</div>
+                <div className={`rounded-full px-3 py-1 text-xs font-mono ${
+                  routeResult.ok
+                    ? 'bg-emerald-500/15 text-emerald-300'
+                    : routeResult.status === 402
+                      ? 'bg-amber-500/15 text-amber-300'
+                      : 'bg-red-500/15 text-red-300'
+                }`}>
+                  HTTP {routeResult.status}
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-white/5 p-3">
+                <div className="text-xs uppercase tracking-[0.18em] text-white/40 mb-2">Headers</div>
+                <pre className="overflow-auto text-xs text-white/65">{formatResponseBody(routeResult.headers)}</pre>
+              </div>
+
+              <div className="rounded-xl bg-white/5 p-3">
+                <div className="text-xs uppercase tracking-[0.18em] text-white/40 mb-2">Body</div>
+                <pre className="overflow-auto text-xs text-white/72 whitespace-pre-wrap break-words">
+                  {formatResponseBody(routeResult.body)}
+                </pre>
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-white/45 leading-6">
+              Call a route to inspect its live payload, payment headers, or 402 requirements.
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function shortAddress(address = '') {
   if (!address) {
@@ -28,6 +190,17 @@ export default function Streams() {
   const [durationSeconds, setDurationSeconds] = useState('');
   const [manualStreamId, setManualStreamId] = useState('');
   const [claimableBalance, setClaimableBalance] = useState('0.0');
+  const [selectedRoutePath, setSelectedRoutePath] = useState('/api/free');
+  const [selectedStreamId, setSelectedStreamId] = useState('');
+  const [routeResult, setRouteResult] = useState(null);
+  const [isCallingRoute, setIsCallingRoute] = useState(false);
+
+  const explorerRoutes = [PUBLIC_ROUTE, ...(catalog?.routes || [])].filter(
+    (route, index, routes) => routes.findIndex((candidate) => candidate.path === route.path) === index
+  );
+  const compatibleStreams = outgoingStreams.filter(
+    (stream) => stream?.isActive && stream?.recipient?.toLowerCase() === catalog?.payments?.recipientAddress?.toLowerCase()
+  );
 
   const prefillStreamingRoute = (route) => {
     const pricePerSecond = Number(route?.price || 0);
@@ -43,6 +216,33 @@ export default function Streams() {
     setAmountEth((pricePerSecond * suggestedDuration).toFixed(4));
     setStatus(`Prepared a 1 hour stream budget for ${route.path}.`);
   };
+
+  useEffect(() => {
+    if (!catalog?.routes?.length) {
+      return;
+    }
+
+    setSelectedRoutePath((current) => {
+      if (explorerRoutes.some((route) => route.path === current)) {
+        return current;
+      }
+      return PUBLIC_ROUTE.path;
+    });
+  }, [catalog?.routes?.length]);
+
+  useEffect(() => {
+    if (!compatibleStreams.length) {
+      setSelectedStreamId('');
+      return;
+    }
+
+    setSelectedStreamId((current) => {
+      if (current && compatibleStreams.some((stream) => String(stream.id) === String(current))) {
+        return current;
+      }
+      return String(compatibleStreams[0].id);
+    });
+  }, [compatibleStreams]);
 
   const handleCreateStream = async (e) => {
     e.preventDefault();
@@ -75,6 +275,40 @@ export default function Streams() {
     }
     await withdraw(id);
     await checkClaimableBalance();
+  };
+
+  const handleCallRoute = async () => {
+    const selectedRoute = explorerRoutes.find((route) => route.path === selectedRoutePath);
+    if (!selectedRoute) {
+      return;
+    }
+
+    setIsCallingRoute(true);
+    setStatus(`Calling ${selectedRoute.path}...`);
+
+    try {
+      const result = await callRoute(selectedRoute.path, {
+        streamId: selectedRoute.mode === 'free' ? undefined : selectedStreamId || undefined,
+      });
+      setRouteResult({
+        ...result,
+        path: selectedRoute.path,
+      });
+      setStatus(`Received HTTP ${result.status} from ${selectedRoute.path}.`);
+    } catch (error) {
+      console.error('Route call failed', error);
+      setRouteResult({
+        ok: false,
+        status: 0,
+        path: selectedRoute.path,
+        headers: {},
+        body: { error: error.message || 'Route call failed' },
+      });
+      setStatus(`Route call failed for ${selectedRoute.path}.`);
+      toast.error(error.message || 'Unable to call the route right now.', { title: 'Route call failed' });
+    } finally {
+      setIsCallingRoute(false);
+    }
   };
 
   // Live claimable ticker
@@ -298,6 +532,18 @@ export default function Streams() {
           </div>
         )}
       </section>
+
+      <RouteExplorer
+        routes={explorerRoutes}
+        matchingStreams={compatibleStreams}
+        selectedRoutePath={selectedRoutePath}
+        setSelectedRoutePath={setSelectedRoutePath}
+        selectedStreamId={selectedStreamId}
+        setSelectedStreamId={setSelectedStreamId}
+        routeResult={routeResult}
+        isCallingRoute={isCallingRoute}
+        onCallRoute={handleCallRoute}
+      />
 
       <div className="grid gap-6 lg:gap-8 lg:grid-cols-2">
         <StreamList

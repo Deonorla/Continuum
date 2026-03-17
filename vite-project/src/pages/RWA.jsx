@@ -1,30 +1,44 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { ethers } from 'ethers';
 import {
-  ArrowRight,
   BadgeCheck,
   Building2,
   Car,
   CheckCircle2,
   Clock3,
-  KeyRound,
   Link2,
   Package,
   PlayCircle,
   Plus,
-  QrCode,
   RefreshCw,
   ScanSearch,
   ShieldCheck,
+  Settings2,
   Wallet,
 } from 'lucide-react';
 import { useWallet } from '../context/WalletContext';
-import { appName, paymentTokenSymbol } from '../contactInfo';
+import { appName, paymentTokenDecimals, paymentTokenSymbol } from '../contactInfo';
 import {
   fetchRwaAssets,
+  fetchRwaAsset,
+  fetchRwaActivity,
   mintRwaAsset,
+  pinRwaMetadata,
   verifyRwaAsset,
 } from '../services/rwaApi';
+import { useProtocolCatalog } from '../hooks/useProtocolCatalog';
+import {
+  approveAndCreateAssetYieldStream,
+  claimAssetYield,
+  flashAdvanceAssetYield,
+  parseTokenAmount,
+  readClaimableYield,
+  setAssetCompliance,
+  setAssetStreamFreeze,
+  updateAssetMetadataOnChain,
+  updateAssetVerificationTag,
+} from '../services/rwaContractApi';
 import {
   buildRentalStreamMetadata,
   mapApiAssetToUiAsset,
@@ -71,6 +85,12 @@ const STUDIO_TABS = [
     description: 'Review yield-bearing assets and their current stream state.',
     Icon: Wallet,
   },
+  {
+    key: 'workspace',
+    label: 'Asset Workspace',
+    description: 'Inspect one asset deeply and run contract-backed actions.',
+    Icon: Settings2,
+  },
 ];
 
 const MINT_FORM_DEFAULT = {
@@ -82,6 +102,29 @@ const MINT_FORM_DEFAULT = {
   imageUrl: 'https://...',
   tagSeed: 'Tag serial, NFC UID, or internal reference',
 };
+
+function buildAssetMetadata(form) {
+  return {
+    name: form.name.trim() || 'Untitled rental asset',
+    description: form.description.trim() || 'Rental asset prepared in Stream Engine.',
+    image: form.imageUrl.trim(),
+    assetType: form.type,
+    location: form.location.trim() || 'Undisclosed',
+    monthlyYieldTarget: Number(form.monthlyYieldTarget || 0),
+    accessMechanism: 'QR / NFC verification payload',
+    tagSeed: form.tagSeed.trim(),
+    properties: {
+      location: form.location.trim() || 'Undisclosed',
+      accessMechanism: 'QR / NFC verification payload',
+    },
+    attributes: [
+      { trait_type: 'Asset Type', value: form.type },
+      { trait_type: 'Asset Class', value: TYPE_META[form.type]?.label || 'Rental Asset' },
+      { trait_type: 'Location', value: form.location.trim() || 'Undisclosed' },
+      { trait_type: 'Monthly Yield Target', value: Number(form.monthlyYieldTarget || 0) },
+    ],
+  };
+}
 
 function formatMoney(value, maximumFractionDigits = 4) {
   return `$${Number(value || 0).toLocaleString(undefined, {
@@ -215,14 +258,17 @@ function MintPanel({
   walletAddress,
   onConnect,
   onMint,
+  onPrepareMetadata,
   lastMint,
   isMinting,
+  isPreparingMetadata,
+  preparedMetadata,
   isRegistryLoading,
   registryAssets,
   registryFilter,
   setRegistryFilter,
   onOpenVerify,
-  onOpenPortfolio,
+  onOpenWorkspace,
 }) {
   const [form, setForm] = useState(MINT_FORM_DEFAULT);
   const previewName = form.name.trim() || 'Untitled rental asset';
@@ -388,14 +434,37 @@ function MintPanel({
               />
             </label>
 
-            <button type="submit" className="btn-primary w-full justify-center" disabled={isMinting}>
-              <Plus className="h-4 w-4" />
-              {isMinting ? 'Minting asset...' : 'Mint asset'}
-            </button>
+            <div className="grid gap-3 md:grid-cols-2">
+              <button type="button" className="btn-default w-full justify-center" onClick={() => onPrepareMetadata(form)} disabled={isPreparingMetadata}>
+                <Link2 className="h-4 w-4" />
+                {isPreparingMetadata ? 'Pinning metadata...' : 'Prepare IPFS metadata'}
+              </button>
+
+              <button type="submit" className="btn-primary w-full justify-center" disabled={isMinting}>
+                <Plus className="h-4 w-4" />
+                {isMinting ? 'Minting asset...' : 'Mint asset'}
+              </button>
+            </div>
 
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/58">
               {appName} will pin metadata to IPFS, mint the NFT, and return the verification payload.
             </div>
+
+            {preparedMetadata && (
+              <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/8 p-4">
+                <div className="text-sm font-semibold text-cyan-200">Prepared metadata pinned to IPFS</div>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <div className="rounded-2xl bg-black/20 p-3">
+                    <div className="text-xs uppercase tracking-[0.18em] text-white/45">CID</div>
+                    <div className="mt-2 break-all font-mono text-xs text-white/72">{preparedMetadata.cid}</div>
+                  </div>
+                  <div className="rounded-2xl bg-black/20 p-3">
+                    <div className="text-xs uppercase tracking-[0.18em] text-white/45">URI</div>
+                    <div className="mt-2 break-all font-mono text-xs text-white/72">{preparedMetadata.uri}</div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </form>
 
@@ -442,8 +511,8 @@ function MintPanel({
                   <button type="button" className="btn-default text-sm" onClick={() => onOpenVerify(lastMint)}>
                     Open verification workspace
                   </button>
-                  <button type="button" className="btn-secondary text-sm" onClick={onOpenPortfolio}>
-                    View portfolio
+                  <button type="button" className="btn-secondary text-sm" onClick={() => onOpenWorkspace(lastMint)}>
+                    Open asset workspace
                   </button>
                 </div>
               </div>
@@ -512,7 +581,7 @@ function MintPanel({
                       <button type="button" className="btn-default text-sm" onClick={() => onOpenVerify(asset)}>
                         Verify
                       </button>
-                      <button type="button" className="btn-secondary text-sm" onClick={onOpenPortfolio}>
+                      <button type="button" className="btn-secondary text-sm" onClick={() => onOpenWorkspace(asset)}>
                         Open workspace
                       </button>
                     </div>
@@ -890,7 +959,7 @@ function ActiveRentalsPanel({ rentals, nowMs, onBrowseRentals, onEndRental }) {
   );
 }
 
-function PortfolioPanel({ assets, onRefresh, onOpenVerify, onOpenRental }) {
+function PortfolioPanel({ assets, onRefresh, onOpenVerify, onOpenRental, onOpenWorkspace }) {
   return (
     <div className="space-y-6">
       <div className="card-glass border border-white/10 p-6">
@@ -953,8 +1022,8 @@ function PortfolioPanel({ assets, onRefresh, onOpenVerify, onOpenRental }) {
                 <button type="button" className="btn-default flex-1 text-sm" onClick={() => onOpenVerify(asset)}>
                   Verify
                 </button>
-                <button type="button" className="btn-secondary flex-1 text-sm" onClick={() => onOpenRental(asset)}>
-                  Rent
+                <button type="button" className="btn-secondary flex-1 text-sm" onClick={() => onOpenWorkspace(asset)}>
+                  Workspace
                 </button>
               </div>
             </div>
@@ -962,6 +1031,293 @@ function PortfolioPanel({ assets, onRefresh, onOpenVerify, onOpenRental }) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function formatTimestamp(timestamp) {
+  if (!timestamp) {
+    return 'Unavailable';
+  }
+
+  try {
+    const date = typeof timestamp === 'number' ? new Date(timestamp * 1000) : new Date(timestamp);
+    return date.toLocaleString();
+  } catch {
+    return String(timestamp);
+  }
+}
+
+function AssetWorkspacePanel({
+  asset,
+  activity,
+  isLoading,
+  networkName,
+  claimableYieldDisplay,
+  actionState,
+  hasContractControls,
+  onRefresh,
+  onOpenVerify,
+  onOpenRental,
+  onFundYieldStream,
+  onClaimYield,
+  onFlashAdvance,
+  onSetCompliance,
+  onFreezeStream,
+  onUpdateMetadata,
+  onUpdateTag,
+}) {
+  const [fundForm, setFundForm] = useState({ amount: '', duration: '2592000' });
+  const [flashAdvanceForm, setFlashAdvanceForm] = useState({ amount: '' });
+  const [complianceForm, setComplianceForm] = useState({
+    user: '',
+    approved: true,
+    expiry: '',
+    jurisdiction: 'NG',
+  });
+  const [freezeForm, setFreezeForm] = useState({ frozen: false, reason: '' });
+  const [metadataUri, setMetadataUri] = useState('');
+  const [tagValue, setTagValue] = useState('');
+
+  useEffect(() => {
+    if (!asset) {
+      return;
+    }
+
+    setComplianceForm({
+      user: asset.currentOwner || asset.ownerAddress || '',
+      approved: asset.compliance?.approved ?? true,
+      expiry: asset.compliance?.expiry ? new Date(asset.compliance.expiry * 1000).toISOString().slice(0, 16) : '',
+      jurisdiction: asset.compliance?.jurisdiction || 'NG',
+    });
+    setFreezeForm({
+      frozen: Boolean(asset.stream?.isFrozen),
+      reason: '',
+    });
+    setMetadataUri(asset.ipfsUri || '');
+    setTagValue(asset.tagSeed || '');
+  }, [asset]);
+
+  if (isLoading) {
+    return (
+      <div className="card-glass border border-white/10 p-6 text-sm text-white/55">
+        Loading asset workspace...
+      </div>
+    );
+  }
+
+  if (!asset) {
+    return (
+      <div className="card-glass border border-dashed border-white/15 bg-white/[0.03] px-6 py-12 text-center">
+        <div className="text-2xl font-semibold text-white">No asset selected.</div>
+        <div className="mt-3 text-sm text-white/55">
+          Open an asset from the registry or portfolio to inspect detail, activity, and contract actions here.
+        </div>
+      </div>
+    );
+  }
+
+  const workspaceActivity = activity?.length ? activity : asset.activity || [];
+
+  return (
+    <div className="space-y-6">
+      <div className="card-glass border border-white/10 p-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Asset Workspace</div>
+            <h2 className="mt-3 text-3xl font-black tracking-tight text-white">
+              {asset.name} <span className="text-white/35">#{asset.tokenId}</span>
+            </h2>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-white/62">
+              Deep asset view backed by the registry, indexer activity, and the live RWA hub contract.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-default text-sm" onClick={onRefresh}>
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </button>
+            <button type="button" className="btn-default text-sm" onClick={() => onOpenVerify(asset)}>
+              <ShieldCheck className="h-4 w-4" />
+              Verify
+            </button>
+            <button type="button" className="btn-secondary text-sm" onClick={() => onOpenRental(asset)}>
+              <PlayCircle className="h-4 w-4" />
+              Rent asset
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl bg-white/5 p-4">
+            <div className="text-xs uppercase tracking-[0.18em] text-white/45">Current Owner</div>
+            <div className="mt-2 font-mono text-sm text-white/82 break-all">{asset.currentOwner || 'Unavailable'}</div>
+          </div>
+          <div className="rounded-2xl bg-white/5 p-4">
+            <div className="text-xs uppercase tracking-[0.18em] text-white/45">Claimable Yield</div>
+            <div className="mt-2 text-2xl font-black text-cyan-300">{Number(claimableYieldDisplay || 0).toFixed(4)} {paymentTokenSymbol}</div>
+          </div>
+          <div className="rounded-2xl bg-white/5 p-4">
+            <div className="text-xs uppercase tracking-[0.18em] text-white/45">Active Stream</div>
+            <div className="mt-2 text-2xl font-black text-white">{asset.activeStreamId || 0}</div>
+          </div>
+          <div className="rounded-2xl bg-white/5 p-4">
+            <div className="text-xs uppercase tracking-[0.18em] text-white/45">Compliance</div>
+            <div className="mt-2 text-sm font-semibold text-white/82">
+              {asset.compliance?.currentlyValid ? 'Valid' : 'Not validated'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
+        <div className="space-y-6">
+          <div className="card-glass border border-white/10 p-6">
+            <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Registry Snapshot</div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="rounded-2xl bg-black/20 p-4">
+                <div className="text-xs uppercase tracking-[0.18em] text-white/45">IPFS URI</div>
+                <div className="mt-2 break-all font-mono text-xs text-white/72">{asset.ipfsUri || 'Unavailable'}</div>
+              </div>
+              <div className="rounded-2xl bg-black/20 p-4">
+                <div className="text-xs uppercase tracking-[0.18em] text-white/45">Verification Payload</div>
+                <div className="mt-2 break-all font-mono text-xs text-white/72">{asset.verificationPayload || 'Unavailable'}</div>
+              </div>
+              <div className="rounded-2xl bg-black/20 p-4">
+                <div className="text-xs uppercase tracking-[0.18em] text-white/45">Location</div>
+                <div className="mt-2 text-sm text-white/82">{asset.location}</div>
+              </div>
+              <div className="rounded-2xl bg-black/20 p-4">
+                <div className="text-xs uppercase tracking-[0.18em] text-white/45">Network</div>
+                <div className="mt-2 text-sm text-white/82">{networkName}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card-glass border border-white/10 p-6">
+            <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Yield Actions</div>
+            <div className="mt-4 space-y-5">
+              <div className="grid gap-4 md:grid-cols-[1fr,1fr,auto]">
+                <input
+                  className="input-default w-full"
+                  placeholder={`Yield amount (${paymentTokenSymbol})`}
+                  value={fundForm.amount}
+                  onChange={(event) => setFundForm((current) => ({ ...current, amount: event.target.value }))}
+                />
+                <input
+                  className="input-default w-full"
+                  placeholder="Duration in seconds"
+                  value={fundForm.duration}
+                  onChange={(event) => setFundForm((current) => ({ ...current, duration: event.target.value }))}
+                />
+                <button
+                  type="button"
+                  className="btn-primary justify-center"
+                  onClick={() => onFundYieldStream(asset, fundForm)}
+                  disabled={actionState.funding || !hasContractControls}
+                >
+                  {actionState.funding ? 'Funding...' : 'Fund stream'}
+                </button>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-[1fr,auto]">
+                <input
+                  className="input-default w-full"
+                  placeholder={`Flash advance amount (${paymentTokenSymbol})`}
+                  value={flashAdvanceForm.amount}
+                  onChange={(event) => setFlashAdvanceForm({ amount: event.target.value })}
+                />
+                <button
+                  type="button"
+                  className="btn-default justify-center"
+                  onClick={() => onFlashAdvance(asset, flashAdvanceForm.amount)}
+                  disabled={actionState.flashAdvance || !hasContractControls}
+                >
+                  {actionState.flashAdvance ? 'Advancing...' : 'Flash advance'}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                className="btn-secondary justify-center"
+                onClick={() => onClaimYield(asset)}
+                disabled={actionState.claim || !hasContractControls}
+              >
+                {actionState.claim ? 'Claiming...' : `Claim ${paymentTokenSymbol}`}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="card-glass border border-white/10 p-6">
+            <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Admin Controls</div>
+            <p className="mt-3 text-sm leading-6 text-white/58">
+              These actions call the RWA hub contract directly. Connect with the controller wallet to use them.
+            </p>
+
+            <div className="mt-5 space-y-5">
+              <div className="rounded-2xl bg-white/5 p-4 space-y-3">
+                <div className="text-sm font-semibold text-white">Compliance</div>
+                <input className="input-default w-full" value={complianceForm.user} onChange={(event) => setComplianceForm((current) => ({ ...current, user: event.target.value }))} placeholder="Wallet address" />
+                <div className="grid gap-3 md:grid-cols-2">
+                  <input className="input-default w-full" type="datetime-local" value={complianceForm.expiry} onChange={(event) => setComplianceForm((current) => ({ ...current, expiry: event.target.value }))} />
+                  <input className="input-default w-full" value={complianceForm.jurisdiction} onChange={(event) => setComplianceForm((current) => ({ ...current, jurisdiction: event.target.value }))} placeholder="Jurisdiction" />
+                </div>
+                <label className="flex items-center gap-2 text-sm text-white/70">
+                  <input type="checkbox" checked={complianceForm.approved} onChange={(event) => setComplianceForm((current) => ({ ...current, approved: event.target.checked }))} />
+                  Approved
+                </label>
+                <button type="button" className="btn-default w-full justify-center" onClick={() => onSetCompliance(asset, complianceForm)} disabled={actionState.compliance || !hasContractControls}>
+                  {actionState.compliance ? 'Updating...' : 'Set compliance'}
+                </button>
+              </div>
+
+              <div className="rounded-2xl bg-white/5 p-4 space-y-3">
+                <div className="text-sm font-semibold text-white">Stream Freeze</div>
+                <label className="flex items-center gap-2 text-sm text-white/70">
+                  <input type="checkbox" checked={freezeForm.frozen} onChange={(event) => setFreezeForm((current) => ({ ...current, frozen: event.target.checked }))} />
+                  Freeze current stream
+                </label>
+                <input className="input-default w-full" value={freezeForm.reason} onChange={(event) => setFreezeForm((current) => ({ ...current, reason: event.target.value }))} placeholder="Reason for freeze / unfreeze" />
+                <button type="button" className="btn-default w-full justify-center" onClick={() => onFreezeStream(asset, freezeForm)} disabled={actionState.freeze || !hasContractControls || !asset.activeStreamId}>
+                  {actionState.freeze ? 'Submitting...' : 'Update stream freeze'}
+                </button>
+              </div>
+
+              <div className="rounded-2xl bg-white/5 p-4 space-y-3">
+                <div className="text-sm font-semibold text-white">Metadata / Tag</div>
+                <input className="input-default w-full" value={metadataUri} onChange={(event) => setMetadataUri(event.target.value)} placeholder="ipfs://..." />
+                <button type="button" className="btn-default w-full justify-center" onClick={() => onUpdateMetadata(asset, metadataUri)} disabled={actionState.metadata || !hasContractControls || !metadataUri}>
+                  {actionState.metadata ? 'Updating metadata...' : 'Update metadata URI'}
+                </button>
+                <input className="input-default w-full" value={tagValue} onChange={(event) => setTagValue(event.target.value)} placeholder="New tag seed / NFC UID" />
+                <button type="button" className="btn-default w-full justify-center" onClick={() => onUpdateTag(asset, tagValue)} disabled={actionState.tag || !hasContractControls || !tagValue}>
+                  {actionState.tag ? 'Updating tag...' : 'Update verification tag'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="card-glass border border-white/10 p-6">
+            <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Indexed Activity</div>
+            <div className="mt-4 space-y-3">
+              {workspaceActivity.length ? workspaceActivity.map((entry, index) => (
+                <div key={`${entry.label}-${entry.timestamp}-${index}`} className="rounded-2xl bg-white/5 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-white">{entry.label}</div>
+                    <div className="text-xs text-white/45">{entry.timestamp}</div>
+                  </div>
+                  <div className="mt-2 text-sm leading-6 text-white/58">{entry.detail}</div>
+                </div>
+              )) : (
+                <div className="text-sm text-white/45">No indexed activity yet for this asset.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1037,6 +1393,8 @@ function StartRentalModal({ asset, onClose, onConfirm, isProcessing }) {
 export default function RWA() {
   const [searchParams, setSearchParams] = useSearchParams();
   const {
+    provider,
+    signer,
     walletAddress,
     openWalletPicker,
     createStream,
@@ -1049,12 +1407,15 @@ export default function RWA() {
     outgoingStreams,
     formatEth,
   } = useWallet();
+  const { catalog } = useProtocolCatalog();
 
   const [sessionMints, setSessionMints] = useState([]);
   const [liveRegistryAssets, setLiveRegistryAssets] = useState([]);
   const [isRegistryLoading, setIsRegistryLoading] = useState(false);
   const [isMintingAsset, setIsMintingAsset] = useState(false);
+  const [isPreparingMetadata, setIsPreparingMetadata] = useState(false);
   const [isVerifyingAsset, setIsVerifyingAsset] = useState(false);
+  const [isWorkspaceLoading, setIsWorkspaceLoading] = useState(false);
   const [registryError, setRegistryError] = useState('');
   const [registryFilter, setRegistryFilter] = useState('mine');
   const [verificationForm, setVerificationForm] = useState({
@@ -1065,8 +1426,26 @@ export default function RWA() {
   });
   const [verificationResult, setVerificationResult] = useState(null);
   const [selectedRentalAsset, setSelectedRentalAsset] = useState(null);
+  const [selectedWorkspaceAssetId, setSelectedWorkspaceAssetId] = useState('');
+  const [workspaceAsset, setWorkspaceAsset] = useState(null);
+  const [workspaceActivity, setWorkspaceActivity] = useState([]);
+  const [preparedMetadata, setPreparedMetadata] = useState(null);
+  const [workspaceClaimableYield, setWorkspaceClaimableYield] = useState('0');
+  const [actionState, setActionState] = useState({
+    funding: false,
+    claim: false,
+    flashAdvance: false,
+    compliance: false,
+    freeze: false,
+    metadata: false,
+    tag: false,
+  });
   const [manualActiveRentals, setManualActiveRentals] = useState([]);
   const [nowMs, setNowMs] = useState(Date.now());
+  const hubAddress = catalog?.rwa?.hubAddress || '';
+  const assetStreamAddress = catalog?.rwa?.assetStreamAddress || '';
+  const tokenAddress = catalog?.payments?.tokenAddress || '';
+  const hasContractControls = Boolean(signer && provider && hubAddress && assetStreamAddress && tokenAddress);
 
   const activeTab = STUDIO_TABS.some((tab) => tab.key === searchParams.get('tab'))
     ? searchParams.get('tab')
@@ -1188,6 +1567,95 @@ export default function RWA() {
   const networkName = chainId ? getNetworkName(chainId) : 'Westend Asset Hub';
 
   const setActiveTab = (nextTab) => setTabParam(setSearchParams, nextTab);
+  const setActionFlag = (key, value) => {
+    setActionState((current) => ({ ...current, [key]: value }));
+  };
+
+  const loadWorkspaceAsset = useCallback(async (tokenId, { notify = false } = {}) => {
+    if (!tokenId) {
+      return;
+    }
+
+    setSelectedWorkspaceAssetId(String(tokenId));
+    setActiveTab('workspace');
+    setIsWorkspaceLoading(true);
+
+    try {
+      const [assetResponse, activityResponse] = await Promise.all([
+        fetchRwaAsset(tokenId),
+        fetchRwaActivity(tokenId),
+      ]);
+      const mappedAsset = mapApiAssetToUiAsset({
+        ...(assetResponse || {}),
+        activity: activityResponse || [],
+        metadata: assetResponse?.metadata,
+      });
+
+      setWorkspaceAsset(mappedAsset);
+      setWorkspaceActivity(mappedAsset.activity || []);
+
+      if (provider && hubAddress) {
+        try {
+          const claimable = await readClaimableYield({ provider, hubAddress, tokenId: Number(tokenId) });
+          setWorkspaceClaimableYield(ethers.formatUnits(claimable, paymentTokenDecimals));
+        } catch {
+          setWorkspaceClaimableYield(String(mappedAsset.yieldBalance || 0));
+        }
+      } else {
+        setWorkspaceClaimableYield(String(mappedAsset.yieldBalance || 0));
+      }
+
+      if (notify) {
+        toast.success(`Asset #${tokenId} workspace refreshed.`, { title: 'RWA Studio' });
+      }
+    } catch (error) {
+      console.error('Failed to load asset workspace', error);
+      const fallbackAsset = allAssets.find((item) => String(item.tokenId || item.id) === String(tokenId)) || null;
+      if (fallbackAsset) {
+        setWorkspaceAsset(fallbackAsset);
+        setWorkspaceActivity(fallbackAsset.activity || []);
+        setWorkspaceClaimableYield(String(fallbackAsset.yieldBalance || 0));
+      }
+      toast.error(error.message || 'Unable to load the asset workspace right now.', { title: 'Workspace unavailable' });
+    } finally {
+      setIsWorkspaceLoading(false);
+    }
+  }, [allAssets, hubAddress, provider, toast]);
+
+  const openWorkspace = useCallback((asset) => {
+    const tokenId = asset?.tokenId || asset?.id;
+    if (!tokenId) {
+      return;
+    }
+
+    loadWorkspaceAsset(tokenId);
+  }, [loadWorkspaceAsset]);
+
+  const prepareMetadata = useCallback(async (form) => {
+    const metadata = buildAssetMetadata(form);
+    const fingerprint = JSON.stringify(metadata);
+    setIsPreparingMetadata(true);
+    setStatus('Pinning metadata to IPFS...');
+
+    try {
+      const result = await pinRwaMetadata(metadata);
+      setPreparedMetadata({
+        ...result,
+        uri: result.uri,
+        cid: result.cid,
+        fingerprint,
+        metadata,
+      });
+      setStatus(`Prepared metadata at ${result.uri}.`);
+      toast.success('Metadata pinned to IPFS.', { title: 'IPFS ready' });
+    } catch (error) {
+      console.error('Failed to pin metadata', error);
+      setStatus('IPFS metadata preparation failed.');
+      toast.error(error.message || 'Unable to pin metadata right now.', { title: 'IPFS failed' });
+    } finally {
+      setIsPreparingMetadata(false);
+    }
+  }, [setStatus, toast]);
 
   const buildVerificationResult = useCallback((response, fallbackAsset) => {
     const mappedAsset = response?.asset
@@ -1271,33 +1739,16 @@ export default function RWA() {
 
     setIsMintingAsset(true);
     setStatus('Minting asset and pinning metadata...');
-
-    const metadata = {
-      name: form.name.trim() || 'Untitled rental asset',
-      description: form.description.trim() || 'Rental asset prepared in Stream Engine.',
-      image: form.imageUrl.trim(),
-      assetType: form.type,
-      location: form.location.trim() || 'Undisclosed',
-      monthlyYieldTarget: Number(form.monthlyYieldTarget || 0),
-      accessMechanism: 'QR / NFC verification payload',
-      tagSeed: form.tagSeed.trim(),
-      properties: {
-        location: form.location.trim() || 'Undisclosed',
-        accessMechanism: 'QR / NFC verification payload',
-      },
-      attributes: [
-        { trait_type: 'Asset Type', value: form.type },
-        { trait_type: 'Asset Class', value: TYPE_META[form.type]?.label || 'Rental Asset' },
-        { trait_type: 'Location', value: form.location.trim() || 'Undisclosed' },
-        { trait_type: 'Monthly Yield Target', value: Number(form.monthlyYieldTarget || 0) },
-      ],
-    };
+    const metadata = buildAssetMetadata(form);
+    const preparedFingerprint = JSON.stringify(metadata);
+    const preparedUri = preparedMetadata?.fingerprint === preparedFingerprint ? preparedMetadata.uri : '';
 
     try {
       const response = await mintRwaAsset({
         issuer: walletAddress,
         assetType: TYPE_TO_CHAIN_ASSET_TYPE[form.type] || 1,
-        metadata,
+        metadata: preparedUri ? undefined : metadata,
+        metadataURI: preparedUri || undefined,
         tag: form.tagSeed.trim(),
       });
 
@@ -1321,6 +1772,7 @@ export default function RWA() {
       setStatus(`Minted Asset #${asset.tokenId} in RWA Studio.`);
       toast.success(`Asset #${asset.tokenId} was minted and indexed.`, { title: 'Asset minted' });
       await loadRegistry();
+      await loadWorkspaceAsset(asset.tokenId);
     } catch (error) {
       console.error('Mint failed', error);
       setStatus('Asset mint failed.');
@@ -1332,6 +1784,177 @@ export default function RWA() {
 
   const handleVerify = async () => {
     await runVerification(verificationForm);
+  };
+
+  const handleFundYieldStream = async (asset, form) => {
+    if (!hasContractControls) {
+      toast.warning('Connect a compatible controller wallet to fund an asset stream.', { title: 'Wallet required' });
+      return;
+    }
+
+    setActionFlag('funding', true);
+    try {
+      await approveAndCreateAssetYieldStream({
+        signer,
+        tokenAddress,
+        streamAddress: assetStreamAddress,
+        hubAddress,
+        tokenId: Number(asset.tokenId),
+        totalAmount: parseTokenAmount(form.amount, paymentTokenDecimals),
+        duration: Number(form.duration || 0),
+      });
+      toast.success(`Yield stream funded for Asset #${asset.tokenId}.`, { title: 'Stream funded' });
+      await Promise.all([loadRegistry(), loadWorkspaceAsset(asset.tokenId)]);
+    } catch (error) {
+      console.error('Failed to fund asset yield stream', error);
+      toast.error(error.message || 'Unable to fund the asset stream.', { title: 'Funding failed' });
+    } finally {
+      setActionFlag('funding', false);
+    }
+  };
+
+  const handleClaimYieldAction = async (asset) => {
+    if (!hasContractControls) {
+      toast.warning('Connect a compatible wallet to claim yield.', { title: 'Wallet required' });
+      return;
+    }
+
+    setActionFlag('claim', true);
+    try {
+      await claimAssetYield({ signer, hubAddress, tokenId: Number(asset.tokenId) });
+      toast.success(`Yield claimed for Asset #${asset.tokenId}.`, { title: 'Yield claimed' });
+      await Promise.all([loadRegistry(), loadWorkspaceAsset(asset.tokenId)]);
+    } catch (error) {
+      console.error('Failed to claim yield', error);
+      toast.error(error.message || 'Unable to claim yield right now.', { title: 'Claim failed' });
+    } finally {
+      setActionFlag('claim', false);
+    }
+  };
+
+  const handleFlashAdvanceAction = async (asset, amountValue) => {
+    if (!hasContractControls) {
+      toast.warning('Connect a compatible wallet to flash advance yield.', { title: 'Wallet required' });
+      return;
+    }
+
+    setActionFlag('flashAdvance', true);
+    try {
+      await flashAdvanceAssetYield({
+        signer,
+        hubAddress,
+        tokenId: Number(asset.tokenId),
+        amount: parseTokenAmount(amountValue, paymentTokenDecimals),
+      });
+      toast.success(`Flash advance executed for Asset #${asset.tokenId}.`, { title: 'Advance executed' });
+      await Promise.all([loadRegistry(), loadWorkspaceAsset(asset.tokenId)]);
+    } catch (error) {
+      console.error('Failed to execute flash advance', error);
+      toast.error(error.message || 'Unable to execute flash advance.', { title: 'Advance failed' });
+    } finally {
+      setActionFlag('flashAdvance', false);
+    }
+  };
+
+  const handleSetComplianceAction = async (asset, form) => {
+    if (!hasContractControls) {
+      toast.warning('Connect a controller wallet to update compliance.', { title: 'Wallet required' });
+      return;
+    }
+
+    setActionFlag('compliance', true);
+    try {
+      const expiry = form.expiry ? Math.floor(new Date(form.expiry).getTime() / 1000) : 0;
+      await setAssetCompliance({
+        signer,
+        hubAddress,
+        user: form.user,
+        assetType: TYPE_TO_CHAIN_ASSET_TYPE[asset.type] || Number(asset.assetType || 1),
+        approved: Boolean(form.approved),
+        expiry,
+        jurisdiction: form.jurisdiction,
+      });
+      toast.success(`Compliance updated for Asset #${asset.tokenId}.`, { title: 'Compliance updated' });
+      await loadWorkspaceAsset(asset.tokenId);
+    } catch (error) {
+      console.error('Failed to set compliance', error);
+      toast.error(error.message || 'Unable to update compliance.', { title: 'Compliance failed' });
+    } finally {
+      setActionFlag('compliance', false);
+    }
+  };
+
+  const handleFreezeStreamAction = async (asset, form) => {
+    if (!hasContractControls) {
+      toast.warning('Connect a controller wallet to freeze a stream.', { title: 'Wallet required' });
+      return;
+    }
+
+    setActionFlag('freeze', true);
+    try {
+      await setAssetStreamFreeze({
+        signer,
+        hubAddress,
+        streamId: Number(asset.activeStreamId),
+        frozen: Boolean(form.frozen),
+        reason: form.reason || '',
+      });
+      toast.success(`Stream freeze updated for Asset #${asset.tokenId}.`, { title: 'Freeze updated' });
+      await loadWorkspaceAsset(asset.tokenId);
+    } catch (error) {
+      console.error('Failed to update freeze state', error);
+      toast.error(error.message || 'Unable to update the stream freeze state.', { title: 'Freeze failed' });
+    } finally {
+      setActionFlag('freeze', false);
+    }
+  };
+
+  const handleUpdateMetadataAction = async (asset, metadataURI) => {
+    if (!hasContractControls) {
+      toast.warning('Connect a controller wallet to update metadata.', { title: 'Wallet required' });
+      return;
+    }
+
+    setActionFlag('metadata', true);
+    try {
+      await updateAssetMetadataOnChain({
+        signer,
+        hubAddress,
+        tokenId: Number(asset.tokenId),
+        metadataURI,
+      });
+      toast.success(`Metadata URI updated for Asset #${asset.tokenId}.`, { title: 'Metadata updated' });
+      await loadWorkspaceAsset(asset.tokenId);
+    } catch (error) {
+      console.error('Failed to update metadata URI', error);
+      toast.error(error.message || 'Unable to update metadata URI.', { title: 'Metadata update failed' });
+    } finally {
+      setActionFlag('metadata', false);
+    }
+  };
+
+  const handleUpdateTagAction = async (asset, tagValue) => {
+    if (!hasContractControls) {
+      toast.warning('Connect a controller wallet to update the verification tag.', { title: 'Wallet required' });
+      return;
+    }
+
+    setActionFlag('tag', true);
+    try {
+      await updateAssetVerificationTag({
+        signer,
+        hubAddress,
+        tokenId: Number(asset.tokenId),
+        tag: tagValue,
+      });
+      toast.success(`Verification tag updated for Asset #${asset.tokenId}.`, { title: 'Tag updated' });
+      await loadWorkspaceAsset(asset.tokenId);
+    } catch (error) {
+      console.error('Failed to update verification tag', error);
+      toast.error(error.message || 'Unable to update the verification tag.', { title: 'Tag update failed' });
+    } finally {
+      setActionFlag('tag', false);
+    }
   };
 
   const handleStartRental = async (asset, hours) => {
@@ -1421,14 +2044,17 @@ export default function RWA() {
               walletAddress={walletAddress}
               onConnect={openWalletPicker}
               onMint={handleMint}
+              onPrepareMetadata={prepareMetadata}
               lastMint={latestMint}
               isMinting={isMintingAsset}
+              isPreparingMetadata={isPreparingMetadata}
+              preparedMetadata={preparedMetadata}
               isRegistryLoading={isRegistryLoading}
               registryAssets={registryAssets}
               registryFilter={registryFilter}
               setRegistryFilter={setRegistryFilter}
               onOpenVerify={openVerify}
-              onOpenPortfolio={() => setActiveTab('portfolio')}
+              onOpenWorkspace={openWorkspace}
             />
           )}
 
@@ -1465,6 +2091,29 @@ export default function RWA() {
               onRefresh={handleRefreshPortfolio}
               onOpenVerify={openVerify}
               onOpenRental={openRental}
+              onOpenWorkspace={openWorkspace}
+            />
+          )}
+
+          {activeTab === 'workspace' && (
+            <AssetWorkspacePanel
+              asset={workspaceAsset}
+              activity={workspaceActivity}
+              isLoading={isWorkspaceLoading}
+              networkName={networkName}
+              claimableYieldDisplay={workspaceClaimableYield}
+              actionState={actionState}
+              hasContractControls={hasContractControls}
+              onRefresh={() => loadWorkspaceAsset(selectedWorkspaceAssetId, { notify: true })}
+              onOpenVerify={openVerify}
+              onOpenRental={openRental}
+              onFundYieldStream={handleFundYieldStream}
+              onClaimYield={handleClaimYieldAction}
+              onFlashAdvance={handleFlashAdvanceAction}
+              onSetCompliance={handleSetComplianceAction}
+              onFreezeStream={handleFreezeStreamAction}
+              onUpdateMetadata={handleUpdateMetadataAction}
+              onUpdateTag={handleUpdateTagAction}
             />
           )}
         </div>

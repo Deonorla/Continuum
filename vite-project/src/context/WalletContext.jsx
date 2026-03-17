@@ -219,7 +219,7 @@ export function WalletProvider({ children }) {
         const nativeAssetBalance = await readNativeAssetBalance(walletAddress, paymentAssetId);
         setPaymentBalance(ethers.formatUnits(nativeAssetBalance, paymentTokenDecimals));
       } catch (fallbackError) {
-        console.error(`Failed to fetch ${paymentTokenSymbol} balance via substrate fallback:`, fallbackError);
+        console.error(`Failed to fetch ${paymentTokenSymbol} balance via EVM fallback:`, fallbackError);
       }
     }
   }, [paymentAssetId, paymentTokenDecimals, paymentTokenSymbol, provider, walletAddress]);

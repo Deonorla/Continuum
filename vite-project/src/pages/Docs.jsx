@@ -646,7 +646,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
       points: [
         {
           title: "Minting",
-          body: "The issuer chooses the rights model, prepares sanitized public metadata, anchors a private evidence bundle, signs the mint authorization, and then mints the rental twin. If the asset type has required attestation roles, the twin starts in Pending Attestation. If no role policy is configured, it can start verified immediately.",
+          body: "The owner now uses a guided mint flow. They describe the asset in plain language, attach the supporting documents, and let the app generate the internal property reference, verification tag seed, and document fingerprints automatically. The backend still anchors evidence roots and signs mint authorization, but those lower-level details are abstracted away from ordinary owners.",
         },
         {
           title: "Verification",
@@ -667,9 +667,9 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
       ],
       stepsTitle: "The RWA Studio workflow",
       steps: [
-        "Choose the rights model for the asset: verified rental twin, beneficial interest, or revenue rights only.",
-        "Prepare sanitized public metadata for IPFS and keep raw deeds, tax records, and inspections private.",
-        "Anchor the private evidence bundle and its evidence root onchain.",
+        "Describe the asset in plain language: what it is, where it is, and what monthly yield the owner expects.",
+        "Attach the supporting documents. Stream Engine fingerprints them in-browser and keeps the raw files private by default.",
+        "Let the app generate the internal property reference, verification tag seed, and public metadata package automatically.",
         "Mint the rental twin and read the signed v2 verification payload that comes back from the API.",
         "If the asset type has required attestation roles, collect and record them to move from Pending Attestation to verified.",
         "Fund the asset-linked yield stream.",

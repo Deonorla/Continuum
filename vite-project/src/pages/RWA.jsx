@@ -162,6 +162,51 @@ const MINT_FORM_DEFAULT = {
   taxExpiry: "",
 };
 
+const FRIENDLY_EVIDENCE_FIELDS = [
+  {
+    hashField: "deedHash",
+    expiryField: "",
+    label: "Title or deed document",
+    helper:
+      "Upload the title deed or proof-of-ownership document. The app fingerprints it locally and stores only the hash.",
+  },
+  {
+    hashField: "surveyHash",
+    expiryField: "",
+    label: "Survey or site plan",
+    helper:
+      "Upload the survey, site plan, or location evidence. Only the generated hash is anchored.",
+  },
+  {
+    hashField: "valuationHash",
+    expiryField: "valuationExpiry",
+    label: "Valuation report",
+    helper:
+      "Upload the latest valuation report, then set when it expires so the verifier knows when it becomes stale.",
+  },
+  {
+    hashField: "inspectionHash",
+    expiryField: "inspectionExpiry",
+    label: "Inspection report",
+    helper:
+      "Upload the inspection report so the verifier can check whether the asset is still current and fit for use.",
+  },
+  {
+    hashField: "insuranceHash",
+    expiryField: "insuranceExpiry",
+    label: "Insurance proof",
+    helper:
+      "Upload the active insurance certificate or cover note. Only the fingerprint is used publicly.",
+  },
+  {
+    hashField: "taxHash",
+    expiryField: "taxExpiry",
+    label: "Tax clearance or tax record",
+    helper:
+      "Upload the tax evidence that proves the asset record is current for its jurisdiction.",
+  },
+];
+
 function buildAssetMetadata(form) {
   return {
     name: form.name.trim() || "Untitled rental asset",
@@ -172,6 +217,7 @@ function buildAssetMetadata(form) {
     rightsModel: form.rightsModel,
     location: form.location.trim() || "Undisclosed",
     jurisdiction: form.jurisdiction.trim() || "Undisclosed",
+    propertyRef: form.propertyRef.trim(),
     monthlyYieldTarget: Number(form.monthlyYieldTarget || 0),
     accessMechanism: "Evidence-backed QR / NFC verification payload",
     tagSeed: form.tagSeed.trim(),
@@ -180,6 +226,7 @@ function buildAssetMetadata(form) {
       accessMechanism: "Evidence-backed QR / NFC verification payload",
       rightsModel: form.rightsModel,
       jurisdiction: form.jurisdiction.trim() || "Undisclosed",
+      propertyRef: form.propertyRef.trim(),
     },
     attributes: [
       { trait_type: "Asset Type", value: form.type },
@@ -199,6 +246,10 @@ function buildAssetMetadata(form) {
       {
         trait_type: "Jurisdiction",
         value: form.jurisdiction.trim() || "Undisclosed",
+      },
+      {
+        trait_type: "Property Reference",
+        value: form.propertyRef.trim(),
       },
     ],
   };
@@ -225,6 +276,67 @@ function stableStringify(value) {
 
 function hashJson(value) {
   return ethers.keccak256(ethers.toUtf8Bytes(stableStringify(value)));
+}
+
+function slugifyIdentifierSegment(value, fallback = "asset") {
+  const normalized = String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+
+  return normalized || fallback.toUpperCase();
+}
+
+function generatePropertyRef(form) {
+  const typeCode =
+    {
+      real_estate: "REA",
+      vehicle: "VEH",
+      commodity: "EQP",
+    }[form.type] || "AST";
+  const nameSegment = slugifyIdentifierSegment(form.name, "UNTITLED").slice(
+    0,
+    18,
+  );
+  const locationSegment = slugifyIdentifierSegment(
+    form.location,
+    form.jurisdiction || "UNDISCLOSED",
+  ).slice(0, 18);
+
+  return `${typeCode}-${locationSegment}-${nameSegment}`;
+}
+
+function generateTagSeed(form, propertyRef) {
+  const identityHash = hashJson({
+    type: form.type,
+    name: form.name,
+    location: form.location,
+    jurisdiction: form.jurisdiction,
+    propertyRef,
+  });
+
+  return `${propertyRef}-TAG-${identityHash.slice(2, 10).toUpperCase()}`;
+}
+
+function normalizeMintForm(form) {
+  const propertyRef = form.propertyRef.trim() || generatePropertyRef(form);
+  const tagSeed = form.tagSeed.trim() || generateTagSeed(form, propertyRef);
+
+  return {
+    ...form,
+    propertyRef,
+    tagSeed,
+  };
+}
+
+async function hashFileToHex(file) {
+  const buffer = await file.arrayBuffer();
+  const digest = await window.crypto.subtle.digest("SHA-256", buffer);
+  return `0x${Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")}`;
 }
 
 function textToHex(value) {
@@ -515,20 +627,63 @@ function MintPanel({
   onOpenWorkspace,
 }) {
   const [form, setForm] = useState(MINT_FORM_DEFAULT);
-  const previewName = form.name.trim() || "Untitled rental asset";
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [documentState, setDocumentState] = useState({});
+  const normalizedForm = useMemo(() => normalizeMintForm(form), [form]);
+  const previewName = normalizedForm.name.trim() || "Untitled rental asset";
   const previewDescription =
-    form.description.trim() ||
+    normalizedForm.description.trim() ||
     "Describe the rental unit, evidence posture, and income model.";
-  const previewLocation = form.location.trim() || "Undisclosed";
-  const previewYield = Number(form.monthlyYieldTarget || 0);
+  const previewLocation = normalizedForm.location.trim() || "Undisclosed";
+  const previewYield = Number(normalizedForm.monthlyYieldTarget || 0);
 
   const updateField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
   };
 
+  const handleDocumentSelected = async (hashField, file) => {
+    if (!file) {
+      return;
+    }
+
+    setDocumentState((current) => ({
+      ...current,
+      [hashField]: {
+        name: file.name,
+        status: "hashing",
+        error: "",
+      },
+    }));
+
+    try {
+      const hash = await hashFileToHex(file);
+      updateField(hashField, hash);
+      setDocumentState((current) => ({
+        ...current,
+        [hashField]: {
+          name: file.name,
+          status: "ready",
+          hash,
+          error: "",
+        },
+      }));
+    } catch (error) {
+      console.error("Failed to fingerprint evidence document", error);
+      setDocumentState((current) => ({
+        ...current,
+        [hashField]: {
+          name: file.name,
+          status: "error",
+          error:
+            error.message || "Unable to fingerprint this document in-browser.",
+        },
+      }));
+    }
+  };
+
   const handleSubmit = (event) => {
     event.preventDefault();
-    onMint(form);
+    onMint(normalizedForm);
   };
 
   return (
@@ -541,7 +696,7 @@ function MintPanel({
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">
-                Mint Asset
+                Create Rental Asset
               </div>
             </div>
             {walletAddress ? (
@@ -560,6 +715,15 @@ function MintPanel({
           </div>
 
           <div className="mt-6 space-y-5">
+            <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/8 p-4 text-sm leading-6 text-white/72">
+              <div className="font-semibold text-cyan-200">
+                Guided owner flow
+              </div>
+              <div className="mt-2">
+                Tell Stream Engine what the asset is, attach the supporting documents, and mint the rental twin. Internal references, verification tag seeds, and evidence fingerprints are generated automatically unless you open the advanced controls.
+              </div>
+            </div>
+
             <div>
               <div className="mb-2 text-sm text-white/70">Asset type</div>
               <div className="grid gap-3 sm:grid-cols-3">
@@ -621,24 +785,15 @@ function MintPanel({
             </label>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-1.5 block text-sm text-white/70">
-                  Rights model
-                </span>
-                <select
-                  className="input-default w-full"
-                  value={form.rightsModel}
-                  onChange={(event) =>
-                    updateField("rightsModel", event.target.value)
-                  }
-                >
-                  {Object.entries(RIGHTS_MODEL_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="text-sm text-white/70">Ownership model</div>
+                <div className="mt-2 text-base font-semibold text-white">
+                  {RIGHTS_MODEL_LABELS[normalizedForm.rightsModel]}
+                </div>
+                <p className="mt-2 text-sm leading-6 text-white/55">
+                  This is the recommended mode for normal rental assets. It creates a verified rental twin whose future rental yield follows NFT ownership.
+                </p>
+              </div>
               <label className="block">
                 <span className="mb-1.5 block text-sm text-white/70">
                   Location
@@ -684,20 +839,6 @@ function MintPanel({
 
             <label className="block">
               <span className="mb-1.5 block text-sm text-white/70">
-                Property / asset reference
-              </span>
-              <input
-                className="input-default w-full"
-                value={form.propertyRef}
-                onChange={(event) =>
-                  updateField("propertyRef", event.target.value)
-                }
-                placeholder="plot-42-block-7 / VIN / chassis / yard slot"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-1.5 block text-sm text-white/70">
                 Image URL
               </span>
               <input
@@ -710,169 +851,197 @@ function MintPanel({
               />
             </label>
 
-            <label className="block">
-              <span className="mb-1.5 block text-sm text-white/70">
-                QR / NFC tag seed
-              </span>
-              <input
-                className="input-default w-full"
-                value={form.tagSeed}
-                onChange={(event) => updateField("tagSeed", event.target.value)}
-                placeholder="Tag serial, NFC UID, or internal reference"
-              />
-            </label>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <div className="text-sm font-semibold text-white">
+                Internal tracking details
+              </div>
+              <p className="mt-2 text-sm leading-6 text-white/55">
+                Stream Engine will generate the internal asset reference and verification tag for you. Advanced operators can override them if needed.
+              </p>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <div className="rounded-2xl bg-black/20 p-4">
+                  <div className="text-xs uppercase tracking-[0.18em] text-white/45">
+                    Generated asset reference
+                  </div>
+                  <div className="mt-2 break-all font-mono text-xs text-white/72">
+                    {normalizedForm.propertyRef}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-black/20 p-4">
+                  <div className="text-xs uppercase tracking-[0.18em] text-white/45">
+                    Generated verification tag
+                  </div>
+                  <div className="mt-2 break-all font-mono text-xs text-white/72">
+                    {normalizedForm.tagSeed}
+                  </div>
+                </div>
+              </div>
+            </div>
 
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
               <div className="text-sm font-semibold text-white">
                 Private Evidence Bundle
               </div>
               <p className="mt-2 text-sm leading-6 text-white/55">
-                These hashes stay in the private evidence vault. The public NFT metadata stays sanitized; the deed, survey, tax, insurance, and inspection proofs stay server-side and only their roots are anchored onchain.
+                Attach the real documents here. Stream Engine fingerprints them in your browser, keeps the raw files private, and anchors only the evidence roots and summaries the verifier needs.
               </p>
 
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1.5 block text-sm text-white/70">
-                    Deed hash
-                  </span>
-                  <input
-                    className="input-default w-full"
-                    value={form.deedHash}
-                    onChange={(event) =>
-                      updateField("deedHash", event.target.value)
-                    }
-                    placeholder="0x..."
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-sm text-white/70">
-                    Survey hash
-                  </span>
-                  <input
-                    className="input-default w-full"
-                    value={form.surveyHash}
-                    onChange={(event) =>
-                      updateField("surveyHash", event.target.value)
-                    }
-                    placeholder="0x..."
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-sm text-white/70">
-                    Valuation hash
-                  </span>
-                  <input
-                    className="input-default w-full"
-                    value={form.valuationHash}
-                    onChange={(event) =>
-                      updateField("valuationHash", event.target.value)
-                    }
-                    placeholder="0x..."
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-sm text-white/70">
-                    Valuation expiry
-                  </span>
-                  <input
-                    type="date"
-                    className="input-default w-full"
-                    value={form.valuationExpiry}
-                    onChange={(event) =>
-                      updateField("valuationExpiry", event.target.value)
-                    }
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-sm text-white/70">
-                    Inspection hash
-                  </span>
-                  <input
-                    className="input-default w-full"
-                    value={form.inspectionHash}
-                    onChange={(event) =>
-                      updateField("inspectionHash", event.target.value)
-                    }
-                    placeholder="0x..."
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-sm text-white/70">
-                    Inspection expiry
-                  </span>
-                  <input
-                    type="date"
-                    className="input-default w-full"
-                    value={form.inspectionExpiry}
-                    onChange={(event) =>
-                      updateField("inspectionExpiry", event.target.value)
-                    }
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-sm text-white/70">
-                    Insurance hash
-                  </span>
-                  <input
-                    className="input-default w-full"
-                    value={form.insuranceHash}
-                    onChange={(event) =>
-                      updateField("insuranceHash", event.target.value)
-                    }
-                    placeholder="0x..."
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-sm text-white/70">
-                    Insurance expiry
-                  </span>
-                  <input
-                    type="date"
-                    className="input-default w-full"
-                    value={form.insuranceExpiry}
-                    onChange={(event) =>
-                      updateField("insuranceExpiry", event.target.value)
-                    }
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-sm text-white/70">
-                    Tax record hash
-                  </span>
-                  <input
-                    className="input-default w-full"
-                    value={form.taxHash}
-                    onChange={(event) =>
-                      updateField("taxHash", event.target.value)
-                    }
-                    placeholder="0x..."
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-sm text-white/70">
-                    Tax record expiry
-                  </span>
-                  <input
-                    type="date"
-                    className="input-default w-full"
-                    value={form.taxExpiry}
-                    onChange={(event) =>
-                      updateField("taxExpiry", event.target.value)
-                    }
-                  />
-                </label>
+                {FRIENDLY_EVIDENCE_FIELDS.map((field) => {
+                  const upload = documentState[field.hashField];
+                  return (
+                    <div
+                      key={field.hashField}
+                      className="rounded-2xl border border-white/10 bg-black/15 p-4"
+                    >
+                      <div className="text-sm font-semibold text-white">
+                        {field.label}
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-white/55">
+                        {field.helper}
+                      </p>
+                      <input
+                        type="file"
+                        className="mt-3 block w-full text-sm text-white/72 file:mr-4 file:rounded-full file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
+                        onChange={(event) =>
+                          handleDocumentSelected(
+                            field.hashField,
+                            event.target.files?.[0],
+                          )
+                        }
+                      />
+                      <div className="mt-3 rounded-2xl bg-black/20 p-3 text-xs text-white/65">
+                        {upload?.status === "hashing"
+                          ? "Fingerprinting document locally..."
+                          : upload?.status === "ready"
+                            ? `${upload.name} hashed and ready`
+                            : upload?.status === "error"
+                              ? upload.error
+                              : form[field.hashField]
+                                ? "Manual evidence hash provided"
+                                : "No document attached yet"}
+                      </div>
+                      {form[field.hashField] ? (
+                        <div className="mt-2 break-all font-mono text-[11px] text-white/45">
+                          {form[field.hashField]}
+                        </div>
+                      ) : null}
+                      {field.expiryField ? (
+                        <label className="mt-3 block">
+                          <span className="mb-1.5 block text-sm text-white/70">
+                            Expiry date
+                          </span>
+                          <input
+                            type="date"
+                            className="input-default w-full"
+                            value={form[field.expiryField]}
+                            onChange={(event) =>
+                              updateField(field.expiryField, event.target.value)
+                            }
+                          />
+                        </label>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between text-left"
+                onClick={() => setShowAdvanced((current) => !current)}
+              >
+                <div>
+                  <div className="text-sm font-semibold text-white">
+                    Advanced operator controls
+                  </div>
+                  <div className="mt-1 text-sm text-white/55">
+                    Override the generated reference, tag seed, rights model, or manual evidence hashes only if you know exactly why you need to.
+                  </div>
+                </div>
+                <div className="text-sm text-cyan-200">
+                  {showAdvanced ? "Hide" : "Show"}
+                </div>
+              </button>
+
+              {showAdvanced ? (
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm text-white/70">
+                      Rights model
+                    </span>
+                    <select
+                      className="input-default w-full"
+                      value={form.rightsModel}
+                      onChange={(event) =>
+                        updateField("rightsModel", event.target.value)
+                      }
+                    >
+                      {Object.entries(RIGHTS_MODEL_LABELS).map(
+                        ([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm text-white/70">
+                      Internal asset reference
+                    </span>
+                    <input
+                      className="input-default w-full"
+                      value={form.propertyRef}
+                      onChange={(event) =>
+                        updateField("propertyRef", event.target.value)
+                      }
+                      placeholder={normalizedForm.propertyRef}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm text-white/70">
+                      Verification tag seed
+                    </span>
+                    <input
+                      className="input-default w-full"
+                      value={form.tagSeed}
+                      onChange={(event) =>
+                        updateField("tagSeed", event.target.value)
+                      }
+                      placeholder={normalizedForm.tagSeed}
+                    />
+                  </label>
+                  {FRIENDLY_EVIDENCE_FIELDS.map((field) => (
+                    <label className="block" key={`${field.hashField}-advanced`}>
+                      <span className="mb-1.5 block text-sm text-white/70">
+                        {field.label} hash
+                      </span>
+                      <input
+                        className="input-default w-full"
+                        value={form[field.hashField]}
+                        onChange={(event) =>
+                          updateField(field.hashField, event.target.value)
+                        }
+                        placeholder="0x..."
+                      />
+                    </label>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
               <button
                 type="button"
                 className="btn-default w-full justify-center"
-                onClick={() => onPrepareMetadata(form)}
+                onClick={() => onPrepareMetadata(normalizedForm)}
                 disabled={isPreparingMetadata}
               >
                 <Link2 className="h-4 w-4" />
-                {isPreparingMetadata ? "Pinning..." : "Prepare IPFS"}
+                {isPreparingMetadata ? "Preparing..." : "Preview public listing"}
               </button>
 
               <button
@@ -881,14 +1050,14 @@ function MintPanel({
                 disabled={isMinting}
               >
                 <Plus className="h-4 w-4" />
-                {isMinting ? "Minting..." : "Mint asset"}
+                {isMinting ? "Creating..." : "Create rental twin"}
               </button>
             </div>
 
             {preparedMetadata && (
               <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/8 p-4">
                 <div className="text-sm font-semibold text-cyan-200">
-                  Prepared metadata pinned to IPFS
+                  Public listing prepared
                 </div>
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
                   <div className="rounded-2xl bg-black/20 p-3">
@@ -921,10 +1090,10 @@ function MintPanel({
             <div className="mt-4 rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
               <div
                 className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
-                  TYPE_META[form.type].color
+                  TYPE_META[normalizedForm.type].color
                 } bg-white/8`}
               >
-                {TYPE_META[form.type].label}
+                {TYPE_META[normalizedForm.type].label}
               </div>
               <div className="mt-4 text-xl font-semibold text-white">
                 {previewName}
@@ -945,16 +1114,16 @@ function MintPanel({
                   <div className="text-xs uppercase tracking-[0.18em] text-white/45">
                     Rights Model
                   </div>
-                  <div className="mt-2 text-sm font-medium text-white/82">
-                    {RIGHTS_MODEL_LABELS[form.rightsModel]}
+                    <div className="mt-2 text-sm font-medium text-white/82">
+                    {RIGHTS_MODEL_LABELS[normalizedForm.rightsModel]}
+                    </div>
                   </div>
-                </div>
                 <div className="rounded-2xl bg-black/20 p-4">
                   <div className="text-xs uppercase tracking-[0.18em] text-white/45">
                     Jurisdiction
                   </div>
                   <div className="mt-2 text-sm font-medium text-white/82">
-                    {form.jurisdiction || "Undisclosed"}
+                    {normalizedForm.jurisdiction || "Undisclosed"}
                   </div>
                 </div>
                 <div className="rounded-2xl bg-black/20 p-4">
@@ -963,6 +1132,14 @@ function MintPanel({
                   </div>
                   <div className="mt-2 text-sm font-medium text-white/82">
                     {previewYield.toLocaleString()}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-black/20 p-4 sm:col-span-2">
+                  <div className="text-xs uppercase tracking-[0.18em] text-white/45">
+                    Internal Reference
+                  </div>
+                  <div className="mt-2 break-all font-mono text-xs text-white/72">
+                    {normalizedForm.propertyRef}
                   </div>
                 </div>
               </div>
@@ -3360,10 +3537,11 @@ export default function RWA() {
 
   const prepareMetadata = useCallback(
     async (form) => {
-      const metadata = buildAssetMetadata(form);
+      const normalizedForm = normalizeMintForm(form);
+      const metadata = buildAssetMetadata(normalizedForm);
       const fingerprint = JSON.stringify(metadata);
       setIsPreparingMetadata(true);
-      setStatus("Pinning metadata to IPFS...");
+      setStatus("Preparing the public listing...");
 
       try {
         const result = await pinRwaMetadata(metadata);
@@ -3374,13 +3552,13 @@ export default function RWA() {
           fingerprint,
           metadata,
         });
-        setStatus(`Prepared metadata at ${result.uri}.`);
-        toast.success("Metadata pinned to IPFS.", { title: "IPFS ready" });
+        setStatus(`Prepared public listing at ${result.uri}.`);
+        toast.success("Public listing prepared.", { title: "Listing ready" });
       } catch (error) {
         console.error("Failed to pin metadata", error);
-        setStatus("IPFS metadata preparation failed.");
-        toast.error(error.message || "Unable to pin metadata right now.", {
-          title: "IPFS failed",
+        setStatus("Public listing preparation failed.");
+        toast.error(error.message || "Unable to prepare the public listing right now.", {
+          title: "Listing failed",
         });
       } finally {
         setIsPreparingMetadata(false);
@@ -3671,6 +3849,7 @@ export default function RWA() {
       return;
     }
 
+    const mintForm = normalizeMintForm(form);
     const requiredEvidenceFields = [
       "deedHash",
       "surveyHash",
@@ -3680,17 +3859,11 @@ export default function RWA() {
       "taxHash",
     ];
     const missingEvidence = requiredEvidenceFields.filter(
-      (field) => !String(form[field] || "").trim(),
+      (field) => !String(mintForm[field] || "").trim(),
     );
-    if (!form.propertyRef.trim()) {
-      toast.warning("Add a property or asset reference before minting.", {
-        title: "Reference required",
-      });
-      return;
-    }
     if (missingEvidence.length > 0) {
       toast.warning(
-        "Fill the private evidence hashes before minting the rental twin.",
+        "Attach each required document so Stream Engine can fingerprint it before minting the rental twin.",
         { title: "Evidence required" },
       );
       return;
@@ -3698,8 +3871,8 @@ export default function RWA() {
 
     setIsMintingAsset(true);
     setStatus("Anchoring evidence, authorizing issuer, and minting the rental twin...");
-    const metadata = buildAssetMetadata(form);
-    const evidenceBundle = buildEvidenceBundle(form);
+    const metadata = buildAssetMetadata(mintForm);
+    const evidenceBundle = buildEvidenceBundle(mintForm);
     const preparedFingerprint = JSON.stringify(metadata);
     const preparedUri =
       preparedMetadata?.fingerprint === preparedFingerprint
@@ -3709,32 +3882,32 @@ export default function RWA() {
     try {
       const publicMetadataHash = hashJson(metadata);
       const evidenceResponse = await storeRwaEvidence({
-        rightsModel: form.rightsModel,
-        propertyRef: form.propertyRef.trim(),
-        jurisdiction: form.jurisdiction.trim(),
+        rightsModel: mintForm.rightsModel,
+        propertyRef: mintForm.propertyRef.trim(),
+        jurisdiction: mintForm.jurisdiction.trim(),
         evidenceBundle,
       });
       const issuerAuthorization = await signIssuerAuthorization({
         issuer: walletAddress,
-        rightsModel: form.rightsModel,
-        jurisdiction: form.jurisdiction.trim(),
-        propertyRef: form.propertyRef.trim(),
+        rightsModel: mintForm.rightsModel,
+        jurisdiction: mintForm.jurisdiction.trim(),
+        propertyRef: mintForm.propertyRef.trim(),
         publicMetadataHash,
         evidenceRoot: evidenceResponse.evidenceRoot,
       });
 
       const response = await mintRwaAsset({
         issuer: walletAddress,
-        assetType: TYPE_TO_CHAIN_ASSET_TYPE[form.type] || 1,
-        rightsModel: form.rightsModel,
-        jurisdiction: form.jurisdiction.trim(),
-        propertyRef: form.propertyRef.trim(),
+        assetType: TYPE_TO_CHAIN_ASSET_TYPE[mintForm.type] || 1,
+        rightsModel: mintForm.rightsModel,
+        jurisdiction: mintForm.jurisdiction.trim(),
+        propertyRef: mintForm.propertyRef.trim(),
         publicMetadata: preparedUri ? metadata : metadata,
         publicMetadataURI: preparedUri || undefined,
         evidenceRoot: evidenceResponse.evidenceRoot,
         evidenceManifestHash: evidenceResponse.evidenceManifestHash,
         issuerAuthorization,
-        tag: form.tagSeed.trim(),
+        tag: mintForm.tagSeed.trim(),
       });
 
       const asset = mapApiAssetToUiAsset({
@@ -3763,7 +3936,7 @@ export default function RWA() {
         payload: asset.verificationPayload || "",
         tokenId: String(asset.tokenId),
         cidOrUri: asset.ipfsUri,
-        propertyRef: form.propertyRef.trim(),
+        propertyRef: mintForm.propertyRef.trim(),
       });
       setVerificationResult(null);
       setStatus(`Minted Asset #${asset.tokenId} in RWA Studio.`);

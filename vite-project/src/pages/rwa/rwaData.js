@@ -291,7 +291,11 @@ function buildCid(id) {
 function encodeVerificationPayload(payload) {
   const json = JSON.stringify(payload);
   if (typeof Buffer !== 'undefined') {
-    return Buffer.from(json, 'utf8').toString('base64url');
+    return Buffer.from(json, 'utf8')
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/g, '');
   }
 
   const bytes = new TextEncoder().encode(json);

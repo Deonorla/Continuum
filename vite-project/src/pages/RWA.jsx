@@ -979,6 +979,31 @@ function MintPanel({
                   <CheckCircle2 className="h-4 w-4" />
                   Asset #{lastMint.id} prepared
                 </div>
+                <div className="mt-3 rounded-2xl bg-black/25 p-3 text-sm leading-6 text-white/72">
+                  The mint step creates the verified rental twin in{" "}
+                  <span className="font-semibold text-white">
+                    Pending Attestation
+                  </span>{" "}
+                  state. Open the workspace next to record the required role
+                  attestations and move the asset toward verified status.
+                </div>
+                {lastMint.attestationRequirements?.length ? (
+                  <div className="mt-3 rounded-2xl bg-black/25 p-3">
+                    <div className="text-xs uppercase tracking-[0.18em] text-white/45">
+                      Required attestation roles
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-white/72">
+                      {lastMint.attestationRequirements.map((policy) => (
+                        <span
+                          key={`${policy.roleLabel}-${policy.maxAge || 0}`}
+                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1"
+                        >
+                          {policy.roleLabel}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="mt-3 rounded-2xl bg-black/25 p-3 font-mono text-xs text-white/70 break-all">
                   {lastMint.verificationPayload}
                 </div>
@@ -2129,6 +2154,16 @@ function AssetWorkspacePanel({
                 </div>
                 <div className="mt-2 break-all font-mono text-xs text-white/72">
                   {asset.publicMetadataHash || "Unavailable"}
+                </div>
+              </div>
+              <div className="rounded-2xl bg-black/20 p-4">
+                <div className="text-xs uppercase tracking-[0.18em] text-white/45">
+                  Verification Updated
+                </div>
+                <div className="mt-2 text-sm text-white/82">
+                  {asset.verificationUpdatedAt
+                    ? formatTimestamp(asset.verificationUpdatedAt)
+                    : "Unavailable"}
                 </div>
               </div>
             </div>
@@ -3676,6 +3711,7 @@ export default function RWA() {
         evidenceSummary: response.evidenceSummary,
         activity: response.asset?.activity || [],
       });
+      asset.attestationRequirements = response.attestationRequirements || [];
       asset.verificationPayload =
         response.verificationPayload || asset.verificationPayload;
       asset.verificationUrl = response.verificationUrl || asset.verificationUrl;

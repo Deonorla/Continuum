@@ -422,8 +422,8 @@ describe("RWA API Integration", function () {
         expect(response.status).to.equal(201);
         expect(response.body.tokenId).to.equal(7);
         expect(response.body.publicMetadataURI).to.equal("ipfs://bafytestcid");
+        expect(response.body.verificationStatus).to.equal("pending_attestation");
         expect(response.body.verificationPayload).to.be.a("string");
-        expect(response.body.legacyVerificationPayload).to.be.a("string");
         expect(response.body.evidenceSummary.missingRequiredDocuments).to.deep.equal([]);
         expect(response.body.attestationRequirements).to.have.length(2);
         expect(response.body.asset.tokenId).to.equal(7);

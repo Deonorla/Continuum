@@ -3,7 +3,6 @@ const cors = require("cors");
 const flowPayMiddleware = require("./middleware/flowPayMiddleware");
 const { IPFSService, normalizeCid } = require("./services/ipfsService");
 const {
-    buildLegacyVerificationPayload,
     buildVerificationPayload,
     buildVerificationUrl,
     parseVerificationPayload,
@@ -508,14 +507,6 @@ function createApp(config = defaultConfig) {
             verificationStatus: "pending_attestation",
             signer: chainService.signer || null,
         });
-        const legacyVerificationPayload = buildLegacyVerificationPayload({
-            chainId,
-            assetContract: chainService.assetNFTAddress,
-            tokenId: mintResult.tokenId,
-            cid: normalizeCid(resolvedPublicMetadataURI),
-            tagHash: resolvedTagHash,
-        });
-
         res.status(201).json({
             tokenId: mintResult.tokenId,
             txHash: mintResult.txHash,
@@ -523,8 +514,9 @@ function createApp(config = defaultConfig) {
             publicMetadataHash,
             evidenceRoot: evidenceRecord.evidenceRoot,
             evidenceManifestHash: evidenceRecord.evidenceManifestHash,
+            verificationStatus: hydratedSnapshot?.verificationStatusLabel || "pending_attestation",
+            statusReason: hydratedSnapshot?.statusReason || statusReason,
             verificationPayload,
-            legacyVerificationPayload,
             verificationUrl: buildVerificationUrl(resolvedConfig.appBaseUrl, verificationPayload),
             verificationApiUrl: `${resolvedConfig.appBaseUrl.replace(/5173$/, "3001")}/api/rwa/verify`,
             asset: hydratedSnapshot,

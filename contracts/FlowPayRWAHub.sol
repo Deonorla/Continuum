@@ -9,7 +9,10 @@ import "./FlowPayAssetStream.sol";
 import "./FlowPayAssetAttestationRegistry.sol";
 
 contract FlowPayRWAHub is Owned {
+    uint8 private constant MIN_ATTESTATION_ROLE = 1;
+    uint8 private constant MAX_ATTESTATION_ROLE = 7;
     uint8 public constant STATUS_PENDING_ATTESTATION = 1;
+    uint8 public constant STATUS_VERIFIED = 2;
     uint8 public constant STATUS_FROZEN = 5;
     uint8 public constant STATUS_REVOKED = 6;
     uint8 public constant STATUS_DISPUTED = 7;
@@ -105,6 +108,9 @@ contract FlowPayRWAHub is Owned {
         require(evidenceRoot != bytes32(0), "FlowPayRWAHub: evidence root is required");
         require(complianceGuard.isIssuerApproved(issuer), "FlowPayRWAHub: issuer not approved");
 
+        uint8 initialStatus = _requiresAttestation(assetType)
+            ? STATUS_PENDING_ATTESTATION
+            : STATUS_VERIFIED;
         tokenId = assetNFT.mintTo(issuer, publicMetadataURI);
         assetRegistry.registerAsset(
             tokenId,
@@ -119,7 +125,7 @@ contract FlowPayRWAHub is Owned {
             evidenceManifestHash,
             cidHash,
             tagHash,
-            STATUS_PENDING_ATTESTATION,
+            initialStatus,
             statusReason
         );
 
@@ -134,7 +140,7 @@ contract FlowPayRWAHub is Owned {
             propertyRefHash
         );
         emit VerificationPayloadUpdated(tokenId, cidHash, tagHash);
-        emit AssetVerificationStateUpdated(tokenId, STATUS_PENDING_ATTESTATION, statusReason);
+        emit AssetVerificationStateUpdated(tokenId, initialStatus, statusReason);
     }
 
     function createAssetYieldStream(uint256 tokenId, uint256 totalAmount, uint256 duration)
@@ -362,5 +368,15 @@ contract FlowPayRWAHub is Owned {
     function _requireAssetExists(uint256 tokenId) internal view {
         FlowPayAssetRegistry.AssetRecord memory asset = assetRegistry.getAsset(tokenId);
         require(asset.exists, "FlowPayRWAHub: asset not found");
+    }
+
+    function _requiresAttestation(uint8 assetType) internal view returns (bool) {
+        for (uint8 role = MIN_ATTESTATION_ROLE; role <= MAX_ATTESTATION_ROLE; role++) {
+            (bool required,) = complianceGuard.getAttestationPolicy(assetType, role);
+            if (required) {
+                return true;
+            }
+        }
+        return false;
     }
 }

@@ -555,6 +555,7 @@ export function mapApiAssetToUiAsset(asset = {}) {
     statusReason: asset.statusReason || '',
     evidenceRoot: asset.evidenceRoot || '',
     evidenceManifestHash: asset.evidenceManifestHash || '',
+    verificationUpdatedAt: asset.verificationUpdatedAt || 0,
     evidenceSummary,
     attestationPolicies: asset.attestationPolicies || [],
     attestations: asset.attestations || [],

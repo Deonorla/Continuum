@@ -156,6 +156,18 @@ describe("FlowPay RWA Module", function () {
         expect(asset.statusReason).to.equal(minted.statusReason);
     });
 
+    it("starts as verified when the asset type has no required attestation policy", async function () {
+        await hub.setAttestationPolicy(ASSET_TYPE_RENTAL, ROLE_LAWYER, false, 0);
+        await hub.setAttestationPolicy(ASSET_TYPE_RENTAL, ROLE_INSPECTOR, false, 0);
+
+        const minted = await mintAsset({
+            statusReason: "no required attestation policy configured",
+        });
+        const asset = await hub.getAsset(minted.tokenId);
+
+        expect(asset.verificationStatus).to.equal(STATUS_VERIFIED);
+    });
+
     it("records attestations, supports revocation, and updates verification status", async function () {
         const minted = await mintAsset();
 

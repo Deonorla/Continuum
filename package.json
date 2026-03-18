@@ -4,9 +4,10 @@
   "description": "Stream Engine - x402-compatible agent payments and rental RWA streaming on Polkadot",
   "main": "index.js",
   "scripts": {
-    "test": "npm run test:contracts && npm run test:sdk",
+    "test": "npm run test:contracts && npm run test:sdk && npm run test:web",
     "test:contracts": "npx hardhat test",
     "test:sdk": "npm --prefix sdk run test:all",
+    "test:web": "npm --prefix vite-project run test",
     "test:integration": "npm --prefix sdk run test:integration",
     "deploy:polkadot": "npx hardhat run scripts/deploy.js --network polkadot",
     "deploy:rwa:polkadot": "npx hardhat run scripts/deploy-rwa.js --network polkadot",

@@ -31,6 +31,14 @@ export default function Layout({ children }) {
     disconnectWallet,
   } = useWallet();
 
+  const orderedWallets = [...availableWallets].sort((left, right) => {
+    if (left.id === 'substrate:polkadot-js') return -1;
+    if (right.id === 'substrate:polkadot-js') return 1;
+    if (left.type === 'substrate' && right.type !== 'substrate') return -1;
+    if (left.type !== 'substrate' && right.type === 'substrate') return 1;
+    return left.name.localeCompare(right.name);
+  });
+
   return (
     <div className="min-h-screen w-full">
       <div className="absolute inset-0 bg-grid bg-[size:24px_24px] opacity-20 pointer-events-none" />
@@ -78,7 +86,7 @@ export default function Layout({ children }) {
 
       <WalletPickerModal
         isOpen={isWalletPickerOpen}
-        wallets={availableWallets.filter((w) => w.id === 'substrate:polkadot-js')}
+        wallets={orderedWallets}
         isConnecting={isConnectingWallet}
         activeWalletId={activeWallet?.id || ''}
         onClose={closeWalletPicker}

@@ -7,6 +7,12 @@ const {
     reviveCall,
     reviveRead,
 } = require("../../utils/substrate");
+const {
+    ATTESTATION_ROLE_CODES,
+    codeToAttestationRole,
+    codeToRightsModel,
+    codeToVerificationStatus,
+} = require("./rwaModel");
 
 function toNumber(value) {
     if (typeof value === "number") {
@@ -29,6 +35,8 @@ class RWAChainService {
         this.assetNFTAddress = config.assetNFTAddress || process.env.FLOWPAY_RWA_ASSET_NFT_ADDRESS || "";
         this.assetRegistryAddress =
             config.assetRegistryAddress || process.env.FLOWPAY_RWA_ASSET_REGISTRY_ADDRESS || "";
+        this.attestationRegistryAddress =
+            config.attestationRegistryAddress || process.env.FLOWPAY_RWA_ATTESTATION_REGISTRY_ADDRESS || "";
         this.assetStreamAddress =
             config.assetStreamAddress || process.env.FLOWPAY_RWA_ASSET_STREAM_ADDRESS || "";
         this.complianceGuardAddress =
@@ -58,12 +66,21 @@ class RWAChainService {
         this.substrateConfig = config.substrateConfig || null;
 
         this.hubAbi = [
-            "function mintAsset(string metadataURI, uint8 assetType, bytes32 cidHash, bytes32 tagHash, address issuer) external returns (uint256 tokenId)",
-            "function getAsset(uint256 tokenId) external view returns (uint8 assetType, bytes32 cidHash, bytes32 tagHash, address issuer, uint256 activeStreamId, string metadataURI, uint64 createdAt, uint64 updatedAt, bool exists, address currentOwner)",
+            "function mintAsset(string publicMetadataURI, uint8 assetType, uint8 rightsModel, bytes32 publicMetadataHash, bytes32 evidenceRoot, bytes32 evidenceManifestHash, bytes32 propertyRefHash, string jurisdiction, bytes32 cidHash, bytes32 tagHash, address issuer, string statusReason) external returns (uint256 tokenId)",
+            "function registerAttestation(uint256 tokenId, uint8 role, address attestor, bytes32 evidenceHash, string statementType, uint64 expiry) external returns (uint256 attestationId)",
+            "function revokeAttestation(uint256 attestationId, string reason) external",
+            "function setVerificationStatus(uint256 tokenId, uint8 status, string reason) external",
+            "function getAsset(uint256 tokenId) external view returns ((uint8 assetType, uint8 rightsModel, uint8 verificationStatus, bytes32 cidHash, bytes32 tagHash, bytes32 propertyRefHash, bytes32 publicMetadataHash, bytes32 evidenceRoot, bytes32 evidenceManifestHash, address issuer, uint256 activeStreamId, string jurisdiction, string publicMetadataURI, string statusReason, uint64 createdAt, uint64 updatedAt, uint64 verificationUpdatedAt, bool exists, address currentOwner) asset)",
             "function getAssetStream(uint256 tokenId) external view returns (uint256 streamId, address sender, uint8 assetType, uint256 totalAmount, uint256 flowRate, uint256 startTime, uint256 stopTime, uint256 amountWithdrawn, bool isActive, bool isFrozen)",
             "function claimableYield(uint256 tokenId) external view returns (uint256)",
             "function getVerificationStatus(uint256 tokenId, bytes32 cidHash, bytes32 tagHash) external view returns (bool assetExists, bool cidMatches, bool tagMatches, uint256 activeStreamId)",
-            "event AssetMinted(uint256 indexed tokenId, address indexed issuer, uint8 indexed assetType, string metadataURI)"
+            "function getAttestationIds(uint256 tokenId) external view returns (uint256[])",
+            "function getAttestation(uint256 attestationId) external view returns (uint256 tokenId, uint8 role, address attestor, bytes32 evidenceHash, string statementType, uint64 issuedAt, uint64 expiry, bool revoked, string revocationReason)",
+            "event AssetMinted(uint256 indexed tokenId, address indexed issuer, uint8 indexed assetType, uint8 rightsModel, string publicMetadataURI, bytes32 publicMetadataHash, bytes32 evidenceRoot, bytes32 propertyRefHash)",
+            "event AssetVerificationStateUpdated(uint256 indexed tokenId, uint8 indexed status, string reason)",
+            "event AssetEvidenceUpdated(uint256 indexed tokenId, bytes32 evidenceRoot, bytes32 evidenceManifestHash)",
+            "event AttestationRecorded(uint256 indexed tokenId, uint256 indexed attestationId, uint8 indexed role, address attestor, bytes32 evidenceHash, string statementType)",
+            "event AttestationRevoked(uint256 indexed tokenId, uint256 indexed attestationId, string reason)"
         ];
 
         this.assetNftAbi = [
@@ -74,10 +91,12 @@ class RWAChainService {
         ];
 
         this.registryAbi = [
-            "event AssetRegistered(uint256 indexed tokenId, address indexed issuer, uint8 indexed assetType, string metadataURI, bytes32 cidHash, bytes32 tagHash)",
+            "event AssetRegistered(uint256 indexed tokenId, address indexed issuer, uint8 indexed assetType, uint8 rightsModel, string publicMetadataURI, string jurisdiction, bytes32 propertyRefHash, bytes32 publicMetadataHash, bytes32 evidenceRoot, bytes32 evidenceManifestHash, bytes32 cidHash, bytes32 tagHash, uint8 verificationStatus, string statusReason)",
             "event AssetStreamLinked(uint256 indexed tokenId, uint256 indexed streamId)",
-            "event AssetMetadataUpdated(uint256 indexed tokenId, string metadataURI, bytes32 cidHash)",
-            "event VerificationTagUpdated(uint256 indexed tokenId, bytes32 previousTagHash, bytes32 newTagHash)"
+            "event AssetMetadataUpdated(uint256 indexed tokenId, string publicMetadataURI, bytes32 publicMetadataHash, bytes32 cidHash)",
+            "event AssetEvidenceUpdated(uint256 indexed tokenId, bytes32 evidenceRoot, bytes32 evidenceManifestHash)",
+            "event VerificationTagUpdated(uint256 indexed tokenId, bytes32 previousTagHash, bytes32 newTagHash)",
+            "event VerificationStatusUpdated(uint256 indexed tokenId, uint8 previousStatus, uint8 newStatus, string reason, uint64 updatedAt)"
         ];
 
         this.streamAbi = [
@@ -90,8 +109,18 @@ class RWAChainService {
 
         this.guardAbi = [
             "function getCompliance(address user, uint8 assetType) external view returns (bool approved, uint64 expiry, string jurisdiction, bool currentlyValid)",
+            "function getAssetPolicy(uint256 tokenId) external view returns (bool frozen, bool disputed, bool revoked, uint64 updatedAt, address updatedBy, string reason)",
+            "function getAttestationPolicy(uint8 assetType, uint8 role) external view returns (bool required, uint64 maxAge)",
             "event ComplianceUpdated(address indexed user, uint8 indexed assetType, bool approved, uint64 expiry, string jurisdiction)",
-            "event StreamFreezeUpdated(uint256 indexed streamId, bool frozen, string reason, address indexed updatedBy)"
+            "event StreamFreezeUpdated(uint256 indexed streamId, bool frozen, string reason, address indexed updatedBy)",
+            "event IssuerApprovalUpdated(address indexed issuer, bool approved, string note, address indexed updatedBy)",
+            "event AssetPolicyUpdated(uint256 indexed tokenId, bool frozen, bool disputed, bool revoked, string reason, address indexed updatedBy)",
+            "event AttestationPolicyUpdated(uint8 indexed assetType, uint8 indexed role, bool required, uint64 maxAge)"
+        ];
+
+        this.attestationAbi = [
+            "event AttestationRegistered(uint256 indexed attestationId, uint256 indexed tokenId, uint8 indexed role, address attestor, bytes32 evidenceHash, string statementType, uint64 issuedAt, uint64 expiry)",
+            "event AttestationRevoked(uint256 indexed attestationId, uint256 indexed tokenId, string reason)"
         ];
     }
 
@@ -120,21 +149,12 @@ class RWAChainService {
         return new ethers.Contract(address, abi, withSigner ? this.signer : this.provider);
     }
 
-    getInterfaces() {
-        return {
-            hub: new ethers.Interface(this.hubAbi),
-            nft: new ethers.Interface(this.assetNftAbi),
-            registry: new ethers.Interface(this.registryAbi),
-            stream: new ethers.Interface(this.streamAbi),
-            guard: new ethers.Interface(this.guardAbi),
-        };
-    }
-
     getEventSources() {
         return [
             { name: "hub", address: this.hubAddress, interface: new ethers.Interface(this.hubAbi) },
             { name: "nft", address: this.assetNFTAddress, interface: new ethers.Interface(this.assetNftAbi) },
             { name: "registry", address: this.assetRegistryAddress, interface: new ethers.Interface(this.registryAbi) },
+            { name: "attestation", address: this.attestationRegistryAddress, interface: new ethers.Interface(this.attestationAbi) },
             { name: "stream", address: this.assetStreamAddress, interface: new ethers.Interface(this.streamAbi) },
             { name: "guard", address: this.complianceGuardAddress, interface: new ethers.Interface(this.guardAbi) },
         ].filter((source) => Boolean(source.address));
@@ -173,12 +193,39 @@ class RWAChainService {
         return contract[functionName](...args);
     }
 
-    async mintAsset({ metadataURI, assetType, cidHash, tagHash, issuer }) {
+    async mintAsset({
+        publicMetadataURI,
+        assetType,
+        rightsModel,
+        publicMetadataHash,
+        evidenceRoot,
+        evidenceManifestHash,
+        propertyRefHash,
+        jurisdiction,
+        cidHash,
+        tagHash,
+        issuer,
+        statusReason,
+    }) {
         if (!this.hubAddress) {
             throw new Error("RWAChainService: hub contract missing");
         }
 
         const hub = this.getContract(this.hubAddress, this.hubAbi, !this.useSubstrateWrites);
+        const args = [
+            publicMetadataURI,
+            assetType,
+            rightsModel,
+            publicMetadataHash,
+            evidenceRoot,
+            evidenceManifestHash,
+            propertyRefHash,
+            jurisdiction,
+            cidHash,
+            tagHash,
+            issuer,
+            statusReason,
+        ];
 
         if (this.useSubstrateWrites) {
             const nextTokenId = await this.readContract(
@@ -191,7 +238,7 @@ class RWAChainService {
                 this.hubAddress,
                 new ethers.Interface(this.hubAbi),
                 "mintAsset",
-                [metadataURI, assetType, cidHash, tagHash, issuer]
+                args
             );
 
             return {
@@ -205,7 +252,7 @@ class RWAChainService {
             throw new Error("RWAChainService: signer missing");
         }
 
-        const tx = await hub.mintAsset(metadataURI, assetType, cidHash, tagHash, issuer);
+        const tx = await hub.mintAsset(...args);
         const receipt = await tx.wait();
 
         let tokenId = null;
@@ -228,6 +275,162 @@ class RWAChainService {
         };
     }
 
+    async registerAttestation({ tokenId, role, attestor, evidenceHash, statementType, expiry }) {
+        const args = [tokenId, role, attestor, evidenceHash, statementType, expiry];
+
+        if (this.useSubstrateWrites) {
+            const attestationIdsBefore = await this.readContract(this.hubAddress, this.hubAbi, "getAttestationIds", [tokenId]);
+            const result = await this.submitSubstrateWrite(
+                this.hubAddress,
+                new ethers.Interface(this.hubAbi),
+                "registerAttestation",
+                args
+            );
+            const attestationIdsAfter = await this.readContract(this.hubAddress, this.hubAbi, "getAttestationIds", [tokenId]);
+            const nextId = attestationIdsAfter.find(
+                (attestationId) => !(attestationIdsBefore || []).some((existing) => String(existing) === String(attestationId))
+            );
+            return {
+                attestationId: toNumber(nextId || 0),
+                txHash: result.txHash,
+                receipt: result,
+            };
+        }
+
+        const hub = this.getContract(this.hubAddress, this.hubAbi, true);
+        const tx = await hub.registerAttestation(...args);
+        const receipt = await tx.wait();
+
+        let attestationId = null;
+        for (const log of receipt.logs || []) {
+            try {
+                const parsed = hub.interface.parseLog(log);
+                if (parsed?.name === "AttestationRecorded") {
+                    attestationId = toNumber(parsed.args.attestationId);
+                    break;
+                }
+            } catch (error) {
+                // Ignore unrelated logs.
+            }
+        }
+
+        return {
+            attestationId,
+            txHash: tx.hash,
+            receipt,
+        };
+    }
+
+    async revokeAttestation({ attestationId, reason }) {
+        const args = [attestationId, reason];
+
+        if (this.useSubstrateWrites) {
+            const result = await this.submitSubstrateWrite(
+                this.hubAddress,
+                new ethers.Interface(this.hubAbi),
+                "revokeAttestation",
+                args
+            );
+            return {
+                txHash: result.txHash,
+                receipt: result,
+            };
+        }
+
+        const hub = this.getContract(this.hubAddress, this.hubAbi, true);
+        const tx = await hub.revokeAttestation(...args);
+        const receipt = await tx.wait();
+        return {
+            txHash: tx.hash,
+            receipt,
+        };
+    }
+
+    async setVerificationStatus({ tokenId, status, reason }) {
+        const args = [tokenId, status, reason];
+
+        if (this.useSubstrateWrites) {
+            const result = await this.submitSubstrateWrite(
+                this.hubAddress,
+                new ethers.Interface(this.hubAbi),
+                "setVerificationStatus",
+                args
+            );
+            return {
+                txHash: result.txHash,
+                receipt: result,
+            };
+        }
+
+        const hub = this.getContract(this.hubAddress, this.hubAbi, true);
+        const tx = await hub.setVerificationStatus(...args);
+        const receipt = await tx.wait();
+        return {
+            txHash: tx.hash,
+            receipt,
+        };
+    }
+
+    async getAttestationPolicies(assetType) {
+        if (!this.complianceGuardAddress) {
+            return [];
+        }
+
+        const policies = [];
+        for (const role of Object.values(ATTESTATION_ROLE_CODES)) {
+            const policy = await this.readContract(
+                this.complianceGuardAddress,
+                this.guardAbi,
+                "getAttestationPolicy",
+                [assetType, role]
+            );
+            if (!policy.required && toNumber(policy.maxAge) === 0) {
+                continue;
+            }
+            policies.push({
+                role,
+                roleLabel: codeToAttestationRole(role),
+                required: Boolean(policy.required),
+                maxAge: toNumber(policy.maxAge),
+            });
+        }
+
+        return policies;
+    }
+
+    async getAttestations(tokenId) {
+        if (!this.hubAddress) {
+            return [];
+        }
+
+        const attestationIds = await this.readContract(this.hubAddress, this.hubAbi, "getAttestationIds", [tokenId]);
+        const items = [];
+
+        for (const attestationId of attestationIds || []) {
+            const attestation = await this.readContract(
+                this.hubAddress,
+                this.hubAbi,
+                "getAttestation",
+                [attestationId]
+            );
+            items.push({
+                attestationId: toNumber(attestationId),
+                tokenId: toNumber(attestation.tokenId),
+                role: toNumber(attestation.role),
+                roleLabel: codeToAttestationRole(attestation.role),
+                attestor: attestation.attestor,
+                evidenceHash: attestation.evidenceHash,
+                statementType: attestation.statementType,
+                issuedAt: toNumber(attestation.issuedAt),
+                expiry: toNumber(attestation.expiry),
+                revoked: Boolean(attestation.revoked),
+                revocationReason: attestation.revocationReason,
+            });
+        }
+
+        return items;
+    }
+
     async getAssetSnapshot(tokenId) {
         if (!this.isConfigured()) {
             throw new Error("RWAChainService: contracts are not configured");
@@ -243,43 +446,79 @@ class RWAChainService {
         const tokenURI = await this.readContract(this.assetNFTAddress, this.assetNftAbi, "tokenURI", [tokenId]);
 
         let compliance = null;
+        let assetPolicy = null;
         if (this.complianceGuardAddress) {
             try {
-                const complianceResult = await this.readContract(
-                    this.complianceGuardAddress,
-                    this.guardAbi,
-                    "getCompliance",
-                    [asset.currentOwner, asset.assetType]
-                );
+                const [complianceResult, assetPolicyResult] = await Promise.all([
+                    this.readContract(
+                        this.complianceGuardAddress,
+                        this.guardAbi,
+                        "getCompliance",
+                        [asset.currentOwner, asset.assetType]
+                    ),
+                    this.readContract(
+                        this.complianceGuardAddress,
+                        this.guardAbi,
+                        "getAssetPolicy",
+                        [tokenId]
+                    ),
+                ]);
                 compliance = {
                     approved: complianceResult.approved,
                     expiry: toNumber(complianceResult.expiry),
                     jurisdiction: complianceResult.jurisdiction,
                     currentlyValid: complianceResult.currentlyValid,
                 };
+                assetPolicy = {
+                    frozen: assetPolicyResult.frozen,
+                    disputed: assetPolicyResult.disputed,
+                    revoked: assetPolicyResult.revoked,
+                    updatedAt: toNumber(assetPolicyResult.updatedAt),
+                    updatedBy: assetPolicyResult.updatedBy,
+                    reason: assetPolicyResult.reason,
+                };
             } catch (error) {
                 compliance = null;
+                assetPolicy = null;
             }
         }
 
+        const [attestations, attestationPolicies] = await Promise.all([
+            this.getAttestations(tokenId),
+            this.getAttestationPolicies(toNumber(asset.assetType)),
+        ]);
+
         return {
             tokenId: toNumber(tokenId),
-            assetType: Number(asset.assetType),
+            assetType: toNumber(asset.assetType),
+            rightsModel: toNumber(asset.rightsModel),
+            rightsModelLabel: codeToRightsModel(asset.rightsModel),
+            verificationStatus: toNumber(asset.verificationStatus),
+            verificationStatusLabel: codeToVerificationStatus(asset.verificationStatus),
             cidHash: asset.cidHash,
             tagHash: asset.tagHash,
+            propertyRefHash: asset.propertyRefHash,
+            publicMetadataHash: asset.publicMetadataHash,
+            evidenceRoot: asset.evidenceRoot,
+            evidenceManifestHash: asset.evidenceManifestHash,
             issuer: asset.issuer,
             activeStreamId: toNumber(asset.activeStreamId),
-            metadataURI: asset.metadataURI,
+            jurisdiction: asset.jurisdiction,
+            publicMetadataURI: asset.publicMetadataURI,
+            metadataURI: asset.publicMetadataURI,
             tokenURI,
+            statusReason: asset.statusReason,
             createdAt: toNumber(asset.createdAt),
             updatedAt: toNumber(asset.updatedAt),
+            verificationUpdatedAt: toNumber(asset.verificationUpdatedAt),
             exists: asset.exists,
             currentOwner: asset.currentOwner,
+            schemaVersion: asset.publicMetadataHash && asset.evidenceRoot ? 2 : 1,
             claimableYield: claimableYield.toString(),
             stream: {
                 streamId: toNumber(stream.streamId),
                 sender: stream.sender,
-                assetType: Number(stream.assetType),
+                assetType: toNumber(stream.assetType),
                 totalAmount: stream.totalAmount.toString(),
                 flowRate: stream.flowRate.toString(),
                 startTime: toNumber(stream.startTime),
@@ -289,6 +528,9 @@ class RWAChainService {
                 isFrozen: stream.isFrozen,
             },
             compliance,
+            assetPolicy,
+            attestationPolicies,
+            attestations,
         };
     }
 

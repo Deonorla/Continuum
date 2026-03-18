@@ -1,6 +1,12 @@
+const { ethers } = require("ethers");
 const { normalizeCid } = require("./ipfsService");
+const { stableStringify } = require("./rwaModel");
 
-function buildVerificationPayload({ chainId, assetContract, tokenId, cid, tagHash }) {
+function encodePayload(value) {
+    return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+}
+
+function buildLegacyVerificationPayload({ chainId, assetContract, tokenId, cid, tagHash }) {
     const normalizedPayload = {
         chainId: Number(chainId),
         assetContract,
@@ -10,7 +16,47 @@ function buildVerificationPayload({ chainId, assetContract, tokenId, cid, tagHas
         version: 1,
     };
 
-    return Buffer.from(JSON.stringify(normalizedPayload), "utf8").toString("base64url");
+    return encodePayload(normalizedPayload);
+}
+
+async function buildVerificationPayload({
+    chainId,
+    assetContract,
+    tokenId,
+    publicMetadataURI,
+    publicMetadataHash,
+    propertyRefHash,
+    evidenceRoot,
+    rightsModel,
+    verificationStatus,
+    signer,
+}) {
+    const payload = {
+        version: 2,
+        chainId: Number(chainId),
+        assetContract,
+        tokenId: Number(tokenId),
+        publicMetadataURI,
+        publicMetadataHash,
+        propertyRefHash,
+        evidenceRoot,
+        rightsModel,
+        verificationStatus,
+    };
+
+    const encodedPayload = encodePayload(payload);
+    if (!signer || typeof signer.signMessage !== "function") {
+        return encodedPayload;
+    }
+
+    const payloadDigest = ethers.keccak256(ethers.toUtf8Bytes(stableStringify(payload)));
+    const signature = await signer.signMessage(payloadDigest);
+
+    return encodePayload({
+        ...payload,
+        payloadDigest,
+        signature,
+    });
 }
 
 function parseVerificationPayload(payload) {
@@ -32,6 +78,7 @@ function buildVerificationUrl(baseUrl, payload) {
 }
 
 module.exports = {
+    buildLegacyVerificationPayload,
     buildVerificationPayload,
     parseVerificationPayload,
     buildVerificationUrl,

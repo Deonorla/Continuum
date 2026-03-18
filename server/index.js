@@ -1,12 +1,25 @@
 const express = require("express");
 const cors = require("cors");
-const { ethers } = require("ethers");
 const flowPayMiddleware = require("./middleware/flowPayMiddleware");
 const { IPFSService, normalizeCid } = require("./services/ipfsService");
-const { buildVerificationPayload, buildVerificationUrl, parseVerificationPayload } = require("./services/verificationPayload");
+const {
+    buildLegacyVerificationPayload,
+    buildVerificationPayload,
+    buildVerificationUrl,
+    parseVerificationPayload,
+} = require("./services/verificationPayload");
 const { createIndexerStore, MemoryIndexerStore } = require("./services/indexerStore");
 const { RWAIndexer } = require("./services/rwaIndexer");
 const { RWAChainService } = require("./services/rwaChainService");
+const { EvidenceVaultService } = require("./services/evidenceVault");
+const { verifyIssuerAuthorization } = require("./services/issuerAuthorization");
+const { evaluateVerification } = require("./services/rwaVerification");
+const {
+    hashJson,
+    hashText,
+    normalizeAttestationRole,
+    normalizeRightsModel,
+} = require("./services/rwaModel");
 const { createFlowPayRuntimeConfig } = require("../utils/polkadot");
 
 require("dotenv").config({ path: "../.env" });
@@ -58,6 +71,7 @@ const defaultConfig = {
         hubAddress: process.env.FLOWPAY_RWA_HUB_ADDRESS || "",
         assetNFTAddress: process.env.FLOWPAY_RWA_ASSET_NFT_ADDRESS || "",
         assetRegistryAddress: process.env.FLOWPAY_RWA_ASSET_REGISTRY_ADDRESS || "",
+        attestationRegistryAddress: process.env.FLOWPAY_RWA_ATTESTATION_REGISTRY_ADDRESS || "",
         assetStreamAddress: process.env.FLOWPAY_RWA_ASSET_STREAM_ADDRESS || "",
         complianceGuardAddress: process.env.FLOWPAY_RWA_COMPLIANCE_GUARD_ADDRESS || "",
         startBlock: Number(process.env.RWA_INDEXER_START_BLOCK || 0),
@@ -68,23 +82,27 @@ function asyncHandler(fn) {
     return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
-function hashText(value) {
-    return ethers.keccak256(ethers.toUtf8Bytes(value || ""));
-}
-
 async function hydrateAssetMetadata(services, asset) {
-    if (!asset?.metadataURI) {
+    const publicMetadataURI = asset?.publicMetadataURI || asset?.metadataURI;
+    if (!publicMetadataURI) {
         return asset;
     }
 
     try {
-        const ipfsMetadata = await services.ipfsService.fetchJSON(asset.metadataURI);
+        const ipfsMetadata = await services.ipfsService.fetchJSON(publicMetadataURI);
         return {
             ...asset,
+            publicMetadataURI,
+            metadataURI: publicMetadataURI,
+            publicMetadata: ipfsMetadata.metadata,
             metadata: ipfsMetadata.metadata,
         };
     } catch (error) {
-        return asset;
+        return {
+            ...asset,
+            publicMetadataURI,
+            metadataURI: publicMetadataURI,
+        };
     }
 }
 
@@ -95,6 +113,10 @@ async function buildServices(config) {
         services.ipfsService = new IPFSService(config.ipfs || {});
     }
 
+    if (!services.evidenceVault) {
+        services.evidenceVault = new EvidenceVaultService(config.evidenceVault || {});
+    }
+
     if (!services.chainService) {
         services.chainService = new RWAChainService({
             rpcUrl: config.rpcUrl,
@@ -102,6 +124,7 @@ async function buildServices(config) {
             hubAddress: config.rwa?.hubAddress,
             assetNFTAddress: config.rwa?.assetNFTAddress,
             assetRegistryAddress: config.rwa?.assetRegistryAddress,
+            attestationRegistryAddress: config.rwa?.attestationRegistryAddress,
             assetStreamAddress: config.rwa?.assetStreamAddress,
             complianceGuardAddress: config.rwa?.complianceGuardAddress,
             privateKey: process.env.PRIVATE_KEY,
@@ -192,6 +215,48 @@ function beginAssetPrime(app) {
     return app.locals.assetPrimePromise;
 }
 
+async function getHydratedAsset(services, tokenId) {
+    let asset = await services.store.getAsset(tokenId);
+    if (!asset && services.chainService?.isConfigured()) {
+        asset = await services.chainService.getAssetSnapshot(tokenId);
+        if (asset) {
+            await services.store.upsertAsset(asset);
+        }
+    }
+    if (!asset) {
+        return null;
+    }
+    return hydrateAssetMetadata(services, asset);
+}
+
+function collectAttestationRequirements(asset) {
+    return (asset?.attestationPolicies || [])
+        .filter((policy) => policy.required)
+        .map((policy) => ({
+            role: policy.roleLabel,
+            maxAge: policy.maxAge,
+        }));
+}
+
+async function resolvePublicMetadata(services, publicMetadata, publicMetadataURI) {
+    if (publicMetadata && typeof publicMetadata === "object") {
+        return {
+            metadata: publicMetadata,
+            uri: publicMetadataURI || "",
+        };
+    }
+
+    if (publicMetadataURI) {
+        const resolved = await services.ipfsService.fetchJSON(publicMetadataURI);
+        return {
+            metadata: resolved.metadata,
+            uri: resolved.uri,
+        };
+    }
+
+    throw new Error("publicMetadata or publicMetadataURI is required");
+}
+
 function createApp(config = defaultConfig) {
     const resolvedConfig = {
         ...defaultConfig,
@@ -268,6 +333,7 @@ function createApp(config = defaultConfig) {
                 hubAddress: resolvedConfig.rwa?.hubAddress || "",
                 assetNFTAddress: resolvedConfig.rwa?.assetNFTAddress || "",
                 assetRegistryAddress: resolvedConfig.rwa?.assetRegistryAddress || "",
+                attestationRegistryAddress: resolvedConfig.rwa?.attestationRegistryAddress || "",
                 assetStreamAddress: resolvedConfig.rwa?.assetStreamAddress || "",
                 complianceGuardAddress: resolvedConfig.rwa?.complianceGuardAddress || "",
             },
@@ -298,38 +364,120 @@ function createApp(config = defaultConfig) {
         res.status(201).json(result);
     }));
 
+    app.post("/api/rwa/evidence", asyncHandler(async (req, res) => {
+        const services = await app.locals.ready;
+        const { evidenceBundle, rightsModel = "verified_rental_asset", propertyRef = "", jurisdiction = "" } = req.body || {};
+        if (!evidenceBundle || typeof evidenceBundle !== "object") {
+            return res.status(400).json({ error: "evidenceBundle object is required" });
+        }
+
+        const normalizedRightsModel = normalizeRightsModel(rightsModel);
+        const record = await services.evidenceVault.storeBundle(evidenceBundle, {
+            rightsModel: normalizedRightsModel.label,
+            propertyRef,
+            jurisdiction,
+        });
+
+        res.status(201).json({
+            evidenceRoot: record.evidenceRoot,
+            evidenceManifestHash: record.evidenceManifestHash,
+            evidenceSummary: record.evidenceSummary,
+            storedAt: record.storedAt,
+        });
+    }));
+
     app.post("/api/rwa/assets", asyncHandler(async (req, res) => {
         const services = await app.locals.ready;
         const chainService = services.chainService;
-        if (!chainService?.signer) {
+        if (!chainService?.signer && !chainService?.useSubstrateWrites) {
             return res.status(503).json({ error: "RWA minting signer is not configured" });
         }
 
-        const { issuer, assetType = 1, metadata, metadataURI, tag, tagHash } = req.body || {};
+        const {
+            issuer,
+            assetType = 1,
+            rightsModel = "verified_rental_asset",
+            jurisdiction = "",
+            propertyRef = "",
+            publicMetadata,
+            publicMetadataURI,
+            evidenceBundle,
+            evidenceRoot,
+            evidenceManifestHash,
+            tag,
+            tagHash,
+            issuerSignature,
+            issuerAuthorization,
+            statusReason = "Awaiting attestation review",
+        } = req.body || {};
+
         if (!issuer) {
             return res.status(400).json({ error: "issuer is required" });
         }
-
-        let resolvedMetadataURI = metadataURI;
-        let cid = normalizeCid(metadataURI);
-        if (!resolvedMetadataURI) {
-            if (!metadata || typeof metadata !== "object") {
-                return res.status(400).json({ error: "metadata or metadataURI is required" });
-            }
-            const pinResult = await services.ipfsService.pinJSON(metadata);
-            resolvedMetadataURI = pinResult.uri;
-            cid = pinResult.cid;
+        if (!propertyRef) {
+            return res.status(400).json({ error: "propertyRef is required" });
         }
 
-        const resolvedTagHash = tagHash || hashText(tag || `${issuer}:${resolvedMetadataURI}`);
-        const cidHash = hashText(resolvedMetadataURI);
+        const normalizedRightsModel = normalizeRightsModel(rightsModel);
+        const metadataResult = await resolvePublicMetadata(services, publicMetadata, publicMetadataURI);
+        let resolvedPublicMetadataURI = metadataResult.uri;
+        if (!resolvedPublicMetadataURI) {
+            const pinResult = await services.ipfsService.pinJSON(metadataResult.metadata);
+            resolvedPublicMetadataURI = pinResult.uri;
+        }
+        const publicMetadataHash = hashJson(metadataResult.metadata);
+
+        let evidenceRecord = null;
+        if (evidenceRoot) {
+            evidenceRecord = await services.evidenceVault.getBundle(evidenceRoot);
+            if (!evidenceRecord) {
+                return res.status(400).json({ error: "evidenceRoot was not found in the private evidence vault" });
+            }
+            if (evidenceManifestHash && evidenceRecord.evidenceManifestHash !== evidenceManifestHash) {
+                return res.status(400).json({ error: "evidenceManifestHash does not match the stored evidence bundle" });
+            }
+        } else {
+            if (!evidenceBundle || typeof evidenceBundle !== "object") {
+                return res.status(400).json({ error: "evidenceBundle or evidenceRoot is required" });
+            }
+            evidenceRecord = await services.evidenceVault.storeBundle(evidenceBundle, {
+                rightsModel: normalizedRightsModel.label,
+                propertyRef,
+                jurisdiction,
+            });
+        }
+
+        const authorizationResult = await verifyIssuerAuthorization({
+            issuer,
+            issuerSignature,
+            issuerAuthorization,
+            rightsModel: normalizedRightsModel.label,
+            jurisdiction,
+            propertyRef,
+            publicMetadataHash,
+            evidenceRoot: evidenceRecord.evidenceRoot,
+        });
+        if (!authorizationResult.valid) {
+            return res.status(400).json({ error: authorizationResult.reason || "invalid issuer authorization" });
+        }
+
+        const propertyRefHash = hashText(propertyRef);
+        const resolvedTagHash = tagHash || hashText(tag || `${issuer}:${propertyRef}:${resolvedPublicMetadataURI}`);
+        const cidHash = hashText(resolvedPublicMetadataURI);
 
         const mintResult = await chainService.mintAsset({
-            metadataURI: resolvedMetadataURI,
+            publicMetadataURI: resolvedPublicMetadataURI,
             assetType,
+            rightsModel: normalizedRightsModel.code,
+            publicMetadataHash,
+            evidenceRoot: evidenceRecord.evidenceRoot,
+            evidenceManifestHash: evidenceRecord.evidenceManifestHash,
+            propertyRefHash,
+            jurisdiction,
             cidHash,
             tagHash: resolvedTagHash,
             issuer,
+            statusReason,
         });
 
         void beginIndexerSync(app);
@@ -340,23 +488,111 @@ function createApp(config = defaultConfig) {
         }
         const hydratedSnapshot = snapshot ? await hydrateAssetMetadata(services, snapshot) : null;
 
-        const verificationPayload = buildVerificationPayload({
-            chainId: chainService.provider ? (await chainService.provider.getNetwork()).chainId : BigInt(resolvedConfig.chainId || runtimeConfig.chainId),
+        const chainId = chainService.provider
+            ? (await chainService.provider.getNetwork()).chainId
+            : BigInt(resolvedConfig.chainId || runtimeConfig.chainId);
+
+        const verificationPayload = await buildVerificationPayload({
+            chainId,
             assetContract: chainService.assetNFTAddress,
             tokenId: mintResult.tokenId,
-            cid,
+            publicMetadataURI: resolvedPublicMetadataURI,
+            publicMetadataHash,
+            propertyRefHash,
+            evidenceRoot: evidenceRecord.evidenceRoot,
+            rightsModel: normalizedRightsModel.label,
+            verificationStatus: "pending_attestation",
+            signer: chainService.signer || null,
+        });
+        const legacyVerificationPayload = buildLegacyVerificationPayload({
+            chainId,
+            assetContract: chainService.assetNFTAddress,
+            tokenId: mintResult.tokenId,
+            cid: normalizeCid(resolvedPublicMetadataURI),
             tagHash: resolvedTagHash,
         });
 
         res.status(201).json({
             tokenId: mintResult.tokenId,
             txHash: mintResult.txHash,
-            cid,
-            metadataURI: resolvedMetadataURI,
+            publicMetadataURI: resolvedPublicMetadataURI,
+            publicMetadataHash,
+            evidenceRoot: evidenceRecord.evidenceRoot,
+            evidenceManifestHash: evidenceRecord.evidenceManifestHash,
             verificationPayload,
+            legacyVerificationPayload,
             verificationUrl: buildVerificationUrl(resolvedConfig.appBaseUrl, verificationPayload),
             verificationApiUrl: `${resolvedConfig.appBaseUrl.replace(/5173$/, "3001")}/api/rwa/verify`,
             asset: hydratedSnapshot,
+            evidenceSummary: evidenceRecord.evidenceSummary,
+            attestationRequirements: collectAttestationRequirements(hydratedSnapshot || {}),
+        });
+    }));
+
+    app.post("/api/rwa/attestations", asyncHandler(async (req, res) => {
+        const services = await app.locals.ready;
+        const chainService = services.chainService;
+        if (!chainService?.signer && !chainService?.useSubstrateWrites) {
+            return res.status(503).json({ error: "RWA attestation signer is not configured" });
+        }
+
+        const {
+            action = "register",
+            tokenId,
+            role,
+            attestor,
+            evidenceHash,
+            statementType,
+            expiry = 0,
+            attestationId,
+            reason = "",
+        } = req.body || {};
+
+        if (action === "revoke") {
+            if (!attestationId) {
+                return res.status(400).json({ error: "attestationId is required for revoke" });
+            }
+            const result = await chainService.revokeAttestation({
+                attestationId,
+                reason,
+            });
+            void beginIndexerSync(app);
+            res.status(200).json({
+                action: "revoke",
+                attestationId: Number(attestationId),
+                txHash: result.txHash,
+            });
+            return;
+        }
+
+        if (!tokenId || !role || !attestor || !evidenceHash || !statementType) {
+            return res.status(400).json({
+                error: "tokenId, role, attestor, evidenceHash, and statementType are required",
+            });
+        }
+
+        const normalizedRole = normalizeAttestationRole(role);
+        const result = await chainService.registerAttestation({
+            tokenId: Number(tokenId),
+            role: normalizedRole.code,
+            attestor,
+            evidenceHash,
+            statementType,
+            expiry: Number(expiry || 0),
+        });
+
+        void beginIndexerSync(app);
+        const snapshot = await chainService.getAssetSnapshot(Number(tokenId));
+        if (snapshot) {
+            await services.store.upsertAsset(snapshot);
+        }
+
+        res.status(201).json({
+            action: "register",
+            attestationId: result.attestationId,
+            txHash: result.txHash,
+            role: normalizedRole.label,
+            asset: snapshot ? await hydrateAssetMetadata(services, snapshot) : null,
         });
     }));
 
@@ -369,19 +605,11 @@ function createApp(config = defaultConfig) {
         const services = await app.locals.ready;
         void beginIndexerSync(app);
 
-        let asset = await services.store.getAsset(tokenId);
-        if (!asset && services.chainService?.isConfigured()) {
-            asset = await services.chainService.getAssetSnapshot(tokenId);
-            if (asset) {
-                await services.store.upsertAsset(asset);
-            }
-        }
-
+        const asset = await getHydratedAsset(services, tokenId);
         if (!asset) {
             return res.status(404).json({ error: "asset not found" });
         }
 
-        asset = await hydrateAssetMetadata(services, asset);
         res.json({ asset, syncing: Boolean(app.locals.indexerSyncPromise) });
     }));
 
@@ -399,72 +627,83 @@ function createApp(config = defaultConfig) {
 
     app.post("/api/rwa/verify", asyncHandler(async (req, res) => {
         const services = await app.locals.ready;
-        const { payload, tokenId, cid, uri, tag, tagHash } = req.body || {};
+        const {
+            payload,
+            tokenId,
+            cid,
+            uri,
+            publicMetadataURI,
+            propertyRef,
+            tag,
+            tagHash,
+        } = req.body || {};
         const parsedPayload = payload ? parseVerificationPayload(payload) : null;
 
         const resolvedTokenId = Number(tokenId || parsedPayload?.tokenId);
-        const resolvedCid = normalizeCid(cid || uri || parsedPayload?.cid);
-        const resolvedTagHash = tagHash || parsedPayload?.tagHash || hashText(tag || "");
-
         if (!Number.isFinite(resolvedTokenId) || resolvedTokenId <= 0) {
             return res.status(400).json({ error: "tokenId or payload is required" });
-        }
-        if (!resolvedCid) {
-            return res.status(400).json({ error: "cid, uri, or payload is required" });
         }
 
         void beginIndexerSync(app);
 
-        let asset = await services.store.getAsset(resolvedTokenId);
-        if (!asset && services.chainService?.isConfigured()) {
-            asset = await services.chainService.getAssetSnapshot(resolvedTokenId);
-            if (asset) {
-                await services.store.upsertAsset(asset);
-            }
-        }
+        const asset = await getHydratedAsset(services, resolvedTokenId);
         if (!asset) {
             return res.status(404).json({ error: "asset not found" });
         }
 
-        const ipfsMetadata = await services.ipfsService.fetchJSON(resolvedCid);
-        const canonicalURI = `ipfs://${resolvedCid}`;
-        const cidHash = hashText(canonicalURI);
+        const payloadVersion = Number(parsedPayload?.version || 1);
+        const resolvedURI = publicMetadataURI
+            || parsedPayload?.publicMetadataURI
+            || (cid || uri || parsedPayload?.cid ? `ipfs://${normalizeCid(cid || uri || parsedPayload?.cid)}` : "")
+            || asset.publicMetadataURI
+            || asset.metadataURI
+            || "";
+        const resolvedTagHash = tagHash || parsedPayload?.tagHash || (tag ? hashText(tag) : "");
 
-        const onChainVerification = services.chainService?.isConfigured()
-            ? await services.chainService.getVerificationStatus(resolvedTokenId, cidHash, resolvedTagHash)
-            : {
-                assetExists: true,
-                cidMatches: asset.cidHash === cidHash,
-                tagMatches: asset.tagHash === resolvedTagHash,
-                activeStreamId: asset.activeStreamId || 0,
-            };
+        let publicMetadataResult = null;
+        if (resolvedURI) {
+            try {
+                publicMetadataResult = await services.ipfsService.fetchJSON(resolvedURI);
+            } catch (error) {
+                publicMetadataResult = null;
+            }
+        }
 
+        let onChainVerification = null;
+        if (payloadVersion <= 1 && resolvedURI) {
+            const cidHash = hashText(resolvedURI);
+            onChainVerification = services.chainService?.isConfigured()
+                ? await services.chainService.getVerificationStatus(resolvedTokenId, cidHash, resolvedTagHash)
+                : {
+                    assetExists: true,
+                    cidMatches: asset.cidHash === cidHash,
+                    tagMatches: asset.tagHash === resolvedTagHash,
+                    activeStreamId: asset.activeStreamId || 0,
+                };
+        }
+
+        const evidenceRecord = asset.evidenceRoot
+            ? await services.evidenceVault.getBundle(asset.evidenceRoot)
+            : null;
         const activity = await services.store.getActivities(resolvedTokenId);
-        const tokenUriMatches = asset.tokenURI === canonicalURI || asset.metadataURI === canonicalURI;
-        const authentic = Boolean(
-            onChainVerification.assetExists &&
-            onChainVerification.cidMatches &&
-            onChainVerification.tagMatches &&
-            tokenUriMatches
-        );
+        const verificationResult = evaluateVerification({
+            asset,
+            evidenceRecord,
+            publicMetadata: publicMetadataResult?.metadata || asset.publicMetadata,
+            activity,
+            verificationInput: {
+                canonicalURI: resolvedURI,
+                publicMetadataHash: publicMetadataResult ? hashJson(publicMetadataResult.metadata) : parsedPayload?.publicMetadataHash,
+                propertyRef: propertyRef || parsedPayload?.propertyRef,
+            },
+            onChainVerification,
+        });
 
         res.json({
-            authentic,
-            verification: {
-                tokenId: resolvedTokenId,
-                cid: resolvedCid,
-                tagHash: resolvedTagHash,
-                tokenUriMatches,
-                onChain: {
-                    assetExists: onChainVerification.assetExists,
-                    cidMatches: onChainVerification.cidMatches,
-                    tagMatches: onChainVerification.tagMatches,
-                    activeStreamId: Number(onChainVerification.activeStreamId || 0),
-                },
-            },
-            metadata: ipfsMetadata.metadata,
-            asset,
-            activity,
+            ...verificationResult,
+            metadata: publicMetadataResult?.metadata || asset.publicMetadata || null,
+            evidenceBundle: evidenceRecord ? services.evidenceVault.exportBundle(evidenceRecord) : null,
+            verificationPayloadVersion: payloadVersion,
         });
     }));
 

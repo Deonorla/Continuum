@@ -289,16 +289,9 @@ function buildCid(id) {
 }
 
 function encodeVerificationPayload(payload) {
-  const json = JSON.stringify(payload);
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(json, 'utf8').toString('base64url');
-  }
-
-  const bytes = new TextEncoder().encode(json);
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
   let binary = '';
-  bytes.forEach((value) => {
-    binary += String.fromCharCode(value);
-  });
+  bytes.forEach((value) => { binary += String.fromCharCode(value); });
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 

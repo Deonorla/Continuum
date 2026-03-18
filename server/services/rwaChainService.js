@@ -63,9 +63,11 @@ class RWAChainService {
 
         this.substrateApi = config.substrateApi || null;
         this.substratePair = config.substratePair || null;
+        this.substrateEvmAddress = config.substrateEvmAddress || "";
         this.substrateConfig = config.substrateConfig || null;
 
         this.hubAbi = [
+            "function owner() external view returns (address)",
             "function mintAsset(string publicMetadataURI, uint8 assetType, uint8 rightsModel, bytes32 publicMetadataHash, bytes32 evidenceRoot, bytes32 evidenceManifestHash, bytes32 propertyRefHash, string jurisdiction, bytes32 cidHash, bytes32 tagHash, address issuer, string statusReason) external returns (uint256 tokenId)",
             "function setIssuerApproval(address issuer, bool approved, string note) external",
             "function registerAttestation(uint256 tokenId, uint8 role, address attestor, bytes32 evidenceHash, string statementType, uint64 expiry) external returns (uint256 attestationId)",
@@ -141,6 +143,7 @@ class RWAChainService {
 
         this.substrateApi = api;
         this.substratePair = pair;
+        this.substrateEvmAddress = evmAddress;
         this.substrateConfig = config;
     }
 
@@ -303,6 +306,27 @@ class RWAChainService {
 
         if (alreadyApproved) {
             return { approved: true, alreadyApproved: true };
+        }
+
+        let hubOwner = "";
+        try {
+            hubOwner = String(
+                await this.readContract(this.hubAddress, this.hubAbi, "owner", [])
+            ).toLowerCase();
+        } catch (error) {
+            hubOwner = "";
+        }
+
+        const signerAddress = String(
+            this.useSubstrateWrites
+                ? this.substrateEvmAddress || ""
+                : this.signer?.address || ""
+        ).toLowerCase();
+
+        if (hubOwner && signerAddress && hubOwner !== signerAddress) {
+            throw new Error(
+                `issuer ${issuer} is not approved onchain, and backend signer ${signerAddress} is not the RWA hub owner ${hubOwner}. Pre-approve the issuer with the hub owner before minting.`
+            );
         }
 
         const args = [issuer, true, note];

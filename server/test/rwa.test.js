@@ -185,6 +185,7 @@ describe("RWA API Integration", function () {
                 chainService: {
                     signer: backendSigner,
                     useSubstrateWrites: false,
+                    ensuredIssuerApprovals: [],
                     provider: {
                         async getNetwork() {
                             return { chainId: 420420417n };
@@ -193,6 +194,10 @@ describe("RWA API Integration", function () {
                     assetNFTAddress: "0xAssetNft",
                     isConfigured() {
                         return false;
+                    },
+                    async ensureIssuerApproved(issuer, note) {
+                        this.ensuredIssuerApprovals.push({ issuer, note });
+                        return { approved: true, alreadyApproved: false, txHash: "0xapprove" };
                     },
                     async mintAsset(payload) {
                         store.asset = {
@@ -430,6 +435,12 @@ describe("RWA API Integration", function () {
         expect(response.body.evidenceSummary.missingRequiredDocuments).to.deep.equal([]);
         expect(response.body.attestationRequirements).to.have.length(2);
         expect(response.body.asset.tokenId).to.equal(7);
+        expect(app.locals.services.chainService.ensuredIssuerApprovals).to.deep.equal([
+            {
+                issuer: issuerWallet.address,
+                note: "Auto-approved from signed Stream Engine mint authorization",
+            },
+        ]);
     });
 
     it("returns structured verification states for v2 and legacy assets", async function () {

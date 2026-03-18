@@ -5,7 +5,7 @@ import { useWallet } from '../../context/WalletContext';
 const ASSET_TYPES = [
   { key: 'real_estate', label: 'Real Estate', Icon: Building2, eg: 'Office, apartment, warehouse' },
   { key: 'vehicle',     label: 'Vehicle',     Icon: Car,       eg: 'Car fleet, EV, truck'         },
-  { key: 'commodity',   label: 'Commodity',   Icon: Package,   eg: 'Machinery, equipment'         },
+  { key: 'commodity',   label: 'Equipment',   Icon: Package,   eg: 'Machinery, equipment'         },
 ];
 
 const EMPTY = { title: '', location: '', description: '', type: 'real_estate', accessType: '', pricePerHour: '', totalYield: '', durationDays: '' };

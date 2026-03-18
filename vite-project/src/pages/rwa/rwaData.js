@@ -18,7 +18,7 @@ export const TYPE_META = {
     border: 'border-purple-500/30',
   },
   commodity: {
-    label: 'Commodities',
+    label: 'Equipment',
     rentLabel: 'Equipment',
     color: 'text-amber-400',
     dot: 'bg-amber-400',

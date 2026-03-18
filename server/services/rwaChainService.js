@@ -67,6 +67,7 @@ class RWAChainService {
 
         this.hubAbi = [
             "function mintAsset(string publicMetadataURI, uint8 assetType, uint8 rightsModel, bytes32 publicMetadataHash, bytes32 evidenceRoot, bytes32 evidenceManifestHash, bytes32 propertyRefHash, string jurisdiction, bytes32 cidHash, bytes32 tagHash, address issuer, string statusReason) external returns (uint256 tokenId)",
+            "function setIssuerApproval(address issuer, bool approved, string note) external",
             "function registerAttestation(uint256 tokenId, uint8 role, address attestor, bytes32 evidenceHash, string statementType, uint64 expiry) external returns (uint256 attestationId)",
             "function revokeAttestation(uint256 attestationId, string reason) external",
             "function setVerificationStatus(uint256 tokenId, uint8 status, string reason) external",
@@ -111,6 +112,7 @@ class RWAChainService {
             "function getCompliance(address user, uint8 assetType) external view returns (bool approved, uint64 expiry, string jurisdiction, bool currentlyValid)",
             "function getAssetPolicy(uint256 tokenId) external view returns (bool frozen, bool disputed, bool revoked, uint64 updatedAt, address updatedBy, string reason)",
             "function getAttestationPolicy(uint8 assetType, uint8 role) external view returns (bool required, uint64 maxAge)",
+            "function getIssuerApproval(address issuer) external view returns (bool approved, uint64 updatedAt, address updatedBy, string note)",
             "event ComplianceUpdated(address indexed user, uint8 indexed assetType, bool approved, uint64 expiry, string jurisdiction)",
             "event StreamFreezeUpdated(uint256 indexed streamId, bool frozen, string reason, address indexed updatedBy)",
             "event IssuerApprovalUpdated(address indexed issuer, bool approved, string note, address indexed updatedBy)",
@@ -270,6 +272,68 @@ class RWAChainService {
 
         return {
             tokenId,
+            txHash: tx.hash,
+            receipt,
+        };
+    }
+
+    async ensureIssuerApproved(issuer, note = "Auto-approved by Stream Engine guided mint") {
+        if (!issuer) {
+            throw new Error("RWAChainService: issuer is required");
+        }
+        if (!this.hubAddress || !this.complianceGuardAddress) {
+            throw new Error("RWAChainService: approval contracts missing");
+        }
+
+        let currentApproval = null;
+        try {
+            currentApproval = await this.readContract(
+                this.complianceGuardAddress,
+                this.guardAbi,
+                "getIssuerApproval",
+                [issuer]
+            );
+        } catch (error) {
+            currentApproval = null;
+        }
+
+        const alreadyApproved = Array.isArray(currentApproval)
+            ? Boolean(currentApproval[0])
+            : Boolean(currentApproval?.approved);
+
+        if (alreadyApproved) {
+            return { approved: true, alreadyApproved: true };
+        }
+
+        const args = [issuer, true, note];
+
+        if (this.useSubstrateWrites) {
+            const result = await this.submitSubstrateWrite(
+                this.hubAddress,
+                new ethers.Interface(this.hubAbi),
+                "setIssuerApproval",
+                args
+            );
+
+            return {
+                approved: true,
+                alreadyApproved: false,
+                txHash: result.txHash,
+                receipt: result,
+            };
+        }
+
+        if (!this.signer) {
+            throw new Error("RWAChainService: signer missing for issuer approval");
+        }
+
+        const hub = this.getContract(this.hubAddress, this.hubAbi, true);
+        const tx = await hub.setIssuerApproval(...args);
+        const receipt = await tx.wait();
+
+        return {
+            approved: true,
+            alreadyApproved: false,
             txHash: tx.hash,
             receipt,
         };

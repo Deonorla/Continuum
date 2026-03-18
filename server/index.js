@@ -468,6 +468,19 @@ function createApp(config = defaultConfig) {
         const resolvedTagHash = tagHash || hashText(tag || `${issuer}:${propertyRef}:${resolvedPublicMetadataURI}`);
         const cidHash = hashText(resolvedPublicMetadataURI);
 
+        if (typeof chainService.ensureIssuerApproved === "function") {
+            try {
+                await chainService.ensureIssuerApproved(
+                    issuer,
+                    "Auto-approved from signed Stream Engine mint authorization"
+                );
+            } catch (error) {
+                throw new Error(
+                    `RWA issuer approval failed before mint: ${error.message || error}`
+                );
+            }
+        }
+
         const mintResult = await chainService.mintAsset({
             publicMetadataURI: resolvedPublicMetadataURI,
             assetType,

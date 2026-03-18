@@ -83,6 +83,12 @@ async function main() {
             pair,
             "artifacts-pvm/contracts/FlowPayAssetRegistry.sol/FlowPayAssetRegistry.json"
         );
+        console.log("Deploying FlowPayAssetAttestationRegistry...");
+        const attestationRegistry = await deployArtifact(
+            api,
+            pair,
+            "artifacts-pvm/contracts/FlowPayAssetAttestationRegistry.sol/FlowPayAssetAttestationRegistry.json"
+        );
         console.log("Deploying FlowPayComplianceGuard...");
         const complianceGuard = await deployArtifact(
             api,
@@ -106,16 +112,25 @@ async function main() {
                 assetRegistry.contractAddress,
                 complianceGuard.contractAddress,
                 assetStream.contractAddress,
+                attestationRegistry.contractAddress,
             ]
         );
 
-        if (!assetNFT.contractAddress || !assetRegistry.contractAddress || !complianceGuard.contractAddress || !assetStream.contractAddress || !rwaHub.contractAddress) {
+        if (
+            !assetNFT.contractAddress
+            || !assetRegistry.contractAddress
+            || !attestationRegistry.contractAddress
+            || !complianceGuard.contractAddress
+            || !assetStream.contractAddress
+            || !rwaHub.contractAddress
+        ) {
             throw new Error("One or more RWA contracts failed to emit Instantiated");
         }
 
         console.log("Configuring controller relationships...");
         await callContract(api, pair, assetNFT.artifact, assetNFT.contractAddress, "setController", [rwaHub.contractAddress]);
         await callContract(api, pair, assetRegistry.artifact, assetRegistry.contractAddress, "setController", [rwaHub.contractAddress]);
+        await callContract(api, pair, attestationRegistry.artifact, attestationRegistry.contractAddress, "setController", [rwaHub.contractAddress]);
         await callContract(api, pair, complianceGuard.artifact, complianceGuard.contractAddress, "setController", [rwaHub.contractAddress]);
         await callContract(api, pair, assetStream.artifact, assetStream.contractAddress, "setHub", [rwaHub.contractAddress]);
         await callContract(api, pair, assetStream.artifact, assetStream.contractAddress, "setComplianceGuard", [complianceGuard.contractAddress]);
@@ -123,6 +138,7 @@ async function main() {
         console.log("FlowPay RWA suite deployed on Westend Asset Hub:");
         console.log(`FLOWPAY_RWA_ASSET_NFT_ADDRESS=${assetNFT.contractAddress}`);
         console.log(`FLOWPAY_RWA_ASSET_REGISTRY_ADDRESS=${assetRegistry.contractAddress}`);
+        console.log(`FLOWPAY_RWA_ATTESTATION_REGISTRY_ADDRESS=${attestationRegistry.contractAddress}`);
         console.log(`FLOWPAY_RWA_COMPLIANCE_GUARD_ADDRESS=${complianceGuard.contractAddress}`);
         console.log(`FLOWPAY_RWA_ASSET_STREAM_ADDRESS=${assetStream.contractAddress}`);
         console.log(`FLOWPAY_RWA_HUB_ADDRESS=${rwaHub.contractAddress}`);

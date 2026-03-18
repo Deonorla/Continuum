@@ -6,72 +6,152 @@ import "./FlowPayAssetNFT.sol";
 import "./FlowPayAssetRegistry.sol";
 import "./FlowPayComplianceGuard.sol";
 import "./FlowPayAssetStream.sol";
+import "./FlowPayAssetAttestationRegistry.sol";
 
 contract FlowPayRWAHub is Owned {
+    uint8 public constant STATUS_PENDING_ATTESTATION = 1;
+    uint8 public constant STATUS_FROZEN = 5;
+    uint8 public constant STATUS_REVOKED = 6;
+    uint8 public constant STATUS_DISPUTED = 7;
+
+    struct AssetView {
+        uint8 assetType;
+        uint8 rightsModel;
+        uint8 verificationStatus;
+        bytes32 cidHash;
+        bytes32 tagHash;
+        bytes32 propertyRefHash;
+        bytes32 publicMetadataHash;
+        bytes32 evidenceRoot;
+        bytes32 evidenceManifestHash;
+        address issuer;
+        uint256 activeStreamId;
+        string jurisdiction;
+        string publicMetadataURI;
+        string statusReason;
+        uint64 createdAt;
+        uint64 updatedAt;
+        uint64 verificationUpdatedAt;
+        bool exists;
+        address currentOwner;
+    }
+
     FlowPayAssetNFT public immutable assetNFT;
     FlowPayAssetRegistry public immutable assetRegistry;
     FlowPayComplianceGuard public immutable complianceGuard;
     FlowPayAssetStream public immutable assetStream;
+    FlowPayAssetAttestationRegistry public immutable attestationRegistry;
 
-    event AssetMinted(uint256 indexed tokenId, address indexed issuer, uint8 indexed assetType, string metadataURI);
+    event AssetMinted(
+        uint256 indexed tokenId,
+        address indexed issuer,
+        uint8 indexed assetType,
+        uint8 rightsModel,
+        string publicMetadataURI,
+        bytes32 publicMetadataHash,
+        bytes32 evidenceRoot,
+        bytes32 propertyRefHash
+    );
     event VerificationPayloadUpdated(uint256 indexed tokenId, bytes32 cidHash, bytes32 tagHash);
+    event AssetVerificationStateUpdated(uint256 indexed tokenId, uint8 indexed status, string reason);
+    event AssetEvidenceUpdated(uint256 indexed tokenId, bytes32 evidenceRoot, bytes32 evidenceManifestHash);
+    event AttestationRecorded(
+        uint256 indexed tokenId,
+        uint256 indexed attestationId,
+        uint8 indexed role,
+        address attestor,
+        bytes32 evidenceHash,
+        string statementType
+    );
+    event AttestationRevoked(uint256 indexed tokenId, uint256 indexed attestationId, string reason);
 
     constructor(
         address assetNFT_,
         address assetRegistry_,
         address complianceGuard_,
-        address assetStream_
+        address assetStream_,
+        address attestationRegistry_
     ) {
         require(assetNFT_ != address(0), "FlowPayRWAHub: nft is zero");
         require(assetRegistry_ != address(0), "FlowPayRWAHub: registry is zero");
         require(complianceGuard_ != address(0), "FlowPayRWAHub: guard is zero");
         require(assetStream_ != address(0), "FlowPayRWAHub: stream is zero");
+        require(attestationRegistry_ != address(0), "FlowPayRWAHub: attestation registry is zero");
 
         assetNFT = FlowPayAssetNFT(assetNFT_);
         assetRegistry = FlowPayAssetRegistry(assetRegistry_);
         complianceGuard = FlowPayComplianceGuard(complianceGuard_);
         assetStream = FlowPayAssetStream(assetStream_);
+        attestationRegistry = FlowPayAssetAttestationRegistry(attestationRegistry_);
     }
 
     function mintAsset(
-        string calldata metadataURI,
+        string calldata publicMetadataURI,
         uint8 assetType,
+        uint8 rightsModel,
+        bytes32 publicMetadataHash,
+        bytes32 evidenceRoot,
+        bytes32 evidenceManifestHash,
+        bytes32 propertyRefHash,
+        string calldata jurisdiction,
         bytes32 cidHash,
         bytes32 tagHash,
-        address issuer
-    ) external onlyOwner returns (uint256 tokenId) {
+        address issuer,
+        string calldata statusReason
+    ) external onlyOperator returns (uint256 tokenId) {
         require(issuer != address(0), "FlowPayRWAHub: issuer is zero");
-        tokenId = assetNFT.mintTo(issuer, metadataURI);
-        assetRegistry.registerAsset(tokenId, issuer, assetType, metadataURI, cidHash, tagHash);
+        require(bytes(publicMetadataURI).length > 0, "FlowPayRWAHub: metadata URI is required");
+        require(publicMetadataHash != bytes32(0), "FlowPayRWAHub: metadata hash is required");
+        require(evidenceRoot != bytes32(0), "FlowPayRWAHub: evidence root is required");
+        require(complianceGuard.isIssuerApproved(issuer), "FlowPayRWAHub: issuer not approved");
 
-        emit AssetMinted(tokenId, issuer, assetType, metadataURI);
+        tokenId = assetNFT.mintTo(issuer, publicMetadataURI);
+        assetRegistry.registerAsset(
+            tokenId,
+            issuer,
+            assetType,
+            rightsModel,
+            publicMetadataURI,
+            jurisdiction,
+            propertyRefHash,
+            publicMetadataHash,
+            evidenceRoot,
+            evidenceManifestHash,
+            cidHash,
+            tagHash,
+            STATUS_PENDING_ATTESTATION,
+            statusReason
+        );
+
+        emit AssetMinted(
+            tokenId,
+            issuer,
+            assetType,
+            rightsModel,
+            publicMetadataURI,
+            publicMetadataHash,
+            evidenceRoot,
+            propertyRefHash
+        );
         emit VerificationPayloadUpdated(tokenId, cidHash, tagHash);
+        emit AssetVerificationStateUpdated(tokenId, STATUS_PENDING_ATTESTATION, statusReason);
     }
 
     function createAssetYieldStream(uint256 tokenId, uint256 totalAmount, uint256 duration)
         external
         returns (uint256 streamId)
     {
-        (
-            uint8 assetType,
-            ,
-            ,
-            address issuer,
-            ,
-            ,
-            ,
-            ,
-            bool exists
-        ) = assetRegistry.getAsset(tokenId);
+        FlowPayAssetRegistry.AssetRecord memory asset = assetRegistry.getAsset(tokenId);
 
-        require(exists, "FlowPayRWAHub: asset not found");
+        require(asset.exists, "FlowPayRWAHub: asset not found");
+        require(!complianceGuard.isAssetActionBlocked(tokenId), "FlowPayRWAHub: asset blocked");
         address currentOwner = assetNFT.ownerOf(tokenId);
         require(
-            msg.sender == currentOwner || msg.sender == issuer,
+            msg.sender == currentOwner || msg.sender == asset.issuer,
             "FlowPayRWAHub: caller is not asset manager"
         );
 
-        streamId = assetStream.createAssetYieldStreamFor(msg.sender, tokenId, totalAmount, duration, assetType);
+        streamId = assetStream.createAssetYieldStreamFor(msg.sender, tokenId, totalAmount, duration, asset.assetType);
         assetRegistry.linkStream(tokenId, streamId);
     }
 
@@ -93,14 +173,95 @@ contract FlowPayRWAHub is Owned {
         complianceGuard.setCompliance(user, assetType, approved, expiry, jurisdiction);
     }
 
+    function setIssuerApproval(address issuer, bool approved, string calldata note) external onlyOwner {
+        complianceGuard.setIssuerApproval(issuer, approved, note);
+    }
+
+    function setAttestationPolicy(
+        uint8 assetType,
+        uint8 role,
+        bool required,
+        uint64 maxAge
+    ) external onlyOwner {
+        complianceGuard.setAttestationPolicy(assetType, role, required, maxAge);
+    }
+
     function freezeStream(uint256 streamId, bool frozen, string calldata reason) external onlyOwner {
         complianceGuard.setStreamFreeze(streamId, frozen, reason);
     }
 
-    function updateAssetMetadata(uint256 tokenId, string calldata metadataURI, bytes32 cidHash) external {
+    function setAssetPolicy(
+        uint256 tokenId,
+        bool frozen,
+        bool disputed,
+        bool revoked,
+        string calldata reason
+    ) external onlyOwner {
+        complianceGuard.setAssetPolicy(tokenId, frozen, disputed, revoked, reason);
+
+        uint8 status = frozen
+            ? STATUS_FROZEN
+            : revoked
+                ? STATUS_REVOKED
+                : disputed
+                    ? STATUS_DISPUTED
+                    : STATUS_PENDING_ATTESTATION;
+        assetRegistry.updateVerificationStatus(tokenId, status, reason);
+        emit AssetVerificationStateUpdated(tokenId, status, reason);
+    }
+
+    function registerAttestation(
+        uint256 tokenId,
+        uint8 role,
+        address attestor,
+        bytes32 evidenceHash,
+        string calldata statementType,
+        uint64 expiry
+    ) external onlyOperator returns (uint256 attestationId) {
+        _requireAssetExists(tokenId);
+        attestationId = attestationRegistry.registerAttestation(
+            tokenId,
+            role,
+            attestor,
+            evidenceHash,
+            statementType,
+            expiry
+        );
+        emit AttestationRecorded(tokenId, attestationId, role, attestor, evidenceHash, statementType);
+    }
+
+    function revokeAttestation(uint256 attestationId, string calldata reason) external onlyOperator {
+        (uint256 tokenId,,,,,,,,) = attestationRegistry.getAttestation(attestationId);
+        require(tokenId != 0, "FlowPayRWAHub: attestation not found");
+        attestationRegistry.revokeAttestation(attestationId, reason);
+        emit AttestationRevoked(tokenId, attestationId, reason);
+    }
+
+    function setVerificationStatus(uint256 tokenId, uint8 status, string calldata reason) external onlyOwner {
+        _requireAssetExists(tokenId);
+        assetRegistry.updateVerificationStatus(tokenId, status, reason);
+        emit AssetVerificationStateUpdated(tokenId, status, reason);
+    }
+
+    function updateAssetMetadata(
+        uint256 tokenId,
+        string calldata publicMetadataURI,
+        bytes32 publicMetadataHash,
+        bytes32 cidHash
+    ) external {
         _requireAssetManager(tokenId);
-        assetNFT.updateTokenURI(tokenId, metadataURI);
-        assetRegistry.updateMetadata(tokenId, metadataURI, cidHash);
+        assetNFT.updateTokenURI(tokenId, publicMetadataURI);
+        assetRegistry.updateMetadata(tokenId, publicMetadataURI, publicMetadataHash, cidHash);
+    }
+
+    function updateAssetEvidence(
+        uint256 tokenId,
+        bytes32 evidenceRoot,
+        bytes32 evidenceManifestHash
+    ) external {
+        _requireAssetManager(tokenId);
+        assetRegistry.updateEvidence(tokenId, evidenceRoot, evidenceManifestHash);
+        emit AssetEvidenceUpdated(tokenId, evidenceRoot, evidenceManifestHash);
     }
 
     function updateVerificationTag(uint256 tokenId, bytes32 tagHash) external {
@@ -109,35 +270,29 @@ contract FlowPayRWAHub is Owned {
         emit VerificationPayloadUpdated(tokenId, bytes32(0), tagHash);
     }
 
-    function getAsset(uint256 tokenId)
-        external
-        view
-        returns (
-            uint8 assetType,
-            bytes32 cidHash,
-            bytes32 tagHash,
-            address issuer,
-            uint256 activeStreamId,
-            string memory metadataURI,
-            uint64 createdAt,
-            uint64 updatedAt,
-            bool exists,
-            address currentOwner
-        )
-    {
-        (
-            assetType,
-            cidHash,
-            tagHash,
-            issuer,
-            activeStreamId,
-            metadataURI,
-            createdAt,
-            updatedAt,
-            exists
-        ) = assetRegistry.getAsset(tokenId);
-
-        currentOwner = exists ? assetNFT.ownerOf(tokenId) : address(0);
+    function getAsset(uint256 tokenId) external view returns (AssetView memory assetView) {
+        FlowPayAssetRegistry.AssetRecord memory asset = assetRegistry.getAsset(tokenId);
+        assetView = AssetView({
+            assetType: asset.assetType,
+            rightsModel: asset.rightsModel,
+            verificationStatus: asset.verificationStatus,
+            cidHash: asset.cidHash,
+            tagHash: asset.tagHash,
+            propertyRefHash: asset.propertyRefHash,
+            publicMetadataHash: asset.publicMetadataHash,
+            evidenceRoot: asset.evidenceRoot,
+            evidenceManifestHash: asset.evidenceManifestHash,
+            issuer: asset.issuer,
+            activeStreamId: asset.activeStreamId,
+            jurisdiction: asset.jurisdiction,
+            publicMetadataURI: asset.publicMetadataURI,
+            statusReason: asset.statusReason,
+            createdAt: asset.createdAt,
+            updatedAt: asset.updatedAt,
+            verificationUpdatedAt: asset.verificationUpdatedAt,
+            exists: asset.exists,
+            currentOwner: asset.exists ? assetNFT.ownerOf(tokenId) : address(0)
+        });
     }
 
     function getAssetStream(uint256 tokenId)
@@ -171,24 +326,41 @@ contract FlowPayRWAHub is Owned {
         return assetRegistry.getVerificationStatus(tokenId, cidHash, tagHash);
     }
 
+    function getAttestationIds(uint256 tokenId) external view returns (uint256[] memory) {
+        return attestationRegistry.getAttestationIds(tokenId);
+    }
+
+    function getAttestation(uint256 attestationId)
+        external
+        view
+        returns (
+            uint256 tokenId,
+            uint8 role,
+            address attestor,
+            bytes32 evidenceHash,
+            string memory statementType,
+            uint64 issuedAt,
+            uint64 expiry,
+            bool revoked,
+            string memory revocationReason
+        )
+    {
+        return attestationRegistry.getAttestation(attestationId);
+    }
+
     function _requireAssetManager(uint256 tokenId) internal view {
-        (
-            ,
-            ,
-            ,
-            address issuer,
-            ,
-            ,
-            ,
-            ,
-            bool exists
-        ) = assetRegistry.getAsset(tokenId);
-        require(exists, "FlowPayRWAHub: asset not found");
+        FlowPayAssetRegistry.AssetRecord memory asset = assetRegistry.getAsset(tokenId);
+        require(asset.exists, "FlowPayRWAHub: asset not found");
 
         address currentOwner = assetNFT.ownerOf(tokenId);
         require(
-            msg.sender == currentOwner || msg.sender == issuer || msg.sender == owner,
+            msg.sender == currentOwner || msg.sender == asset.issuer || msg.sender == owner || operators[msg.sender],
             "FlowPayRWAHub: caller is not asset manager"
         );
+    }
+
+    function _requireAssetExists(uint256 tokenId) internal view {
+        FlowPayAssetRegistry.AssetRecord memory asset = assetRegistry.getAsset(tokenId);
+        require(asset.exists, "FlowPayRWAHub: asset not found");
     }
 }

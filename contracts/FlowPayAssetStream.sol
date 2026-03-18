@@ -16,6 +16,9 @@ interface IFlowPayAssetNFT {
 interface IFlowPayComplianceGuardView {
     function isCompliant(address user, uint8 assetType) external view returns (bool);
     function isStreamFrozen(uint256 streamId) external view returns (bool);
+    function isAssetFrozen(uint256 tokenId) external view returns (bool);
+    function isAssetRevoked(uint256 tokenId) external view returns (bool);
+    function isAssetDisputed(uint256 tokenId) external view returns (bool);
 }
 
 contract FlowPayAssetStream is Owned, ReentrancyGuardLite {
@@ -263,6 +266,9 @@ contract FlowPayAssetStream is Owned, ReentrancyGuardLite {
 
         if (address(complianceGuard) != address(0)) {
             require(!complianceGuard.isStreamFrozen(streamId), "FlowPayAssetStream: stream frozen");
+            require(!complianceGuard.isAssetFrozen(tokenId), "FlowPayAssetStream: asset frozen");
+            require(!complianceGuard.isAssetRevoked(tokenId), "FlowPayAssetStream: asset revoked");
+            require(!complianceGuard.isAssetDisputed(tokenId), "FlowPayAssetStream: asset disputed");
             require(complianceGuard.isCompliant(claimer, stream.assetType), "FlowPayAssetStream: claimant not compliant");
         }
     }

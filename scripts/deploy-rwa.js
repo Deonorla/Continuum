@@ -25,6 +25,10 @@ async function main() {
     const assetRegistry = await AssetRegistry.deploy();
     await assetRegistry.waitForDeployment();
 
+    const AssetAttestationRegistry = await ethers.getContractFactory("FlowPayAssetAttestationRegistry");
+    const attestationRegistry = await AssetAttestationRegistry.deploy();
+    await attestationRegistry.waitForDeployment();
+
     const ComplianceGuard = await ethers.getContractFactory("FlowPayComplianceGuard");
     const complianceGuard = await ComplianceGuard.deploy();
     await complianceGuard.waitForDeployment();
@@ -38,12 +42,14 @@ async function main() {
         await assetNFT.getAddress(),
         await assetRegistry.getAddress(),
         await complianceGuard.getAddress(),
-        await assetStream.getAddress()
+        await assetStream.getAddress(),
+        await attestationRegistry.getAddress()
     );
     await rwaHub.waitForDeployment();
 
     await (await assetNFT.setController(await rwaHub.getAddress())).wait();
     await (await assetRegistry.setController(await rwaHub.getAddress())).wait();
+    await (await attestationRegistry.setController(await rwaHub.getAddress())).wait();
     await (await complianceGuard.setController(await rwaHub.getAddress())).wait();
     await (await assetStream.setHub(await rwaHub.getAddress())).wait();
     await (await assetStream.setComplianceGuard(await complianceGuard.getAddress())).wait();
@@ -51,6 +57,7 @@ async function main() {
     console.log("FlowPay RWA suite deployed:");
     console.log(`FLOWPAY_RWA_ASSET_NFT_ADDRESS=${await assetNFT.getAddress()}`);
     console.log(`FLOWPAY_RWA_ASSET_REGISTRY_ADDRESS=${await assetRegistry.getAddress()}`);
+    console.log(`FLOWPAY_RWA_ATTESTATION_REGISTRY_ADDRESS=${await attestationRegistry.getAddress()}`);
     console.log(`FLOWPAY_RWA_COMPLIANCE_GUARD_ADDRESS=${await complianceGuard.getAddress()}`);
     console.log(`FLOWPAY_RWA_ASSET_STREAM_ADDRESS=${await assetStream.getAddress()}`);
     console.log(`FLOWPAY_RWA_HUB_ADDRESS=${await rwaHub.getAddress()}`);

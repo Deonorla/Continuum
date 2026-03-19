@@ -709,8 +709,8 @@ function createApp(config = defaultConfig) {
         } = req.body || {};
         const parsedPayload = payload ? parseVerificationPayload(payload) : null;
 
-        const resolvedTokenId = Number(tokenId || parsedPayload?.tokenId);
-        if (!Number.isFinite(resolvedTokenId) || resolvedTokenId <= 0) {
+        const resolvedTokenId = tokenId !== undefined && tokenId !== null ? tokenId : parsedPayload?.tokenId;
+        if ((resolvedTokenId === undefined || resolvedTokenId === null || resolvedTokenId === "") && !payload) {
             return res.status(400).json({ error: "tokenId or payload is required" });
         }
 

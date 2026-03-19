@@ -374,6 +374,11 @@ function createApp(config = defaultConfig) {
             return res.status(400).json({ error: "evidenceBundle object is required" });
         }
 
+        const documentKeys = Object.keys(evidenceBundle.documents || evidenceBundle || {});
+        if (documentKeys.length > 20) {
+            return res.status(400).json({ error: "evidenceBundle exceeds the maximum of 20 document entries" });
+        }
+
         const normalizedRightsModel = normalizeRightsModel(rightsModel);
         const record = await services.evidenceVault.storeBundle(evidenceBundle, {
             rightsModel: normalizedRightsModel.label,

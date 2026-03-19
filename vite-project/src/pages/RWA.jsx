@@ -3880,7 +3880,7 @@ export default function RWA() {
     }
 
     setIsMintingAsset(true);
-    setStatus("Anchoring evidence, authorizing issuer, and minting the rental twin...");
+    setStatus("Step 1/4 — Building metadata and evidence bundle...");
     const metadata = buildAssetMetadata(mintForm);
     const evidenceBundle = buildEvidenceBundle(mintForm);
     const preparedFingerprint = JSON.stringify(metadata);
@@ -3891,12 +3891,14 @@ export default function RWA() {
 
     try {
       const publicMetadataHash = hashJson(metadata);
+      setStatus("Step 2/4 — Anchoring evidence in private vault...");
       const evidenceResponse = await storeRwaEvidence({
         rightsModel: mintForm.rightsModel,
         propertyRef: mintForm.propertyRef.trim(),
         jurisdiction: mintForm.jurisdiction.trim(),
         evidenceBundle,
       });
+      setStatus("Step 3/4 — Requesting wallet signature for issuer authorization...");
       const issuerAuthorization = await signIssuerAuthorization({
         issuer: walletAddress,
         rightsModel: mintForm.rightsModel,
@@ -3906,6 +3908,7 @@ export default function RWA() {
         evidenceRoot: evidenceResponse.evidenceRoot,
       });
 
+      setStatus("Step 4/4 — Minting rental twin on-chain (this may take a minute)...");
       const response = await mintRwaAsset({
         issuer: walletAddress,
         assetType: TYPE_TO_CHAIN_ASSET_TYPE[mintForm.type] || 1,
@@ -3959,7 +3962,18 @@ export default function RWA() {
     } catch (error) {
       console.error("Mint failed", error);
       setStatus("Asset mint failed.");
-      toast.error(error.message || "Unable to mint the asset right now.", {
+      const rawMessage = error.message || "";
+      let userMessage = "Unable to mint the asset right now. Please try again.";
+      if (rawMessage.includes("ContractReverted") || rawMessage.includes("contract ran to completion but decided to revert")) {
+        userMessage = "The on-chain transaction was rejected. This usually means the smart contracts need to be recompiled for the latest network upgrade, or the backend signer lacks operator permissions on the RWA Hub. Contact the platform administrator.";
+      } else if (rawMessage.includes("issuer") && rawMessage.includes("not approved")) {
+        userMessage = "Your wallet address is not yet authorized as an issuer. The platform operator needs to approve your address before you can mint.";
+      } else if (rawMessage.includes("signer")) {
+        userMessage = "The backend signing service is not configured. Ensure the server is running with a valid PRIVATE_KEY.";
+      } else if (rawMessage) {
+        userMessage = rawMessage;
+      }
+      toast.error(userMessage, {
         title: "Mint failed",
       });
     } finally {

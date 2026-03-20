@@ -1,5 +1,6 @@
 # Stream Engine on Polkadot Westend Asset Hub
-<img width="1920" height="958" alt="Screenshot 2026-03-20 at 12 24 54" src="https://github.com/user-attachments/assets/7b851737-1d1d-40c4-9bb2-27105b79c10d" />
+<img width="1920" height="1080" alt="Screenshot 2026-03-20 at 12 29 00" src="https://github.com/user-attachments/assets/413fc0d8-5de6-4e0b-bb0b-efa2acb274a4" />
+
 
 **Stream Engine** is an `x402`-compatible payment and settlement stack for AI agents.
 

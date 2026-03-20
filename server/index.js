@@ -134,9 +134,8 @@ async function buildServices(config) {
         });
     }
 
-    if (typeof services.chainService.init === "function") {
-        await services.chainService.init();
-    }
+    // Substrate init is lazy — called on first read/write, not at startup.
+    // Eagerly awaiting it here blocks all requests if the WS is slow to connect.
 
     if (!services.store) {
         try {
@@ -476,14 +475,18 @@ function createApp(config = defaultConfig) {
         let issuerApprovalResult = null;
         if (typeof chainService.ensureIssuerApproved === "function") {
             try {
+                console.log(`[API /api/rwa/assets] Calling ensureIssuerApproved for issuer: ${issuer}`);
+                console.log(`[API /api/rwa/assets] HubAddress in live server: ${chainService.hubAddress}`);
+                console.log(`[API /api/rwa/assets] Signer alias: ${chainService.substrateEvmAddress || chainService.signer?.address}`);
                 issuerApprovalResult = await chainService.ensureIssuerApproved(
                     issuer,
                     "Auto-approved from signed Stream Engine mint authorization"
                 );
             } catch (error) {
-                throw new Error(
-                    `RWA issuer approval failed before mint: ${error.message || error}`
-                );
+                console.error(`[API /api/rwa/assets] ensureIssuerApproved error:`, error);
+                return res.status(500).json({
+                    error: `RWA issuer approval failed before mint: ${error.message}`,
+                });
             }
         }
 

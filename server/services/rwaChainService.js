@@ -151,10 +151,22 @@ class RWAChainService {
             return;
         }
 
-        const { api, config } = await createSubstrateApi();
-        const { pair, evmAddress } = await loadSubstrateSigner();
-        await ensureMapped(api, pair, evmAddress);
+        // Race the connection against a timeout so a slow/dead RPC doesn't hang the server
+        const connectWithTimeout = new Promise(async (resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error("Substrate WS connection timed out after 30s")), 30000);
+            try {
+                const { api, config } = await createSubstrateApi();
+                const { pair, evmAddress } = await loadSubstrateSigner();
+                await ensureMapped(api, pair, evmAddress);
+                clearTimeout(timer);
+                resolve({ api, config, pair, evmAddress });
+            } catch (err) {
+                clearTimeout(timer);
+                reject(err);
+            }
+        });
 
+        const { api, config, pair, evmAddress } = await connectWithTimeout;
         this.substrateApi = api;
         this.substratePair = pair;
         this.substrateEvmAddress = evmAddress;

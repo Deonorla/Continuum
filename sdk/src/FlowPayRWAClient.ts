@@ -87,6 +87,12 @@ export class FlowPayRWAClient {
         this.adapter = config.adapter;
     }
 
+    private isStellarRuntime() {
+        return String(this.hubAddress || "").startsWith("stellar:")
+            || String(this.streamAddress || "").startsWith("stellar:")
+            || String(this.tokenAddress || "").startsWith("stellar:");
+    }
+
     async pinMetadata(metadata: Record<string, unknown>) {
         return this.request("/api/rwa/ipfs/metadata", {
             method: "POST",
@@ -144,6 +150,18 @@ export class FlowPayRWAClient {
         totalAmount: bigint,
         duration: number
     ) {
+        if (this.isStellarRuntime()) {
+            return this.request("/api/rwa/relay", {
+                method: "POST",
+                body: JSON.stringify({
+                    action: "createAssetYieldStream",
+                    tokenId,
+                    totalAmount: String(totalAmount),
+                    duration,
+                }),
+            });
+        }
+
         if (!this.hubAddress || !this.streamAddress || !this.tokenAddress) {
             throw new Error("FlowPayRWAClient is missing contract addresses");
         }
@@ -184,6 +202,13 @@ export class FlowPayRWAClient {
     }
 
     async claimYield(signer: Signer, tokenId: number) {
+        if (this.isStellarRuntime()) {
+            return this.request("/api/rwa/relay", {
+                method: "POST",
+                body: JSON.stringify({ action: "claimYield", tokenId }),
+            });
+        }
+
         if (!this.hubAddress) {
             throw new Error("FlowPayRWAClient is missing hub address");
         }
@@ -198,6 +223,17 @@ export class FlowPayRWAClient {
     }
 
     async flashAdvance(signer: Signer, tokenId: number, amount: bigint) {
+        if (this.isStellarRuntime()) {
+            return this.request("/api/rwa/relay", {
+                method: "POST",
+                body: JSON.stringify({
+                    action: "flashAdvance",
+                    tokenId,
+                    amount: String(amount),
+                }),
+            });
+        }
+
         if (!this.hubAddress) {
             throw new Error("FlowPayRWAClient is missing hub address");
         }
@@ -219,6 +255,20 @@ export class FlowPayRWAClient {
         expiry: number,
         jurisdiction: string
     ) {
+        if (this.isStellarRuntime()) {
+            return this.request("/api/rwa/admin", {
+                method: "POST",
+                body: JSON.stringify({
+                    action: "setCompliance",
+                    user,
+                    assetType,
+                    approved,
+                    expiry,
+                    jurisdiction,
+                }),
+            });
+        }
+
         if (!this.hubAddress) {
             throw new Error("FlowPayRWAClient is missing hub address");
         }
@@ -238,6 +288,18 @@ export class FlowPayRWAClient {
     }
 
     async freezeStream(signer: Signer, streamId: number, frozen: boolean, reason: string) {
+        if (this.isStellarRuntime()) {
+            return this.request("/api/rwa/admin", {
+                method: "POST",
+                body: JSON.stringify({
+                    action: "freezeStream",
+                    streamId,
+                    frozen,
+                    reason,
+                }),
+            });
+        }
+
         if (!this.hubAddress) {
             throw new Error("FlowPayRWAClient is missing hub address");
         }
@@ -257,6 +319,17 @@ export class FlowPayRWAClient {
     }
 
     async updateAssetMetadata(signer: Signer, tokenId: number, metadataURI: string) {
+        if (this.isStellarRuntime()) {
+            return this.request("/api/rwa/relay", {
+                method: "POST",
+                body: JSON.stringify({
+                    action: "updateAssetMetadata",
+                    tokenId,
+                    metadataURI,
+                }),
+            });
+        }
+
         if (!this.hubAddress) {
             throw new Error("FlowPayRWAClient is missing hub address");
         }
@@ -277,6 +350,17 @@ export class FlowPayRWAClient {
     }
 
     async updateVerificationTag(signer: Signer, tokenId: number, tag: string) {
+        if (this.isStellarRuntime()) {
+            return this.request("/api/rwa/relay", {
+                method: "POST",
+                body: JSON.stringify({
+                    action: "updateVerificationTag",
+                    tokenId,
+                    tag,
+                }),
+            });
+        }
+
         if (!this.hubAddress) {
             throw new Error("FlowPayRWAClient is missing hub address");
         }
@@ -297,6 +381,11 @@ export class FlowPayRWAClient {
     }
 
     async getClaimableYield(provider: Provider, tokenId: number) {
+        if (this.isStellarRuntime()) {
+            const asset = await this.getAsset(tokenId);
+            return BigInt(asset?.claimableYield || 0);
+        }
+
         if (!this.hubAddress) {
             return 0n;
         }

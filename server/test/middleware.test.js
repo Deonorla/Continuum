@@ -16,6 +16,7 @@ describe('x402 Middleware Integration', function () {
         };
 
         const testConfig = {
+            runtimeKind: "polkadot",
             rpcUrl: "http://localhost:8545", // Dummy
             flowPayContractAddress: "0xMock",
             paymentTokenAddress: "0xUsdcMock",

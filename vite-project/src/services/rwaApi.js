@@ -102,3 +102,41 @@ export async function rwaAdminAction(payload) {
     body: JSON.stringify(payload),
   });
 }
+
+export async function rwaRelayAction(payload) {
+  return request('/api/rwa/relay', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function openPaymentSession(payload) {
+  return request('/api/sessions', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function cancelPaymentSession(sessionId, payload = {}) {
+  return request(`/api/sessions/${sessionId}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function claimPaymentSession(sessionId, payload = {}) {
+  return request(`/api/sessions/${sessionId}/claim`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchPaymentSessions(owner) {
+  const response = await request('/api/sessions', { method: 'GET' }, { owner });
+  return response.sessions || [];
+}
+
+export async function fetchPaymentSession(sessionId) {
+  const response = await request(`/api/sessions/${sessionId}`, { method: 'GET' });
+  return response.session || null;
+}

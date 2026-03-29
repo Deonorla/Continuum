@@ -2,7 +2,7 @@ const env = typeof import.meta !== 'undefined' ? import.meta.env || {} : {};
 const runtimeKind = (env.VITE_FLOWPAY_RUNTIME_KIND || 'stellar').toLowerCase();
 
 export const appName = "Stella's Stream Engine";
-export const streamContractName = 'StreamEngineStream';
+export const streamContractName = runtimeKind === 'stellar' ? 'SessionMeter' : 'StreamEngineStream';
 
 export const contractAddress = env.VITE_CONTRACT_ADDRESS
   || env.VITE_FLOWPAY_CONTRACT_ADDRESS
@@ -16,7 +16,9 @@ export const paymentTokenAddress = env.VITE_FLOWPAY_PAYMENT_TOKEN_ADDRESS
     : '0x00007a6900000000000000000000000001200000');
 
 export const paymentTokenSymbol = env.VITE_FLOWPAY_PAYMENT_TOKEN_SYMBOL || 'USDC';
-export const paymentTokenDisplayName = env.VITE_FLOWPAY_PAYMENT_TOKEN_NAME || 'Circle USDC';
+export const paymentTokenDisplayName =
+  env.VITE_FLOWPAY_PAYMENT_TOKEN_NAME
+  || (runtimeKind === 'stellar' ? 'USDC on Stellar' : 'Circle USDC');
 export const paymentTokenDecimals = Number(
   env.VITE_FLOWPAY_PAYMENT_TOKEN_DECIMALS || (runtimeKind === 'stellar' ? 7 : 6),
 );

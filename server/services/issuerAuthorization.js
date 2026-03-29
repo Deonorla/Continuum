@@ -1,6 +1,18 @@
 const { ethers } = require("ethers");
 const { signatureVerify, cryptoWaitReady } = require("@polkadot/util-crypto");
 const { stringToHex } = require("@polkadot/util");
+const { Keypair, StrKey } = require("@stellar/stellar-sdk");
+
+function decodeStellarSignature(signature) {
+    const raw = String(signature || "").trim();
+    if (!raw) {
+        return null;
+    }
+    if (/^[0-9a-f]+$/i.test(raw)) {
+        return Buffer.from(raw, "hex");
+    }
+    return Buffer.from(raw, "base64");
+}
 
 function buildIssuerAuthorizationMessage(payload = {}) {
     return [
@@ -75,6 +87,49 @@ async function verifyAuthorizationMessage({
             signatureType,
             signerAddress,
         };
+    }
+
+    if (signatureType === "stellar") {
+        if (!StrKey.isValidEd25519PublicKey(String(signerAddress || ""))) {
+            return {
+                valid: false,
+                reason: "invalid stellar signer address",
+                message,
+                signatureType,
+                signerAddress,
+            };
+        }
+
+        if (String(signerAddress) !== String(expectedSigner)) {
+            return {
+                valid: false,
+                reason: "stellar signerAddress must match the declared signer",
+                message,
+                signatureType,
+                signerAddress,
+            };
+        }
+
+        try {
+            const verifier = Keypair.fromPublicKey(String(signerAddress));
+            const signatureBuffer = decodeStellarSignature(signature);
+            const isValid = verifier.verify(Buffer.from(message), signatureBuffer);
+            return {
+                valid: isValid,
+                reason: isValid ? "" : "invalid stellar signature",
+                message,
+                signatureType,
+                signerAddress,
+            };
+        } catch (error) {
+            return {
+                valid: false,
+                reason: error.message || "invalid stellar signature",
+                message,
+                signatureType,
+                signerAddress,
+            };
+        }
     }
 
     if (String(signerAddress).toLowerCase() !== String(expectedSigner).toLowerCase()) {

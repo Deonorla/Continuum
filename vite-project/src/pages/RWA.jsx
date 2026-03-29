@@ -23,6 +23,7 @@ import {
   paymentTokenDecimals,
   paymentTokenSymbol,
 } from "../contactInfo";
+import { ACTIVE_NETWORK } from "../networkConfig.js";
 import {
   fetchRwaAssets,
   fetchRwaAsset,
@@ -116,19 +117,28 @@ const STUDIO_TABS = [
   {
     key: "rent",
     label: "Rent Assets",
-    description: "Browse rentable assets and start a payment stream.",
+    description:
+      ACTIVE_NETWORK.kind === "stellar"
+        ? "Browse rentable assets and start a payment session."
+        : "Browse rentable assets and start a payment stream.",
     Icon: PlayCircle,
   },
   {
     key: "active",
     label: "Active Rentals",
-    description: "Track elapsed time, refund left, and end streams quickly.",
+    description:
+      ACTIVE_NETWORK.kind === "stellar"
+        ? "Track elapsed time, refund left, and end sessions quickly."
+        : "Track elapsed time, refund left, and end streams quickly.",
     Icon: Clock3,
   },
   {
     key: "portfolio",
     label: "My Portfolio",
-    description: "Review yield-bearing assets and their current stream state.",
+    description:
+      ACTIVE_NETWORK.kind === "stellar"
+        ? "Review yield-bearing assets and their current session-backed state."
+        : "Review yield-bearing assets and their current stream state.",
     Icon: Wallet,
   },
   {
@@ -595,7 +605,7 @@ function StudioSidebar({
         ) : (
           <div className="mt-3 space-y-3">
             <p className="text-sm text-white/58">
-              Connect your wallet to mint new assets or start rental streams.
+              Connect your wallet to mint new assets or start rental {ACTIVE_NETWORK.kind === "stellar" ? "sessions" : "streams"}.
             </p>
             <button
               type="button"
@@ -721,11 +731,10 @@ function MintPanel({
                 Guided owner flow
               </div>
               <div className="mt-2">
-                Tell Stream Engine what the asset is, attach the supporting
+                Tell {appName} what the asset is, attach the supporting
                 documents, and mint the rental twin. Internal references,
-                verification tag seeds, evidence fingerprints, and first-time
-                issuer onboarding are generated automatically unless you open
-                the advanced controls.
+                verification tags, and evidence fingerprints are prepared for
+                you unless you open the advanced controls.
               </div>
             </div>
 
@@ -863,11 +872,11 @@ function MintPanel({
                 Internal tracking details
               </div>
               <p className="mt-2 text-sm leading-6 text-white/55">
-                Stream Engine will generate the internal asset reference and
-                verification tag for you. Ordinary owners do not need a separate
-                issuer-approval step before minting. Advanced operators can
-                override the internals only when they have a specific compliance
-                reason.
+                {appName} will generate the internal asset reference and
+                verification tag for you. Ordinary owners do not need to manage
+                these low-level registry values directly. Advanced operators can
+                override the internals only when they have a specific
+                compliance reason.
               </p>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <div className="rounded-2xl bg-black/20 p-4">
@@ -1460,7 +1469,10 @@ function VerifyPanel({
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {[
                     { label: 'Evidence', value: `${result.evidenceCoverage.documentCount} docs` },
-                    { label: 'Active Stream', value: result.asset.activeStreamId || 'None' },
+                    {
+                      label: ACTIVE_NETWORK.kind === 'stellar' ? 'Active Session' : 'Active Stream',
+                      value: result.asset.activeStreamId || 'None',
+                    },
                     { label: 'Claimable Yield', value: `${Number(result.asset.yieldBalance || 0).toFixed(4)} ${paymentTokenSymbol}` },
                     { label: 'Owner', value: result.asset.currentOwner ? `${result.asset.currentOwner.slice(0, 8)}…${result.asset.currentOwner.slice(-6)}` : '—', mono: true },
                     { label: 'Frozen', value: result.asset.assetPolicy?.frozen ? 'Yes' : 'No' },
@@ -1949,6 +1961,15 @@ function AssetWorkspacePanel({
   onUpdateMetadata,
   onUpdateTag,
 }) {
+  const isStellarRuntime = ACTIVE_NETWORK.kind === "stellar";
+  const fundingRailLabel = isStellarRuntime ? "yield vault" : "stream";
+  const freezePanelLabel = isStellarRuntime ? "Session Freeze" : "Stream Freeze";
+  const freezeTargetLabel = isStellarRuntime
+    ? "Freeze current rental session"
+    : "Freeze current stream";
+  const freezeActionLabel = isStellarRuntime
+    ? "Update session freeze"
+    : "Update stream freeze";
   const [fundForm, setFundForm] = useState({ amount: "", duration: "2592000" });
   const [flashAdvanceForm, setFlashAdvanceForm] = useState({ amount: "" });
   const [complianceForm, setComplianceForm] = useState({
@@ -2164,7 +2185,7 @@ function AssetWorkspacePanel({
           </div>
           <div className="rounded-2xl bg-white/5 p-4">
             <div className="text-xs uppercase tracking-[0.18em] text-white/45">
-              Active Stream
+              {isStellarRuntime ? "Active Session" : "Active Stream"}
             </div>
             <div className="mt-2 text-2xl font-black text-white">
               {asset.activeStreamId || 0}
@@ -2389,7 +2410,7 @@ function AssetWorkspacePanel({
                   onClick={() => onFundYieldStream(asset, fundForm)}
                   disabled={actionState.funding || !hasFundingControls}
                 >
-                  {actionState.funding ? "Funding..." : "Fund stream"}
+                  {actionState.funding ? "Funding..." : `Fund ${fundingRailLabel}`}
                 </button>
               </div>
 
@@ -2461,7 +2482,7 @@ function AssetWorkspacePanel({
                   </label>
                   <label className="block">
                     <span className="mb-1.5 block text-sm text-white/70">
-                      Attestor address
+                      {isStellarRuntime ? "Attestor Stellar Account" : "Attestor address"}
                     </span>
                     <input
                       className="input-default w-full"
@@ -2472,7 +2493,7 @@ function AssetWorkspacePanel({
                           attestor: event.target.value,
                         }))
                       }
-                      placeholder="0x..."
+                      placeholder={isStellarRuntime ? "G..." : "0x..."}
                     />
                   </label>
                   <label className="block">
@@ -2688,7 +2709,7 @@ function AssetWorkspacePanel({
 
               <div className="rounded-2xl bg-white/5 p-4 space-y-3">
                 <div className="text-sm font-semibold text-white">
-                  Stream Freeze
+                  {freezePanelLabel}
                 </div>
                 <label className="flex items-center gap-2 text-sm text-white/70">
                   <input
@@ -2701,7 +2722,7 @@ function AssetWorkspacePanel({
                       }))
                     }
                   />
-                  Freeze current stream
+                  {freezeTargetLabel}
                 </label>
                 <input
                   className="input-default w-full"
@@ -2726,7 +2747,7 @@ function AssetWorkspacePanel({
                 >
                   {actionState.freeze
                     ? "Submitting..."
-                    : "Update stream freeze"}
+                    : freezeActionLabel}
                 </button>
               </div>
 
@@ -3163,7 +3184,9 @@ function StartRentalModal({ asset, onClose, onConfirm, isProcessing }) {
                 Processing...
               </>
             ) : (
-              "Confirm & Start Stream"
+              ACTIVE_NETWORK.kind === "stellar"
+                ? "Confirm & Start Session"
+                : "Confirm & Start Stream"
             )}
           </button>
         </div>
@@ -3179,6 +3202,7 @@ export default function RWA() {
     signer,
     walletAddress,
     walletDisplayAddress,
+    activeWallet,
     nativeAccountAddress,
     substrateSession,
     openWalletPicker,
@@ -3193,6 +3217,11 @@ export default function RWA() {
     formatEth,
   } = useWallet();
   const { catalog } = useProtocolCatalog();
+  const isStellarRuntime = ACTIVE_NETWORK.kind === "stellar";
+  const rentalFlowLabel = isStellarRuntime ? "rental session" : "rental stream";
+  const yieldRailLabel = isStellarRuntime ? "yield vault" : "asset stream";
+  const signerWalletLabel = isStellarRuntime ? "Stellar wallet" : "wallet";
+  const accountLabel = isStellarRuntime ? "Stellar account" : "wallet address";
 
   const [sessionMints, setSessionMints] = useState([]);
   const [liveRegistryAssets, setLiveRegistryAssets] = useState([]);
@@ -3390,7 +3419,7 @@ export default function RWA() {
 
   const registryAssets = registryFilter === "mine" ? ownedAssets : allAssets;
   const latestMint = sessionMints[0] || null;
-  const networkName = chainId ? getNetworkName(chainId) : "Westend Asset Hub";
+  const networkName = catalog?.network?.name || getNetworkName(chainId);
 
   const setActiveTab = (nextTab) => setTabParam(setSearchParams, nextTab);
   const setActionFlag = (key, value) => {
@@ -3564,12 +3593,12 @@ export default function RWA() {
       return {
         issuedAt,
         nonce,
-        signatureType: "evm",
+        signatureType: activeWallet?.type === "stellar" ? "stellar" : "evm",
         signerAddress: walletAddress,
         signature: await signer.signMessage(message),
       };
     },
-    [nativeAccountAddress, signer, substrateSession, walletAddress],
+    [activeWallet?.type, nativeAccountAddress, signer, substrateSession, walletAddress],
   );
 
   const signAttestationAuthorization = useCallback(
@@ -3623,12 +3652,12 @@ export default function RWA() {
       return {
         issuedAt,
         nonce,
-        signatureType: "evm",
+        signatureType: activeWallet?.type === "stellar" ? "stellar" : "evm",
         signerAddress: walletAddress,
         signature: await signer.signMessage(message),
       };
     },
-    [nativeAccountAddress, signer, substrateSession, walletAddress],
+    [activeWallet?.type, nativeAccountAddress, signer, substrateSession, walletAddress],
   );
 
   const signAttestationRevocationAuthorization = useCallback(
@@ -3672,12 +3701,12 @@ export default function RWA() {
       return {
         issuedAt,
         nonce,
-        signatureType: "evm",
+        signatureType: activeWallet?.type === "stellar" ? "stellar" : "evm",
         signerAddress: walletAddress,
         signature: await signer.signMessage(message),
       };
     },
-    [nativeAccountAddress, signer, substrateSession, walletAddress],
+    [activeWallet?.type, nativeAccountAddress, signer, substrateSession, walletAddress],
   );
 
   const buildVerificationResult = useCallback((response, fallbackAsset) => {
@@ -3924,7 +3953,7 @@ export default function RWA() {
         rawMessage.includes("not approved")
       ) {
         userMessage =
-          "Your wallet address is not yet authorized as an issuer. The platform operator needs to approve your address before you can mint.";
+          `Your ${accountLabel} is not yet authorized as an issuer. The platform operator needs to approve it before you can mint.`;
       } else if (rawMessage.includes("signer")) {
         userMessage =
           "The backend signing service is not configured. Ensure the server is running with a valid PRIVATE_KEY.";
@@ -3946,7 +3975,7 @@ export default function RWA() {
   const handleFundYieldStream = async (asset, form) => {
     if (!hasContractControls) {
       toast.warning(
-        "Connect a compatible controller wallet to fund an asset stream.",
+        `Connect a compatible controller ${signerWalletLabel.toLowerCase()} to fund the ${yieldRailLabel}.`,
         { title: "Wallet required" },
       );
       return;
@@ -3964,13 +3993,13 @@ export default function RWA() {
         totalAmount: parseTokenAmount(form.amount, paymentTokenDecimals),
         duration: Number(form.duration || 0),
       });
-      toast.success(`Yield stream funded for Asset #${asset.tokenId}.`, {
-        title: "Stream funded",
+      toast.success(`Yield funding prepared for Asset #${asset.tokenId}.`, {
+        title: isStellarRuntime ? "Yield vault funded" : "Stream funded",
       });
       await Promise.all([loadRegistry(), loadWorkspaceAsset(asset.tokenId)]);
     } catch (error) {
       console.error("Failed to fund asset yield stream", error);
-      toast.error(error.message || "Unable to fund the asset stream.", {
+      toast.error(error.message || `Unable to fund the ${yieldRailLabel}.`, {
         title: "Funding failed",
       });
     } finally {
@@ -3980,7 +4009,7 @@ export default function RWA() {
 
   const handleClaimYieldAction = async (asset) => {
     if (!hasContractControls) {
-      toast.warning("Connect a compatible wallet to claim yield.", {
+      toast.warning(`Connect a compatible ${signerWalletLabel.toLowerCase()} to claim yield.`, {
         title: "Wallet required",
       });
       return;
@@ -4011,7 +4040,7 @@ export default function RWA() {
   const handleSubmitAttestationAction = async (asset, form) => {
     if (!walletAddress) {
       toast.warning(
-        "Connect the attestor wallet before recording an attestation.",
+        `Connect the attestor ${signerWalletLabel.toLowerCase()} before recording an attestation.`,
         {
           title: "Wallet required",
         },
@@ -4077,7 +4106,7 @@ export default function RWA() {
   ) => {
     if (!walletAddress) {
       toast.warning(
-        "Connect the attestor wallet before revoking an attestation.",
+        `Connect the attestor ${signerWalletLabel.toLowerCase()} before revoking an attestation.`,
         {
           title: "Wallet required",
         },
@@ -4132,7 +4161,7 @@ export default function RWA() {
 
   const handleFlashAdvanceAction = async (asset, amountValue) => {
     if (!hasContractControls) {
-      toast.warning("Connect a compatible wallet to flash advance yield.", {
+      toast.warning(`Connect a compatible ${signerWalletLabel.toLowerCase()} to flash advance yield.`, {
         title: "Wallet required",
       });
       return;
@@ -4163,7 +4192,7 @@ export default function RWA() {
 
   const handleSetComplianceAction = async (asset, form) => {
     if (!hasContractControls) {
-      toast.warning("Connect a controller wallet to update compliance.", {
+      toast.warning(`Connect a controller ${signerWalletLabel.toLowerCase()} to update compliance.`, {
         title: "Wallet required",
       });
       return;
@@ -4202,7 +4231,7 @@ export default function RWA() {
   const handleSetVerificationStatusAction = async (asset, form) => {
     if (!hasContractControls) {
       toast.warning(
-        "Connect a controller wallet to update verification status.",
+        `Connect a controller ${signerWalletLabel.toLowerCase()} to update verification status.`,
         {
           title: "Wallet required",
         },
@@ -4239,7 +4268,7 @@ export default function RWA() {
 
   const handleSetAssetPolicyAction = async (asset, form) => {
     if (!hasContractControls) {
-      toast.warning("Connect a controller wallet to update asset policy.", {
+      toast.warning(`Connect a controller ${signerWalletLabel.toLowerCase()} to update asset policy.`, {
         title: "Wallet required",
       });
       return;
@@ -4274,7 +4303,7 @@ export default function RWA() {
   const handleSetIssuerApprovalAction = async (_asset, form) => {
     if (!hasContractControls) {
       toast.warning(
-        "Connect a platform operator wallet to update issuer access.",
+        `Connect a platform operator ${signerWalletLabel.toLowerCase()} to update issuer access.`,
         {
           title: "Wallet required",
         },
@@ -4318,7 +4347,7 @@ export default function RWA() {
   const handleSetAttestationPolicyAction = async (asset, form) => {
     if (!hasContractControls) {
       toast.warning(
-        "Connect a controller wallet to update attestation policy.",
+        `Connect a controller ${signerWalletLabel.toLowerCase()} to update attestation policy.`,
         {
           title: "Wallet required",
         },
@@ -4359,7 +4388,7 @@ export default function RWA() {
 
   const handleUpdateEvidenceAction = async (asset, form) => {
     if (!hasContractControls) {
-      toast.warning("Connect a controller wallet to update evidence anchors.", {
+      toast.warning(`Connect a controller ${signerWalletLabel.toLowerCase()} to update evidence anchors.`, {
         title: "Wallet required",
       });
       return;
@@ -4391,7 +4420,7 @@ export default function RWA() {
 
   const handleFreezeStreamAction = async (asset, form) => {
     if (!hasContractControls) {
-      toast.warning("Connect a controller wallet to freeze a stream.", {
+      toast.warning(`Connect a controller ${signerWalletLabel.toLowerCase()} to freeze a ${rentalFlowLabel}.`, {
         title: "Wallet required",
       });
       return;
@@ -4407,14 +4436,14 @@ export default function RWA() {
         frozen: Boolean(form.frozen),
         reason: form.reason || "",
       });
-      toast.success(`Stream freeze updated for Asset #${asset.tokenId}.`, {
+      toast.success(`${isStellarRuntime ? "Session" : "Stream"} freeze updated for Asset #${asset.tokenId}.`, {
         title: "Freeze updated",
       });
       await loadWorkspaceAsset(asset.tokenId);
     } catch (error) {
       console.error("Failed to update freeze state", error);
       toast.error(
-        error.message || "Unable to update the stream freeze state.",
+        error.message || `Unable to update the ${rentalFlowLabel} freeze state.`,
         { title: "Freeze failed" },
       );
     } finally {
@@ -4424,7 +4453,7 @@ export default function RWA() {
 
   const handleUpdateMetadataAction = async (asset, metadataURI) => {
     if (!hasContractControls) {
-      toast.warning("Connect a controller wallet to update metadata.", {
+      toast.warning(`Connect a controller ${signerWalletLabel.toLowerCase()} to update metadata.`, {
         title: "Wallet required",
       });
       return;
@@ -4456,7 +4485,7 @@ export default function RWA() {
   const handleUpdateTagAction = async (asset, tagValue) => {
     if (!hasContractControls) {
       toast.warning(
-        "Connect a controller wallet to update the verification tag.",
+        `Connect a controller ${signerWalletLabel.toLowerCase()} to update the verification tag.`,
         { title: "Wallet required" },
       );
       return;
@@ -4487,7 +4516,7 @@ export default function RWA() {
 
   const handleStartRental = async (asset, hours) => {
     if (!walletAddress) {
-      toast.warning("Connect your wallet to start a rental stream.", {
+      toast.warning(`Connect your ${signerWalletLabel.toLowerCase()} to start a ${rentalFlowLabel}.`, {
         title: "Wallet required",
       });
       return;
@@ -4497,8 +4526,8 @@ export default function RWA() {
     const metadata = buildRentalStreamMetadata(asset, hours);
 
     if (typeof createStream !== "function") {
-      toast.warning("Wallet streaming is not available in this session.", {
-        title: "Stream unavailable",
+      toast.warning(`${isStellarRuntime ? "Session funding" : "Wallet streaming"} is not available in this session.`, {
+        title: isStellarRuntime ? "Session unavailable" : "Stream unavailable",
       });
       return;
     }
@@ -4512,12 +4541,12 @@ export default function RWA() {
         metadata,
       );
     } catch (error) {
-      console.error("Rental stream setup failed", error);
+      console.error(`Rental ${rentalFlowLabel} setup failed`, error);
     }
 
     if (streamId == null) {
-      toast.error("Unable to start the rental stream.", {
-        title: "Stream failed",
+      toast.error(`Unable to start the ${rentalFlowLabel}.`, {
+        title: isStellarRuntime ? "Session failed" : "Stream failed",
       });
       return;
     }
@@ -4536,11 +4565,11 @@ export default function RWA() {
 
     setSelectedRentalAsset(null);
     setActiveTab("active");
-    setStatus(
-      streamId
-        ? `Rental stream #${streamId} started.`
+      setStatus(
+        streamId
+        ? `Rental ${rentalFlowLabel} #${streamId} started.`
         : `Rental prepared for Asset #${asset.id}.`,
-    );
+      );
     toast.success(`Rental started for Asset #${asset.id}.`, {
       title: "Rental active",
     });
@@ -4554,13 +4583,13 @@ export default function RWA() {
       setManualActiveRentals((current) =>
         current.filter((item) => item.asset.id !== rental.asset.id),
       );
-      setStatus(`Ended rental for Asset #${rental.asset.id}.`);
+      setStatus(`Ended ${rentalFlowLabel} for Asset #${rental.asset.id}.`);
       toast.info(`Rental for Asset #${rental.asset.id} was ended.`, {
         title: "Rental ended",
       });
     } catch (error) {
       console.error("Failed to end rental", error);
-      toast.error(error.message || "Unable to end the rental stream.", {
+      toast.error(error.message || `Unable to end the ${rentalFlowLabel}.`, {
         title: "Cancellation failed",
       });
     }

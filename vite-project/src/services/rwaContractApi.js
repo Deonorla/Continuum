@@ -1,13 +1,14 @@
 import { Contract, ethers } from 'ethers';
 import { ACTIVE_NETWORK } from '../networkConfig.js';
-import { paymentAssetId } from '../contactInfo.js';
 import {
-  substrateApproveTransfer,
-  substrateApproveTransferForSession,
   substrateCallContract,
   substrateReadContract,
 } from '../lib/substrateAssets.js';
-import { rwaAdminAction } from './rwaApi.js';
+import {
+  fetchRwaAsset,
+  rwaAdminAction,
+  rwaRelayAction,
+} from './rwaApi.js';
 
 const TOKEN_APPROVAL_GAS_LIMIT = 500000n;
 const ASSET_STREAM_CREATION_GAS_LIMIT = 1500000n;
@@ -43,9 +44,17 @@ function hasNativeSubstrateSession(substrateSession) {
   return ACTIVE_NETWORK.chainId === 420420421 && Boolean(substrateSession?.api && substrateSession?.account);
 }
 
+function isStellarRuntime() {
+  return ACTIVE_NETWORK.kind === 'stellar';
+}
+
 function requireWriteWallet({ signer, substrateSession }) {
   if (!signer && !hasNativeSubstrateSession(substrateSession)) {
-    throw new Error('Connect a compatible wallet before sending this contract action.');
+    throw new Error(
+      isStellarRuntime()
+        ? 'Connect Freighter before authorizing this Stellar action.'
+        : 'Connect a compatible wallet before sending this contract action.',
+    );
   }
 }
 
@@ -67,13 +76,30 @@ export async function approveAndCreateAssetYieldStream({
   totalAmount,
   duration,
 }) {
+  if (isStellarRuntime()) {
+    return rwaRelayAction({
+      action: 'createAssetYieldStream',
+      tokenId,
+      totalAmount: String(totalAmount),
+      duration,
+    });
+  }
+
   requireAddress('Token address', tokenAddress);
   requireAddress('Asset stream address', streamAddress);
   requireAddress('RWA hub address', hubAddress);
   requireWriteWallet({ signer, substrateSession });
 
   if (hasNativeSubstrateSession(substrateSession)) {
-    await substrateApproveTransferForSession(substrateSession, paymentAssetId, streamAddress, totalAmount);
+    // Use ERC-20 precompile approve so the EVM contract's transferFrom can see the allowance.
+    // assets.approveTransfer (native pallet) and the EVM precompile allowance store are separate —
+    // the contract reads ERC-20 allowances, not native delegations.
+    await substrateCallContract(substrateSession, {
+      contractAddress: tokenAddress,
+      abi: ERC20_ABI,
+      functionName: 'approve',
+      args: [streamAddress, totalAmount],
+    });
     return substrateCallContract(substrateSession, {
       contractAddress: hubAddress,
       abi: HUB_ABI,
@@ -84,11 +110,16 @@ export async function approveAndCreateAssetYieldStream({
 
   const ownerAddress = await signer.getAddress();
   if (ACTIVE_NETWORK.chainId === 420420421) {
+    // Same fix for the EVM-signer path on Westend: use the ERC-20 precompile, not assets.approveTransfer.
     try {
-      await substrateApproveTransfer(ownerAddress, paymentAssetId, streamAddress, totalAmount);
+      const token = new Contract(tokenAddress, ERC20_ABI, signer);
+      const approveTx = await token.approve(streamAddress, totalAmount, {
+        gasLimit: TOKEN_APPROVAL_GAS_LIMIT,
+      });
+      await approveTx.wait();
     } catch (error) {
-      console.warn('[rwaContractApi] Native asset approval failed.', error);
-      throw new Error(error?.message || 'Native asset approval failed on Westend.');
+      console.warn('[rwaContractApi] ERC-20 precompile approval failed.', error);
+      throw new Error(error?.message || 'Token approval failed on Westend.');
     }
   } else {
     const token = new Contract(tokenAddress, ERC20_ABI, signer);
@@ -116,6 +147,13 @@ export async function approveAndCreateAssetYieldStream({
 }
 
 export async function claimAssetYield({ signer, substrateSession, hubAddress, tokenId }) {
+  if (isStellarRuntime()) {
+    return rwaRelayAction({
+      action: 'claimYield',
+      tokenId,
+    });
+  }
+
   requireAddress('RWA hub address', hubAddress);
   requireWriteWallet({ signer, substrateSession });
 
@@ -134,6 +172,14 @@ export async function claimAssetYield({ signer, substrateSession, hubAddress, to
 }
 
 export async function flashAdvanceAssetYield({ signer, substrateSession, hubAddress, tokenId, amount }) {
+  if (isStellarRuntime()) {
+    return rwaRelayAction({
+      action: 'flashAdvance',
+      tokenId,
+      amount: String(amount),
+    });
+  }
+
   requireAddress('RWA hub address', hubAddress);
   requireWriteWallet({ signer, substrateSession });
 
@@ -166,28 +212,11 @@ export async function setAssetStreamFreeze({ hubAddress: _hub, streamId, frozen,
 }
 
 export async function setAssetIssuerApproval({
-  signer,
-  substrateSession,
-  hubAddress,
   issuer,
   approved,
   note,
 }) {
-  requireAddress('RWA hub address', hubAddress);
-  requireWriteWallet({ signer, substrateSession });
-
-  if (hasNativeSubstrateSession(substrateSession)) {
-    return substrateCallContract(substrateSession, {
-      contractAddress: hubAddress,
-      abi: HUB_ABI,
-      functionName: 'setIssuerApproval',
-      args: [issuer, approved, note],
-    });
-  }
-
-  const hub = new Contract(hubAddress, HUB_ABI, signer);
-  const tx = await hub.setIssuerApproval(issuer, approved, note);
-  return tx.wait();
+  return rwaAdminAction({ action: 'setIssuerApproval', issuer, approved, note });
 }
 
 export async function setAssetAttestationPolicy({
@@ -218,6 +247,14 @@ export async function setAssetVerificationStatus({
 }
 
 export async function updateAssetMetadataOnChain({ signer, substrateSession, hubAddress, tokenId, metadataURI }) {
+  if (isStellarRuntime()) {
+    return rwaRelayAction({
+      action: 'updateAssetMetadata',
+      tokenId,
+      metadataURI,
+    });
+  }
+
   requireAddress('RWA hub address', hubAddress);
   requireWriteWallet({ signer, substrateSession });
 
@@ -243,6 +280,15 @@ export async function updateAssetEvidenceOnChain({
   evidenceRoot,
   evidenceManifestHash,
 }) {
+  if (isStellarRuntime()) {
+    return rwaRelayAction({
+      action: 'updateAssetEvidence',
+      tokenId,
+      evidenceRoot,
+      evidenceManifestHash,
+    });
+  }
+
   requireAddress('RWA hub address', hubAddress);
   requireWriteWallet({ signer, substrateSession });
 
@@ -261,6 +307,14 @@ export async function updateAssetEvidenceOnChain({
 }
 
 export async function updateAssetVerificationTag({ signer, substrateSession, hubAddress, tokenId, tag }) {
+  if (isStellarRuntime()) {
+    return rwaRelayAction({
+      action: 'updateVerificationTag',
+      tokenId,
+      tag,
+    });
+  }
+
   requireAddress('RWA hub address', hubAddress);
   requireWriteWallet({ signer, substrateSession });
 
@@ -279,6 +333,11 @@ export async function updateAssetVerificationTag({ signer, substrateSession, hub
 }
 
 export async function readClaimableYield({ provider, substrateSession, hubAddress, tokenId }) {
+  if (isStellarRuntime()) {
+    const asset = await fetchRwaAsset(tokenId);
+    return BigInt(asset?.claimableYield || 0);
+  }
+
   requireAddress('RWA hub address', hubAddress);
 
   if (hasNativeSubstrateSession(substrateSession)) {

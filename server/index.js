@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const { StrKey } = require("@stellar/stellar-sdk");
 const flowPayMiddleware = require("./middleware/flowPayMiddleware");
 const { IPFSService, normalizeCid } = require("./services/ipfsService");
 const {
@@ -10,6 +11,7 @@ const {
 const { createIndexerStore, MemoryIndexerStore } = require("./services/indexerStore");
 const { RWAIndexer } = require("./services/rwaIndexer");
 const { RWAChainService } = require("./services/rwaChainService");
+const { StellarRWAChainService } = require("./services/stellarRwaChainService");
 const { EvidenceVaultService } = require("./services/evidenceVault");
 const {
     verifyAttestationAuthorization,
@@ -23,12 +25,12 @@ const {
     normalizeAttestationRole,
     normalizeRightsModel,
 } = require("./services/rwaModel");
-const { createFlowPayRuntimeConfig } = require("../utils/polkadot");
+const { createRuntimeConfig } = require("../utils/runtimeConfig");
 
 require("dotenv").config({ path: "../.env" });
 
 const PORT = Number(process.env.PORT || 3001);
-const runtimeConfig = createFlowPayRuntimeConfig();
+const runtimeConfig = createRuntimeConfig();
 const PAYMENT_TOKEN_ADDRESS = runtimeConfig.paymentTokenAddress;
 const CONTRACT_ADDRESS =
     process.env.FLOWPAY_CONTRACT_ADDRESS
@@ -45,8 +47,15 @@ const defaultConfig = {
     tokenSymbol: runtimeConfig.paymentTokenSymbol,
     tokenDecimals: runtimeConfig.paymentTokenDecimals,
     chainId: runtimeConfig.chainId,
+    runtimeKind: runtimeConfig.kind,
     networkName: runtimeConfig.networkName,
+    horizonUrl: runtimeConfig.horizonUrl || "",
+    sorobanRpcUrl: runtimeConfig.sorobanRpcUrl || runtimeConfig.rpcUrl,
+    networkPassphrase: runtimeConfig.networkPassphrase || "",
     paymentAssetId: runtimeConfig.paymentAssetId,
+    paymentAssetCode: runtimeConfig.paymentAssetCode || "",
+    paymentAssetIssuer: runtimeConfig.paymentAssetIssuer || "",
+    settlement: runtimeConfig.settlement || "",
     recipientAddress: RECIPIENT_ADDRESS,
     useSubstrateReads:
         process.env.FLOWPAY_USE_SUBSTRATE_READS === "true"
@@ -120,23 +129,6 @@ async function buildServices(config) {
         services.evidenceVault = new EvidenceVaultService(config.evidenceVault || {});
     }
 
-    if (!services.chainService) {
-        services.chainService = new RWAChainService({
-            rpcUrl: config.rpcUrl,
-            chainId: config.chainId,
-            hubAddress: config.rwa?.hubAddress,
-            assetNFTAddress: config.rwa?.assetNFTAddress,
-            assetRegistryAddress: config.rwa?.assetRegistryAddress,
-            attestationRegistryAddress: config.rwa?.attestationRegistryAddress,
-            assetStreamAddress: config.rwa?.assetStreamAddress,
-            complianceGuardAddress: config.rwa?.complianceGuardAddress,
-            privateKey: process.env.PRIVATE_KEY,
-        });
-    }
-
-    // Substrate init is lazy — called on first read/write, not at startup.
-    // Eagerly awaiting it here blocks all requests if the WS is slow to connect.
-
     if (!services.store) {
         try {
             services.store = await createIndexerStore({ postgresUrl: config.postgresUrl });
@@ -146,7 +138,36 @@ async function buildServices(config) {
         }
     }
 
-    if (!services.indexer) {
+    if (!services.chainService) {
+        if ((config.runtimeKind || runtimeConfig.kind) === "stellar") {
+            services.chainService = new StellarRWAChainService({
+                runtime: runtimeConfig,
+                store: services.store,
+                hubAddress: config.rwa?.hubAddress,
+                assetNFTAddress: config.rwa?.assetNFTAddress,
+                assetRegistryAddress: config.rwa?.assetRegistryAddress,
+                attestationRegistryAddress: config.rwa?.attestationRegistryAddress,
+                assetStreamAddress: config.rwa?.assetStreamAddress,
+                complianceGuardAddress: config.rwa?.complianceGuardAddress,
+                operatorSecret: process.env.STELLAR_OPERATOR_SECRET || process.env.PRIVATE_KEY,
+                operatorPublicKey: process.env.STELLAR_OPERATOR_PUBLIC_KEY || process.env.STELLAR_PLATFORM_ADDRESS,
+            });
+        } else {
+            services.chainService = new RWAChainService({
+                rpcUrl: config.rpcUrl,
+                chainId: config.chainId,
+                hubAddress: config.rwa?.hubAddress,
+                assetNFTAddress: config.rwa?.assetNFTAddress,
+                assetRegistryAddress: config.rwa?.assetRegistryAddress,
+                attestationRegistryAddress: config.rwa?.attestationRegistryAddress,
+                assetStreamAddress: config.rwa?.assetStreamAddress,
+                complianceGuardAddress: config.rwa?.complianceGuardAddress,
+                privateKey: process.env.PRIVATE_KEY,
+            });
+        }
+    }
+
+    if (!services.indexer && services.chainService.kind !== "stellar") {
         services.indexer = new RWAIndexer({
             chainService: services.chainService,
             store: services.store,
@@ -282,7 +303,20 @@ function createApp(config = defaultConfig) {
         return services;
     });
 
-    app.use(flowPayMiddleware(resolvedConfig));
+    app.use(flowPayMiddleware({
+        ...resolvedConfig,
+        runtimeKind: resolvedConfig.runtimeKind || runtimeConfig.kind,
+        sessionResolver:
+            (resolvedConfig.runtimeKind || runtimeConfig.kind) === "stellar"
+                ? async (streamId) => {
+                    const services = await app.locals.ready;
+                    if (typeof services.chainService?.getSessionSnapshot !== "function") {
+                        return null;
+                    }
+                    return services.chainService.getSessionSnapshot(streamId);
+                }
+                : undefined,
+    }));
 
     app.get("/api/weather", (req, res) => {
         res.json({
@@ -322,12 +356,19 @@ function createApp(config = defaultConfig) {
                 name: resolvedConfig.networkName,
                 chainId: resolvedConfig.chainId,
                 rpcUrl: resolvedConfig.rpcUrl,
+                kind: resolvedConfig.runtimeKind || runtimeConfig.kind,
+                passphrase: resolvedConfig.networkPassphrase || runtimeConfig.networkPassphrase || "",
+                horizonUrl: resolvedConfig.horizonUrl || runtimeConfig.horizonUrl || "",
+                sorobanRpcUrl: resolvedConfig.sorobanRpcUrl || runtimeConfig.sorobanRpcUrl || runtimeConfig.rpcUrl,
             },
             payments: {
                 tokenAddress: resolvedConfig.paymentTokenAddress,
                 tokenSymbol: resolvedConfig.tokenSymbol,
                 tokenDecimals: resolvedConfig.tokenDecimals,
                 paymentAssetId: resolvedConfig.paymentAssetId,
+                assetCode: resolvedConfig.paymentAssetCode || runtimeConfig.paymentAssetCode || "",
+                assetIssuer: resolvedConfig.paymentAssetIssuer || runtimeConfig.paymentAssetIssuer || "",
+                settlement: resolvedConfig.settlement || runtimeConfig.settlement || "",
                 recipientAddress: resolvedConfig.recipientAddress,
                 contractAddress: resolvedConfig.flowPayContractAddress,
             },
@@ -342,6 +383,23 @@ function createApp(config = defaultConfig) {
             routes,
         });
     });
+
+    app.get("/api/health", asyncHandler(async (req, res) => {
+        const services = await app.locals.ready;
+        res.json({
+            ok: true,
+            runtime: runtimeConfig.kind,
+            network: runtimeConfig.networkName,
+            operator: services.chainService?.signer?.address || "",
+            payments: {
+                tokenAddress: runtimeConfig.paymentTokenAddress,
+                assetCode: runtimeConfig.paymentAssetCode || "",
+            },
+            rwa: {
+                hubAddress: resolvedConfig.rwa?.hubAddress || "",
+            },
+        });
+    }));
 
     app.get("/api/rwa/assets", asyncHandler(async (req, res) => {
         const services = await app.locals.ready;
@@ -472,38 +530,31 @@ function createApp(config = defaultConfig) {
         const resolvedTagHash = tagHash || hashText(tag || `${issuer}:${propertyRef}:${resolvedPublicMetadataURI}`);
         const cidHash = hashText(resolvedPublicMetadataURI);
 
-        let issuerApprovalResult = null;
-        if (typeof chainService.ensureIssuerApproved === "function") {
-            try {
-                console.log(`[API /api/rwa/assets] Calling ensureIssuerApproved for issuer: ${issuer}`);
-                console.log(`[API /api/rwa/assets] HubAddress in live server: ${chainService.hubAddress}`);
-                console.log(`[API /api/rwa/assets] Signer alias: ${chainService.substrateEvmAddress || chainService.signer?.address}`);
-                issuerApprovalResult = await chainService.ensureIssuerApproved(
-                    issuer,
-                    "Auto-approved from signed Stream Engine mint authorization"
-                );
-            } catch (error) {
-                console.error(`[API /api/rwa/assets] ensureIssuerApproved error:`, error);
-                return res.status(500).json({
-                    error: `RWA issuer approval failed before mint: ${error.message}`,
-                });
-            }
+        let mintResult;
+        try {
+            mintResult = await chainService.mintAsset({
+                publicMetadataURI: resolvedPublicMetadataURI,
+                assetType,
+                rightsModel: normalizedRightsModel.code,
+                publicMetadataHash,
+                evidenceRoot: evidenceRecord.evidenceRoot,
+                evidenceManifestHash: evidenceRecord.evidenceManifestHash,
+                propertyRefHash,
+                jurisdiction,
+                cidHash,
+                tagHash: resolvedTagHash,
+                issuer,
+                statusReason,
+            });
+        } catch (error) {
+            const statusCode = error.code === "issuer_not_onboarded" ? 400 : 500;
+            return res.status(statusCode).json({
+                error: error.message || "Asset mint failed",
+                code: error.code || "mint_failed",
+                action: "mintAsset",
+                details: error.details || {},
+            });
         }
-
-        const mintResult = await chainService.mintAsset({
-            publicMetadataURI: resolvedPublicMetadataURI,
-            assetType,
-            rightsModel: normalizedRightsModel.code,
-            publicMetadataHash,
-            evidenceRoot: evidenceRecord.evidenceRoot,
-            evidenceManifestHash: evidenceRecord.evidenceManifestHash,
-            propertyRefHash,
-            jurisdiction,
-            cidHash,
-            tagHash: resolvedTagHash,
-            issuer,
-            statusReason,
-        });
 
         void beginIndexerSync(app);
 
@@ -545,6 +596,8 @@ function createApp(config = defaultConfig) {
             signer: chainService.signer || null,
         });
         res.status(201).json({
+            code: "asset_minted",
+            action: "mintAsset",
             tokenId: mintResult.tokenId,
             txHash: mintResult.txHash,
             publicMetadataURI: resolvedPublicMetadataURI,
@@ -553,12 +606,14 @@ function createApp(config = defaultConfig) {
             evidenceManifestHash: evidenceRecord.evidenceManifestHash,
             verificationStatus: resolvedVerificationStatus,
             statusReason: resolvedStatusReason,
-            issuerOnboarding: issuerApprovalResult
-                ? {
-                    alreadyApproved: Boolean(issuerApprovalResult.alreadyApproved),
-                    automaticallyApproved: !issuerApprovalResult.alreadyApproved,
-                }
-                : null,
+            details: {
+                runtime: runtimeConfig.kind,
+                issuerApproved: true,
+            },
+            issuerOnboarding: {
+                alreadyApproved: true,
+                automaticallyApproved: false,
+            },
             verificationPayload,
             verificationUrl: buildVerificationUrl(resolvedConfig.appBaseUrl, verificationPayload),
             verificationApiUrl: `${resolvedConfig.appBaseUrl.replace(/5173$/, "3001")}/api/rwa/verify`,
@@ -661,11 +716,241 @@ function createApp(config = defaultConfig) {
         }
 
         res.status(201).json({
+            code: "attestation_registered",
             action: "register",
             attestationId: result.attestationId,
             txHash: result.txHash,
             role: normalizedRole.label,
             asset: snapshot ? await hydrateAssetMetadata(services, snapshot) : null,
+            details: {
+                runtime: runtimeConfig.kind,
+            },
+        });
+    }));
+
+    app.get("/api/sessions", asyncHandler(async (req, res) => {
+        const services = await app.locals.ready;
+        const sessions = typeof services.chainService.listSessions === "function"
+            ? await services.chainService.listSessions({ owner: req.query.owner })
+            : [];
+        res.json({
+            sessions,
+            code: "sessions_listed",
+        });
+    }));
+
+    app.post("/api/sessions", asyncHandler(async (req, res) => {
+        const services = await app.locals.ready;
+        const {
+            sender,
+            recipient,
+            duration,
+            amount,
+            metadata = "{}",
+        } = req.body || {};
+
+        if (!sender || !recipient || !duration || !amount) {
+            return res.status(400).json({
+                error: "sender, recipient, duration, and amount are required",
+                code: "invalid_session_request",
+            });
+        }
+
+        if (runtimeConfig.kind === "stellar") {
+            if (!StrKey.isValidEd25519PublicKey(String(sender))) {
+                return res.status(400).json({
+                    error: "sender must be a valid Stellar public key",
+                    code: "invalid_stellar_sender",
+                });
+            }
+            if (!StrKey.isValidEd25519PublicKey(String(recipient))) {
+                return res.status(400).json({
+                    error: "recipient must be a valid Stellar public key",
+                    code: "invalid_stellar_recipient",
+                });
+            }
+        }
+
+        const result = await services.chainService.openSession({
+            sender,
+            recipient,
+            duration: Number(duration),
+            totalAmount: BigInt(String(amount)),
+            metadata,
+        });
+        const session = await services.chainService.getSessionSnapshot(result.streamId);
+        res.status(201).json({
+            code: "session_opened",
+            action: "openSession",
+            streamId: result.streamId,
+            txHash: result.txHash,
+            session,
+            details: {
+                runtime: runtimeConfig.kind,
+            },
+        });
+    }));
+
+    app.get("/api/sessions/:sessionId", asyncHandler(async (req, res) => {
+        const services = await app.locals.ready;
+        const session = await services.chainService.getSessionSnapshot(req.params.sessionId);
+        if (!session) {
+            return res.status(404).json({ error: "session not found", code: "session_not_found" });
+        }
+        res.json({
+            code: "session_loaded",
+            session,
+        });
+    }));
+
+    app.post("/api/sessions/:sessionId/cancel", asyncHandler(async (req, res) => {
+        const services = await app.locals.ready;
+        const { cancelledBy = "" } = req.body || {};
+        const result = await services.chainService.cancelSession({
+            sessionId: Number(req.params.sessionId),
+            cancelledBy,
+        });
+        const session = await services.chainService.getSessionSnapshot(req.params.sessionId);
+        res.json({
+            code: "session_cancelled",
+            action: "cancelSession",
+            txHash: result.txHash,
+            session,
+            details: {
+                runtime: runtimeConfig.kind,
+            },
+        });
+    }));
+
+    app.post("/api/sessions/:sessionId/claim", asyncHandler(async (req, res) => {
+        const services = await app.locals.ready;
+        const { claimer = "" } = req.body || {};
+        const result = await services.chainService.claimSession({
+            sessionId: Number(req.params.sessionId),
+            claimer,
+        });
+        const session = await services.chainService.getSessionSnapshot(req.params.sessionId);
+        res.json({
+            code: "session_claimed",
+            action: "claimSession",
+            txHash: result.txHash,
+            amount: result.amount,
+            session,
+            details: {
+                runtime: runtimeConfig.kind,
+            },
+        });
+    }));
+
+    app.post("/api/rwa/relay", asyncHandler(async (req, res) => {
+        const services = await app.locals.ready;
+        const { action } = req.body || {};
+        const chainService = services.chainService;
+
+        if (action === "createAssetYieldStream") {
+            const { tokenId, totalAmount, duration, sender } = req.body || {};
+            const result = await chainService.createAssetYieldStream({
+                tokenId: Number(tokenId),
+                totalAmount: BigInt(String(totalAmount || 0)),
+                duration: Number(duration || 0),
+                sender,
+            });
+            const asset = await getHydratedAsset(services, Number(tokenId));
+            return res.status(201).json({
+                code: "asset_yield_stream_created",
+                action,
+                txHash: result.txHash,
+                streamId: result.streamId,
+                asset,
+                details: { runtime: runtimeConfig.kind },
+            });
+        }
+
+        if (action === "claimYield") {
+            const { tokenId } = req.body || {};
+            const result = await chainService.claimYield({
+                tokenId: Number(tokenId),
+            });
+            const asset = await getHydratedAsset(services, Number(tokenId));
+            return res.json({
+                code: "yield_claimed",
+                action,
+                txHash: result.txHash,
+                amount: result.amount,
+                asset,
+                details: { runtime: runtimeConfig.kind },
+            });
+        }
+
+        if (action === "flashAdvance") {
+            const { tokenId, amount } = req.body || {};
+            const result = await chainService.flashAdvance({
+                tokenId: Number(tokenId),
+                amount: BigInt(String(amount || 0)),
+            });
+            const asset = await getHydratedAsset(services, Number(tokenId));
+            return res.json({
+                code: "flash_advance_issued",
+                action,
+                txHash: result.txHash,
+                asset,
+                details: { runtime: runtimeConfig.kind },
+            });
+        }
+
+        if (action === "updateAssetMetadata") {
+            const { tokenId, metadataURI } = req.body || {};
+            const result = await chainService.updateAssetMetadata({
+                tokenId: Number(tokenId),
+                metadataURI,
+                cidHash: hashText(metadataURI || ""),
+            });
+            const asset = await getHydratedAsset(services, Number(tokenId));
+            return res.json({
+                code: "asset_metadata_updated",
+                action,
+                txHash: result.txHash,
+                asset,
+                details: { runtime: runtimeConfig.kind },
+            });
+        }
+
+        if (action === "updateAssetEvidence") {
+            const { tokenId, evidenceRoot, evidenceManifestHash } = req.body || {};
+            const result = await chainService.updateAssetEvidence({
+                tokenId: Number(tokenId),
+                evidenceRoot,
+                evidenceManifestHash,
+            });
+            const asset = await getHydratedAsset(services, Number(tokenId));
+            return res.json({
+                code: "asset_evidence_updated",
+                action,
+                txHash: result.txHash,
+                asset,
+                details: { runtime: runtimeConfig.kind },
+            });
+        }
+
+        if (action === "updateVerificationTag") {
+            const { tokenId, tag } = req.body || {};
+            const result = await chainService.updateVerificationTag({
+                tokenId: Number(tokenId),
+                tagHash: hashText(tag || ""),
+            });
+            const asset = await getHydratedAsset(services, Number(tokenId));
+            return res.json({
+                code: "asset_tag_updated",
+                action,
+                txHash: result.txHash,
+                asset,
+                details: { runtime: runtimeConfig.kind },
+            });
+        }
+
+        return res.status(400).json({
+            error: `Unknown relay action: ${action}`,
+            code: "unknown_relay_action",
         });
     }));
 
@@ -796,7 +1081,25 @@ function createApp(config = defaultConfig) {
             }
             const result = await chainService.setCompliance({ user, assetType: Number(assetType), approved: Boolean(approved), expiry: Number(expiry), jurisdiction });
             void beginIndexerSync(app);
-            return res.json({ action, txHash: result.txHash });
+            return res.json({ code: "compliance_updated", action, txHash: result.txHash, details: { runtime: runtimeConfig.kind } });
+        }
+
+        if (action === "setIssuerApproval") {
+            const { issuer, approved = false, note = "" } = req.body || {};
+            if (!issuer) {
+                return res.status(400).json({ error: "issuer is required" });
+            }
+            const result = await chainService.setIssuerApproval({
+                issuer,
+                approved: Boolean(approved),
+                note,
+            });
+            return res.json({
+                code: "issuer_approval_updated",
+                action,
+                txHash: result.txHash,
+                details: { runtime: runtimeConfig.kind },
+            });
         }
 
         if (action === "setVerificationStatus") {
@@ -808,7 +1111,7 @@ function createApp(config = defaultConfig) {
             void beginIndexerSync(app);
             const snapshot = await chainService.getAssetSnapshot(Number(tokenId));
             if (snapshot) await services.store.upsertAsset(snapshot);
-            return res.json({ action, txHash: result.txHash, asset: snapshot ? await hydrateAssetMetadata(services, snapshot) : null });
+            return res.json({ code: "verification_status_updated", action, txHash: result.txHash, asset: snapshot ? await hydrateAssetMetadata(services, snapshot) : null, details: { runtime: runtimeConfig.kind } });
         }
 
         if (action === "setAssetPolicy") {
@@ -820,7 +1123,7 @@ function createApp(config = defaultConfig) {
             void beginIndexerSync(app);
             const snapshot = await chainService.getAssetSnapshot(Number(tokenId));
             if (snapshot) await services.store.upsertAsset(snapshot);
-            return res.json({ action, txHash: result.txHash, asset: snapshot ? await hydrateAssetMetadata(services, snapshot) : null });
+            return res.json({ code: "asset_policy_updated", action, txHash: result.txHash, asset: snapshot ? await hydrateAssetMetadata(services, snapshot) : null, details: { runtime: runtimeConfig.kind } });
         }
 
         if (action === "setAttestationPolicy") {
@@ -830,7 +1133,7 @@ function createApp(config = defaultConfig) {
             }
             const result = await chainService.setAttestationPolicy({ assetType: Number(assetType), role: Number(role), required: Boolean(required), maxAge: Number(maxAge) });
             void beginIndexerSync(app);
-            return res.json({ action, txHash: result.txHash });
+            return res.json({ code: "attestation_policy_updated", action, txHash: result.txHash, details: { runtime: runtimeConfig.kind } });
         }
 
         if (action === "freezeStream") {
@@ -840,16 +1143,18 @@ function createApp(config = defaultConfig) {
             }
             const result = await chainService.freezeStream({ streamId: Number(streamId), frozen: Boolean(frozen), reason });
             void beginIndexerSync(app);
-            return res.json({ action, txHash: result.txHash });
+            return res.json({ code: "session_freeze_updated", action, txHash: result.txHash, details: { runtime: runtimeConfig.kind } });
         }
 
-        return res.status(400).json({ error: `Unknown admin action: ${action}` });
+        return res.status(400).json({ error: `Unknown admin action: ${action}`, code: "unknown_admin_action" });
     }));
 
     app.use((error, _req, res, _next) => {
         console.error(error);
         res.status(error.statusCode || 500).json({
             error: error.message || "Internal server error",
+            code: error.code || "internal_error",
+            details: error.details || {},
         });
     });
 

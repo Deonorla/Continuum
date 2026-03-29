@@ -2,6 +2,10 @@ class MemoryIndexerStore {
     constructor() {
         this.assets = new Map();
         this.activities = new Map();
+        this.sessions = new Map();
+        this.issuerApprovals = new Map();
+        this.counters = new Map();
+        this.records = new Map();
         this.lastProcessedBlock = null;
         this.seenActivityKeys = new Set();
     }
@@ -63,6 +67,52 @@ class MemoryIndexerStore {
     async getActivities(tokenId) {
         return this.activities.get(String(tokenId)) || [];
     }
+
+    async getSession(sessionId) {
+        return this.sessions.get(String(sessionId)) || null;
+    }
+
+    async listSessions({ owner } = {}) {
+        const sessions = Array.from(this.sessions.values());
+        if (!owner) {
+            return sessions.sort((left, right) => Number(left.id) - Number(right.id));
+        }
+
+        const normalizedOwner = owner.toLowerCase();
+        return sessions
+            .filter(
+                (session) =>
+                    session.sender?.toLowerCase() === normalizedOwner
+                    || session.recipient?.toLowerCase() === normalizedOwner
+            )
+            .sort((left, right) => Number(left.id) - Number(right.id));
+    }
+
+    async upsertSession(session) {
+        this.sessions.set(String(session.id), { ...session });
+    }
+
+    async getIssuerApproval(issuer) {
+        return this.issuerApprovals.get(String(issuer).toLowerCase()) || null;
+    }
+
+    async upsertIssuerApproval(record) {
+        this.issuerApprovals.set(String(record.issuer).toLowerCase(), { ...record });
+    }
+
+    async nextCounter(name) {
+        const current = Number(this.counters.get(name) || 0) + 1;
+        this.counters.set(name, current);
+        return current;
+    }
+
+    async getRecord(key) {
+        return this.records.get(String(key)) || null;
+    }
+
+    async upsertRecord(key, payload) {
+        this.records.set(String(key), { ...payload });
+    }
 }
 
 class PostgresIndexerStore {
@@ -91,6 +141,32 @@ class PostgresIndexerStore {
                 token_id TEXT,
                 block_number BIGINT NOT NULL,
                 log_index BIGINT NOT NULL,
+                payload JSONB NOT NULL
+            );
+        `);
+        await this.pool.query(`
+            CREATE TABLE IF NOT EXISTS rwa_sessions (
+                session_id TEXT PRIMARY KEY,
+                sender_address TEXT,
+                recipient_address TEXT,
+                session_payload JSONB NOT NULL
+            );
+        `);
+        await this.pool.query(`
+            CREATE TABLE IF NOT EXISTS rwa_issuer_approvals (
+                issuer_address TEXT PRIMARY KEY,
+                payload JSONB NOT NULL
+            );
+        `);
+        await this.pool.query(`
+            CREATE TABLE IF NOT EXISTS rwa_counters (
+                counter_name TEXT PRIMARY KEY,
+                counter_value BIGINT NOT NULL
+            );
+        `);
+        await this.pool.query(`
+            CREATE TABLE IF NOT EXISTS rwa_records (
+                record_key TEXT PRIMARY KEY,
                 payload JSONB NOT NULL
             );
         `);
@@ -188,6 +264,120 @@ class PostgresIndexerStore {
             [String(tokenId)]
         );
         return result.rows.map((row) => row.payload);
+    }
+
+    async getSession(sessionId) {
+        const result = await this.pool.query(
+            "SELECT session_payload FROM rwa_sessions WHERE session_id = $1",
+            [String(sessionId)]
+        );
+        return result.rows[0]?.session_payload || null;
+    }
+
+    async listSessions({ owner } = {}) {
+        const result = owner
+            ? await this.pool.query(
+                `
+                    SELECT session_payload
+                    FROM rwa_sessions
+                    WHERE lower(sender_address) = lower($1) OR lower(recipient_address) = lower($1)
+                    ORDER BY session_id::bigint ASC
+                `,
+                [owner]
+            )
+            : await this.pool.query(
+                "SELECT session_payload FROM rwa_sessions ORDER BY session_id::bigint ASC"
+            );
+
+        return result.rows.map((row) => row.session_payload);
+    }
+
+    async upsertSession(session) {
+        await this.pool.query(
+            `
+                INSERT INTO rwa_sessions (session_id, sender_address, recipient_address, session_payload)
+                VALUES ($1, $2, $3, $4::jsonb)
+                ON CONFLICT (session_id)
+                DO UPDATE SET
+                    sender_address = EXCLUDED.sender_address,
+                    recipient_address = EXCLUDED.recipient_address,
+                    session_payload = EXCLUDED.session_payload
+            `,
+            [
+                String(session.id),
+                session.sender || null,
+                session.recipient || null,
+                JSON.stringify(session),
+            ]
+        );
+    }
+
+    async getIssuerApproval(issuer) {
+        const result = await this.pool.query(
+            "SELECT payload FROM rwa_issuer_approvals WHERE issuer_address = lower($1)",
+            [String(issuer)]
+        );
+        return result.rows[0]?.payload || null;
+    }
+
+    async upsertIssuerApproval(record) {
+        await this.pool.query(
+            `
+                INSERT INTO rwa_issuer_approvals (issuer_address, payload)
+                VALUES (lower($1), $2::jsonb)
+                ON CONFLICT (issuer_address)
+                DO UPDATE SET payload = EXCLUDED.payload
+            `,
+            [record.issuer, JSON.stringify(record)]
+        );
+    }
+
+    async nextCounter(name) {
+        const client = await this.pool.connect();
+        try {
+            await client.query("BEGIN");
+            const existing = await client.query(
+                "SELECT counter_value FROM rwa_counters WHERE counter_name = $1 FOR UPDATE",
+                [name]
+            );
+            const nextValue = Number(existing.rows[0]?.counter_value || 0) + 1;
+            await client.query(
+                `
+                    INSERT INTO rwa_counters (counter_name, counter_value)
+                    VALUES ($1, $2)
+                    ON CONFLICT (counter_name)
+                    DO UPDATE SET counter_value = EXCLUDED.counter_value
+                `,
+                [name, nextValue]
+            );
+            await client.query("COMMIT");
+            return nextValue;
+        } catch (error) {
+            await client.query("ROLLBACK");
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    async getRecord(key) {
+        const result = await this.pool.query(
+            "SELECT payload FROM rwa_records WHERE record_key = $1",
+            [String(key)]
+        );
+        return result.rows[0]?.payload || null;
+    }
+
+    async upsertRecord(key, payload) {
+        await this.pool.query(
+            `
+                INSERT INTO rwa_records (record_key, payload)
+                VALUES ($1, $2::jsonb)
+                ON CONFLICT (record_key)
+                DO UPDATE SET payload = EXCLUDED.payload
+            `,
+            [String(key), JSON.stringify(payload)]
+        );
     }
 }
 

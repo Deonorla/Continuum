@@ -430,8 +430,8 @@ describe("RWA API Integration", function () {
         expect(response.body.publicMetadataURI).to.equal("ipfs://bafytestcid");
         expect(response.body.verificationStatus).to.equal("pending_attestation");
         expect(response.body.issuerOnboarding).to.deep.equal({
-            alreadyApproved: false,
-            automaticallyApproved: true,
+            alreadyApproved: true,
+            automaticallyApproved: false,
         });
         expect(response.body.verificationPayload).to.be.a("string");
         expect(parseVerificationPayload(response.body.verificationPayload).verificationStatus)
@@ -439,12 +439,7 @@ describe("RWA API Integration", function () {
         expect(response.body.evidenceSummary.missingRequiredDocuments).to.deep.equal([]);
         expect(response.body.attestationRequirements).to.have.length(2);
         expect(response.body.asset.tokenId).to.equal(7);
-        expect(app.locals.services.chainService.ensuredIssuerApprovals).to.deep.equal([
-            {
-                issuer: issuerWallet.address,
-                note: "Auto-approved from signed Stream Engine mint authorization",
-            },
-        ]);
+        expect(app.locals.services.chainService.ensuredIssuerApprovals).to.deep.equal([]);
     });
 
     it("returns structured verification states for v2 and legacy assets", async function () {

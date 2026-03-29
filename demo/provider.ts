@@ -7,7 +7,7 @@ dotenv.config();
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const flowPayMiddleware = require('../server/middleware/flowPayMiddleware');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { createFlowPayRuntimeConfig } = require('../utils/polkadot');
+const { createRuntimeConfig } = require('../utils/runtimeConfig');
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -17,10 +17,18 @@ function requireEnv(name: string): string {
   return value;
 }
 
-const runtime = createFlowPayRuntimeConfig();
-const FLOWPAYSTREAM_ADDRESS = requireEnv('FLOWPAY_CONTRACT_ADDRESS');
-const PAYMENT_TOKEN_ADDRESS = requireEnv('FLOWPAY_PAYMENT_TOKEN_ADDRESS');
+const runtime = createRuntimeConfig();
+const FLOWPAYSTREAM_ADDRESS =
+  process.env.FLOWPAY_CONTRACT_ADDRESS
+  || process.env.FLOWPAY_SESSION_METER_ADDRESS
+  || runtime.contractAddress
+  || 'stellar:session-meter';
+const PAYMENT_TOKEN_ADDRESS =
+  process.env.FLOWPAY_PAYMENT_TOKEN_ADDRESS
+  || runtime.paymentTokenAddress
+  || 'stellar:usdc-sac';
 const RECIPIENT_ADDRESS = requireEnv('FLOWPAY_RECIPIENT_ADDRESS');
+const SESSION_API_URL = process.env.FLOWPAY_SESSION_API_URL || 'http://127.0.0.1:3001';
 const PORT = Number(process.env.DEMO_PROVIDER_PORT || 3005);
 const HOST = process.env.DEMO_PROVIDER_HOST || '127.0.0.1';
 
@@ -41,7 +49,10 @@ const config = {
   paymentTokenAddress: PAYMENT_TOKEN_ADDRESS,
   recipientAddress: RECIPIENT_ADDRESS,
   flowPayContractAddress: FLOWPAYSTREAM_ADDRESS,
+  runtimeKind: runtime.kind,
+  sessionApiUrl: SESSION_API_URL,
   rpcUrl: runtime.rpcUrl,
+  settlement: runtime.settlement,
   tokenSymbol: runtime.paymentTokenSymbol,
   tokenDecimals: runtime.paymentTokenDecimals,
   useSubstrateReads:
@@ -66,6 +77,7 @@ console.log(`   Payment token: ${PAYMENT_TOKEN_ADDRESS}`);
 console.log(`   Recipient: ${RECIPIENT_ADDRESS}`);
 console.log(`   RPC URL: ${runtime.rpcUrl}`);
 console.log(`   Token symbol: ${runtime.paymentTokenSymbol}`);
+console.log(`   Session API: ${SESSION_API_URL}`);
 
 app.use(flowPayMiddleware(config));
 

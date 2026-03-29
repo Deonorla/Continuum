@@ -36,6 +36,7 @@ const flowPayMiddleware = (config) => {
     // Initialize provider and contract OR use mock
     let flowPayContract;
     let substrateReadyPromise = null;
+    const runtimeKind = String(config.runtimeKind || process.env.FLOWPAY_RUNTIME_KIND || "").toLowerCase();
 
     if (config.mockContract) {
         flowPayContract = config.mockContract;
@@ -79,6 +80,25 @@ const flowPayMiddleware = (config) => {
         });
         const decoded = flowPayInterface.decodeFunctionResult(functionName, result.data);
         return decoded.length === 1 ? decoded[0] : decoded;
+    }
+
+    async function resolveSession(streamId) {
+        if (typeof config.sessionResolver === 'function') {
+            return config.sessionResolver(streamId);
+        }
+
+        if (!config.sessionApiUrl) {
+            return null;
+        }
+
+        const response = await fetch(
+            `${String(config.sessionApiUrl).replace(/\/$/, '')}/api/sessions/${encodeURIComponent(String(streamId))}`
+        );
+        if (!response.ok) {
+            return null;
+        }
+        const payload = await response.json();
+        return payload.session || null;
     }
 
     return async (req, res, next) => {
@@ -159,6 +179,51 @@ const flowPayMiddleware = (config) => {
         // Calculate required amount from route config
         const requiredAmount = ethers.parseUnits(routeConfig.price || '0', tokenDecimals);
 
+        // Stellar session path
+        if (runtimeKind === 'stellar' || config.sessionApiUrl || typeof config.sessionResolver === 'function') {
+            if (!streamIdHeader) {
+                return send402Response(res, routeConfig, config, requiredAmount);
+            }
+
+            try {
+                const session = await resolveSession(streamIdHeader);
+                if (!session || !session.isActive) {
+                    return res.status(402).json({
+                        error: "Session is inactive",
+                        code: "session_not_active",
+                        detail: "The provided payment session is not active. Open a new one or resume funding.",
+                    });
+                }
+                if (session.isFrozen) {
+                    return res.status(402).json({
+                        error: "Session is frozen",
+                        code: "session_frozen",
+                        detail: "The provided payment session has been frozen by policy.",
+                    });
+                }
+                if (
+                    config.recipientAddress
+                    && session.recipient
+                    && String(session.recipient).toLowerCase() !== String(config.recipientAddress).toLowerCase()
+                ) {
+                    return res.status(402).json({
+                        error: "Session recipient mismatch",
+                        code: "session_recipient_mismatch",
+                        detail: "The provided session does not pay this service recipient.",
+                    });
+                }
+
+                req.flowPay = {
+                    streamId: String(streamIdHeader),
+                    mode: 'streaming',
+                };
+                return next();
+            } catch (error) {
+                console.error("[FlowPay] Stellar session verification failed:", error);
+                return send402Response(res, routeConfig, config, requiredAmount);
+            }
+        }
+
         // 2. Check for Stream ID Header
         if (!streamIdHeader) {
             return send402Response(res, routeConfig, config, requiredAmount);
@@ -220,8 +285,14 @@ function send402Response(res, routeConfig, config, requiredAmount) {
     res.set('X-FlowPay-Token', paymentTokenAddress);
     res.set('X-FlowPay-Token-Decimals', String(tokenDecimals));
     res.set('X-Payment-Currency', tokenSymbol);
+    if (config.settlement) {
+        res.set('X-FlowPay-Settlement', String(config.settlement));
+    }
     res.set('X-FlowPay-Contract', config.flowPayContractAddress || '');
     res.set('X-FlowPay-Recipient', config.recipientAddress || '');
+    if (config.sessionApiUrl) {
+        res.set('X-FlowPay-Session-Endpoint', `${String(config.sessionApiUrl).replace(/\/$/, '')}/api/sessions`);
+    }
 
     res.status(402).json({
         message: "Payment Required",
@@ -233,6 +304,10 @@ function send402Response(res, routeConfig, config, requiredAmount) {
             recipient: config.recipientAddress,
             token: paymentTokenAddress,
             decimals: tokenDecimals,
+            settlement: config.settlement || undefined,
+            sessionEndpoint: config.sessionApiUrl
+                ? `${String(config.sessionApiUrl).replace(/\/$/, '')}/api/sessions`
+                : undefined,
         }
     });
 }

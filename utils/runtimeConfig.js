@@ -1,0 +1,132 @@
+const {
+    createFlowPayRuntimeConfig: createPolkadotRuntimeConfig,
+} = require("./polkadot");
+
+const STELLAR_TESTNET_PASSPHRASE = "Test SDF Network ; September 2015";
+const STELLAR_MAINNET_PASSPHRASE = "Public Global Stellar Network ; September 2015";
+
+function normalizeNumber(value, fallback) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function resolveRuntimeKind(overrides = {}) {
+    const explicit =
+        overrides.kind
+        || process.env.FLOWPAY_RUNTIME_KIND
+        || process.env.VITE_FLOWPAY_RUNTIME_KIND
+        || "";
+
+    const normalized = String(explicit).trim().toLowerCase();
+    if (normalized === "stellar" || normalized === "polkadot") {
+        return normalized;
+    }
+
+    if (
+        process.env.STELLAR_SOROBAN_RPC_URL
+        || process.env.STELLAR_HORIZON_URL
+        || process.env.STELLAR_NETWORK_PASSPHRASE
+    ) {
+        return "stellar";
+    }
+
+    return "stellar";
+}
+
+function createStellarRuntimeConfig(overrides = {}) {
+    const networkName =
+        overrides.networkName
+        || process.env.STELLAR_NETWORK_NAME
+        || process.env.FLOWPAY_NETWORK_NAME
+        || "Stellar Testnet";
+    const networkPassphrase =
+        overrides.networkPassphrase
+        || process.env.STELLAR_NETWORK_PASSPHRASE
+        || (String(networkName).toLowerCase().includes("public")
+            ? STELLAR_MAINNET_PASSPHRASE
+            : STELLAR_TESTNET_PASSPHRASE);
+    const horizonUrl =
+        overrides.horizonUrl
+        || process.env.STELLAR_HORIZON_URL
+        || "https://horizon-testnet.stellar.org";
+    const sorobanRpcUrl =
+        overrides.sorobanRpcUrl
+        || process.env.STELLAR_SOROBAN_RPC_URL
+        || "https://soroban-testnet.stellar.org";
+    const contractAddress =
+        overrides.paymentTokenAddress
+        || process.env.STELLAR_USDC_SAC_ADDRESS
+        || process.env.FLOWPAY_PAYMENT_TOKEN_ADDRESS
+        || "";
+
+    return {
+        kind: "stellar",
+        chainId: normalizeNumber(
+            overrides.chainId ?? process.env.STELLAR_CHAIN_ID ?? process.env.FLOWPAY_CHAIN_ID,
+            0
+        ),
+        rpcUrl: sorobanRpcUrl,
+        sorobanRpcUrl,
+        horizonUrl,
+        networkPassphrase,
+        blockExplorerUrl:
+            overrides.blockExplorerUrl
+            || process.env.STELLAR_BLOCK_EXPLORER_URL
+            || process.env.FLOWPAY_BLOCK_EXPLORER_URL
+            || "https://stellar.expert/explorer/testnet",
+        networkName,
+        nativeCurrency: {
+            name: "Stellar Lumens",
+            symbol: "XLM",
+            decimals: 7,
+        },
+        paymentAssetId: 0,
+        paymentTokenAddress: contractAddress,
+        paymentTokenSymbol:
+            overrides.paymentTokenSymbol
+            || process.env.STELLAR_ASSET_CODE
+            || process.env.FLOWPAY_PAYMENT_TOKEN_SYMBOL
+            || "USDC",
+        paymentTokenDecimals: normalizeNumber(
+            overrides.paymentTokenDecimals
+                ?? process.env.STELLAR_ASSET_DECIMALS
+                ?? process.env.FLOWPAY_PAYMENT_TOKEN_DECIMALS,
+            7
+        ),
+        paymentAssetCode:
+            overrides.paymentAssetCode
+            || process.env.STELLAR_ASSET_CODE
+            || "USDC",
+        paymentAssetIssuer:
+            overrides.paymentAssetIssuer
+            || process.env.STELLAR_ASSET_ISSUER
+            || "",
+        settlement: "soroban-sac",
+    };
+}
+
+function createRuntimeConfig(overrides = {}) {
+    const kind = resolveRuntimeKind(overrides);
+    if (kind === "polkadot") {
+        return {
+            kind,
+            ...createPolkadotRuntimeConfig(overrides),
+            settlement: "evm-precompile",
+            sorobanRpcUrl: "",
+            horizonUrl: "",
+            networkPassphrase: "",
+            paymentAssetCode: "",
+            paymentAssetIssuer: "",
+        };
+    }
+
+    return createStellarRuntimeConfig(overrides);
+}
+
+module.exports = {
+    STELLAR_TESTNET_PASSPHRASE,
+    STELLAR_MAINNET_PASSPHRASE,
+    createRuntimeConfig,
+    createStellarRuntimeConfig,
+    resolveRuntimeKind,
+};

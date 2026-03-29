@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { FlowPaySDK } from '../sdk/src/FlowPaySDK';
+import { FlowPayStellarAdapter } from '../sdk/src/FlowPayStellarAdapter';
 import { FlowPaySubstrateAdapter } from '../sdk/src/FlowPaySubstrateAdapter';
 import { ethers } from 'ethers';
 import * as dotenv from 'dotenv';
@@ -8,7 +9,7 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { createFlowPayRuntimeConfig } = require('../utils/polkadot');
+const { createRuntimeConfig } = require('../utils/runtimeConfig');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { createSubstrateApi, loadSubstrateSigner } = require('../utils/substrate');
 
@@ -49,9 +50,13 @@ function isWestendAssetHub(runtime: any) {
   return Number(runtime.chainId) === 420420421 || runtime.networkName === 'Westend Asset Hub';
 }
 
-async function resolveSignerMode(runtime: any, hasPrivateKey: boolean): Promise<'substrate' | 'evm'> {
+async function resolveSignerMode(runtime: any, hasPrivateKey: boolean): Promise<'substrate' | 'evm' | 'stellar'> {
   const requestedMode = (process.env.DEMO_SIGNER_MODE || '').trim().toLowerCase();
   const substrateAvailable = hasSubstrateSignerConfig();
+
+  if (runtime.kind === 'stellar') {
+    return 'stellar';
+  }
 
   if (requestedMode === 'substrate') {
     return 'substrate';
@@ -106,10 +111,12 @@ async function resolveSignerMode(runtime: any, hasPrivateKey: boolean): Promise<
  * 5. reuses the stream on subsequent requests
  */
 async function runDemo() {
-  const runtime = createFlowPayRuntimeConfig();
+  const runtime = createRuntimeConfig();
   const targetUrl = process.env.DEMO_TARGET_URL || 'http://127.0.0.1:3005/api/premium';
   const privateKey = process.env.PRIVATE_KEY || '';
-  const signerMode = await resolveSignerMode(runtime, Boolean(privateKey));
+  const signerMode = runtime.kind === 'stellar'
+    ? 'stellar'
+    : await resolveSignerMode(runtime, Boolean(privateKey));
   const useSubstrateAdapter = signerMode === 'substrate';
 
   console.log('Starting Stream Engine demo consumer...\n');
@@ -124,7 +131,31 @@ async function runDemo() {
 
   let sdk: FlowPaySDK;
 
-  if (useSubstrateAdapter) {
+  if (runtime.kind === 'stellar') {
+    const senderAddress = requireEnv('DEMO_STELLAR_SENDER');
+    const sessionApiUrl = process.env.FLOWPAY_SESSION_API_URL || 'http://127.0.0.1:3001';
+    const adapter = new FlowPayStellarAdapter({
+      apiBaseUrl: sessionApiUrl,
+      senderAddress,
+    });
+
+    console.log(`Stellar sender: ${senderAddress}`);
+    console.log(`Session API: ${sessionApiUrl}`);
+
+    sdk = new FlowPaySDK({
+      rpcUrl: runtime.rpcUrl,
+      agentId: 'stream-engine-demo-agent',
+      adapter,
+      token: {
+        symbol: runtime.paymentTokenSymbol,
+        decimals: runtime.paymentTokenDecimals,
+      },
+      spendingLimits: {
+        dailyLimit: ethers.parseUnits('100', runtime.paymentTokenDecimals),
+        totalLimit: ethers.parseUnits('1000', runtime.paymentTokenDecimals),
+      },
+    });
+  } else if (useSubstrateAdapter) {
     const adapter = new FlowPaySubstrateAdapter({
       substrateRpcUrl: process.env.POLKADOT_SUBSTRATE_RPC_URL || process.env.SUBSTRATE_RPC_URL || 'wss://westend-asset-hub-rpc.polkadot.io',
       accountJson: resolveAccountJson(),

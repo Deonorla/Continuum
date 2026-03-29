@@ -201,6 +201,9 @@ export class FlowPaySDK {
         const headers = response.headers;
         const mode = headers['x-flowpay-mode']; // 'streaming' or 'hybrid' (not robust yet, server sends fixed 'streaming' usually)
         // Let's assume server might send 'hybrid' or we decide based on capability.
+        const sessionEndpoint =
+            headers['x-flowpay-session-endpoint']
+            || response.data?.requirements?.sessionEndpoint;
 
         const rate = headers['x-flowpay-rate']; // amount per second or per request
         const paymentTokenAddress = headers['x-flowpay-token'];
@@ -221,7 +224,10 @@ export class FlowPaySDK {
 
         // AI Decision Point
         const simN = (options.headers as any)?.['x-simulation-n'] ? parseInt((options.headers as any)['x-simulation-n'] as string) : 10;
-        const selectedMode = await this.selectPaymentMode(simN); // Await async brain
+        let selectedMode = await this.selectPaymentMode(simN); // Await async brain
+        if (sessionEndpoint || headers['x-flowpay-settlement'] === 'soroban-sac') {
+            selectedMode = 'stream';
+        }
 
         if (selectedMode === 'direct') {
             const price = parsePaymentAmount(rate || "0.0001", tokenDecimals);
@@ -301,8 +307,8 @@ export class FlowPaySDK {
         duration: number,
         metadata: any = {}
     ): Promise<{ streamId: string, startTime: bigint }> {
-        const flowPay = new Contract(contractAddress, this.MIN_ABI, this.wallet || this.provider);
         const resolvedRecipient = normalizeRecipientAddress(recipient);
+        const flowPay = this.adapter ? null : new Contract(contractAddress, this.MIN_ABI, this.wallet || this.provider);
 
         // Metadata Construction
         const enrichedMetadata = {
@@ -327,7 +333,7 @@ export class FlowPaySDK {
                 );
             } else {
                 try {
-                    paymentTokenAddress = await flowPay.paymentToken();
+                    paymentTokenAddress = await flowPay!.paymentToken();
                 } catch {
                     throw new Error("Cannot determine payment token address");
                 }
@@ -372,19 +378,19 @@ export class FlowPaySDK {
 
         console.log(`[FlowPaySDK] Creating stream to ${resolvedRecipient}...`);
 
-        const tx = await flowPay.createStream(resolvedRecipient, duration, amount, metadataString);
+        const tx = await flowPay!.createStream(resolvedRecipient, duration, amount, metadataString);
         const receipt = await tx.wait();
 
         // Parse event to get ID
         const log = receipt.logs.find((l: any) => {
             try {
-                return flowPay.interface.parseLog(l)?.name === 'StreamCreated';
+                return flowPay!.interface.parseLog(l)?.name === 'StreamCreated';
             } catch { return false; }
         });
 
         if (!log) throw new Error("StreamCreated event not found");
 
-        const parsed = flowPay.interface.parseLog(log);
+        const parsed = flowPay!.interface.parseLog(log);
         const streamId = parsed?.args[0].toString();
         const startTime = parsed?.args[4]; // args[4] is startTime based on ABI event def
 

@@ -1,4 +1,5 @@
 import { useWallet } from '../context/WalletContext';
+import { ACTIVE_NETWORK } from '../networkConfig.js';
 import Header from './Header';
 import WalletPickerModal from './WalletPickerModal';
 import { MobileBottomNav, ErrorBoundary } from './ui';
@@ -32,6 +33,11 @@ export default function Layout({ children }) {
   } = useWallet();
 
   const orderedWallets = [...availableWallets].sort((left, right) => {
+    if (ACTIVE_NETWORK.kind === 'stellar') {
+      if (left.id === 'stellar:freighter') return -1;
+      if (right.id === 'stellar:freighter') return 1;
+      return left.name.localeCompare(right.name);
+    }
     if (left.id === 'substrate:polkadot-js') return -1;
     if (right.id === 'substrate:polkadot-js') return 1;
     if (left.type === 'substrate' && right.type !== 'substrate') return -1;

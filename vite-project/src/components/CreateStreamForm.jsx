@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Clock, Calendar, CalendarDays, Settings, Coins, Rocket } from 'lucide-react';
+import { StrKey } from '@stellar/stellar-sdk';
 import { paymentTokenDisplayName, paymentTokenSymbol } from '../contactInfo';
+import { ACTIVE_NETWORK } from '../networkConfig.js';
 import { isSupportedAddressInput, normalizeContractAddressInput } from '../lib/substrateAssets.js';
 
 // Duration presets in seconds
@@ -40,11 +42,14 @@ const ProgressStep = ({ step, currentStep, label }) => {
 
 // Recipient Input with validation
 const RecipientInput = ({ value, onChange, isValid }) => {
-  const isResolved = isSupportedAddressInput(value);
+  const isStellarRuntime = ACTIVE_NETWORK.kind === 'stellar';
+  const isResolved = isStellarRuntime
+    ? StrKey.isValidEd25519PublicKey(String(value || '').trim())
+    : isSupportedAddressInput(value);
   const showValidation = value.length > 0;
   let resolvedRecipient = '';
 
-  if (showValidation && isResolved) {
+  if (showValidation && isResolved && !isStellarRuntime) {
     try {
       resolvedRecipient = normalizeContractAddressInput(value);
     } catch {
@@ -54,7 +59,9 @@ const RecipientInput = ({ value, onChange, isValid }) => {
 
   return (
     <div className="space-y-2">
-      <label className="text-sm font-medium text-white/80">Recipient Address</label>
+      <label className="text-sm font-medium text-white/80">
+        {isStellarRuntime ? 'Recipient Stellar Account' : 'Recipient Address'}
+      </label>
       <div className="relative">
         <input
           type="text"
@@ -63,7 +70,7 @@ const RecipientInput = ({ value, onChange, isValid }) => {
             ${showValidation && isResolved ? 'border-success-500/50 focus:border-success-500' : ''}
             ${showValidation && !isResolved ? 'border-error-500/50 focus:border-error-500' : ''}
           `}
-          placeholder="0x... or 5F..."
+          placeholder={isStellarRuntime ? 'G...' : '0x... or 5F...'}
           value={value}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -77,9 +84,16 @@ const RecipientInput = ({ value, onChange, isValid }) => {
         </div>
       </div>
       <div className="text-xs leading-5 text-white/45">
-        Enter an EVM `0x...` address or a Substrate `5...` / SS58 address. Stella's Stream Engine will resolve Substrate recipients to the contract-compatible address automatically.
+        {isStellarRuntime
+          ? 'Enter a Stellar public key (`G...`). The session meter will use that Stellar account directly as the recipient.'
+          : 'Enter an EVM `0x...` address or a Substrate `5...` / SS58 address. Stella\'s Stream Engine will resolve Substrate recipients to the contract-compatible address automatically.'}
       </div>
-      {showValidation && isResolved && resolvedRecipient && resolvedRecipient !== value ? (
+      {showValidation && isStellarRuntime && isResolved ? (
+        <div className="rounded-xl border border-cyan-400/15 bg-cyan-400/5 px-3 py-2 text-xs text-cyan-200">
+          Stellar recipient ready: <span className="font-mono break-all">{value.trim()}</span>
+        </div>
+      ) : null}
+      {showValidation && !isStellarRuntime && isResolved && resolvedRecipient && resolvedRecipient !== value ? (
         <div className="rounded-xl border border-cyan-400/15 bg-cyan-400/5 px-3 py-2 text-xs text-cyan-200">
           Resolved onchain recipient: <span className="font-mono break-all">{resolvedRecipient}</span>
         </div>
@@ -127,7 +141,9 @@ const TokenSelector = ({ selected, onSelect, balance }) => (
 // Duration Selector
 const DurationSelector = ({ selected, onSelect, customValue, onCustomChange }) => (
   <div className="space-y-2">
-    <label className="text-sm font-medium text-white/80">Stream Duration</label>
+    <label className="text-sm font-medium text-white/80">
+      {ACTIVE_NETWORK.kind === 'stellar' ? 'Session Duration' : 'Stream Duration'}
+    </label>
     <div className="grid grid-cols-4 gap-2">
       {DURATION_PRESETS.map(preset => {
         const PresetIcon = preset.Icon;
@@ -180,7 +196,9 @@ const RateCalculator = ({ amount, duration, token }) => {
       <div className="text-sm font-medium text-white/80">Cost Preview</div>
       <div className="grid grid-cols-2 gap-4 text-sm">
         <div>
-          <div className="text-white/50">Flow Rate</div>
+          <div className="text-white/50">
+            {ACTIVE_NETWORK.kind === 'stellar' ? 'Metering Rate' : 'Flow Rate'}
+          </div>
           <div className="font-mono font-semibold text-flowpay-300">
             {rate.toFixed(8)} {token?.symbol || paymentTokenSymbol}/sec
           </div>
@@ -198,9 +216,11 @@ const RateCalculator = ({ amount, duration, token }) => {
           </div>
         </div>
         <div>
-          <div className="text-white/50">Est. Gas</div>
+          <div className="text-white/50">
+            {ACTIVE_NETWORK.kind === 'stellar' ? 'Est. Network Fee' : 'Est. Gas'}
+          </div>
           <div className="font-mono font-semibold text-warning-400">
-            paid in WND
+            {ACTIVE_NETWORK.kind === 'stellar' ? 'paid in XLM' : 'paid in WND'}
           </div>
         </div>
       </div>
@@ -219,12 +239,15 @@ export default function CreateStreamForm({
   onSubmit,
   isProcessing = false,
 }) {
+  const isStellarRuntime = ACTIVE_NETWORK.kind === 'stellar';
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedToken, setSelectedToken] = useState(TOKENS[0]);
   const [selectedDuration, setSelectedDuration] = useState(DURATION_PRESETS[1]);
   const [customDuration, setCustomDuration] = useState('');
 
-  const isRecipientValid = isSupportedAddressInput(recipient);
+  const isRecipientValid = isStellarRuntime
+    ? StrKey.isValidEd25519PublicKey(String(recipient || '').trim())
+    : isSupportedAddressInput(recipient);
 
   const effectiveDuration = selectedDuration?.value || parseInt(customDuration) || 0;
 
@@ -350,7 +373,9 @@ export default function CreateStreamForm({
 
             {/* Summary */}
             <div className="p-4 rounded-xl glass space-y-2">
-              <div className="text-sm font-medium text-white/80">Stream Summary</div>
+              <div className="text-sm font-medium text-white/80">
+                {isStellarRuntime ? 'Session Summary' : 'Stream Summary'}
+              </div>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div className="text-white/50">To:</div>
                 <div className="font-mono text-white/80 truncate">{recipient}</div>
@@ -382,7 +407,7 @@ export default function CreateStreamForm({
             {currentStep === 3
               ? isProcessing
                 ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Processing...</>
-                : <><Rocket className="w-4 h-4" /> Start Stream</>
+                : <><Rocket className="w-4 h-4" /> {isStellarRuntime ? 'Open Session' : 'Start Stream'}</>
               : 'Continue →'}
           </button>
         </div>

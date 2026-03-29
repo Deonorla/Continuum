@@ -1,3 +1,9 @@
+import {
+  isConnected as freighterIsConnected,
+  requestAccess as freighterRequestAccess,
+} from '@stellar/freighter-api';
+import { ACTIVE_NETWORK } from '../networkConfig.js';
+
 const SUPPORTED_WALLETS = [];
 
 const SUPPORTED_SUBSTRATE_WALLETS = [
@@ -69,6 +75,45 @@ function normalizeSubstrateWallet(source, extension) {
   };
 }
 
+async function detectFreighterWallet() {
+  try {
+    const connection = await freighterIsConnected();
+    const isAvailable = Boolean(connection?.isConnected || connection?.isAllowed);
+
+    return {
+      id: 'stellar:freighter',
+      type: 'stellar',
+      name: 'Freighter',
+      icon: '',
+      rdns: 'org.stellar.freighter',
+      source: 'freighter',
+      provider: {
+        async connect() {
+          const response = await freighterRequestAccess();
+          if (response?.error) {
+            throw new Error(response.error.message || 'Freighter access was denied.');
+          }
+          return response.address;
+        },
+      },
+      description: 'Injected Stellar wallet for Soroban and payment session signing',
+      isAvailable,
+    };
+  } catch (error) {
+    return {
+      id: 'stellar:freighter',
+      type: 'stellar',
+      name: 'Freighter',
+      icon: '',
+      rdns: 'org.stellar.freighter',
+      source: 'freighter',
+      provider: null,
+      description: 'Install Freighter to use the Stellar payment flow',
+      isAvailable: false,
+    };
+  }
+}
+
 function appendProvider(walletMap, info, provider) {
   if (!provider?.request) {
     return;
@@ -127,7 +172,7 @@ function appendSubstrateProviders(walletMap) {
 }
 
 function sortWallets(wallets) {
-  const priority = ['Polkadot.js'];
+  const priority = ['Freighter', 'Polkadot.js'];
   return [...wallets].sort((left, right) => {
     const leftIndex = priority.indexOf(left.name);
     const rightIndex = priority.indexOf(right.name);
@@ -175,11 +220,22 @@ export async function discoverInjectedWallets(timeout = 250) {
     }
   });
 
-  return sortWallets(Array.from(walletMap.values()));
+  const wallets = Array.from(walletMap.values());
+
+  const freighterWallet = await detectFreighterWallet();
+  if (!wallets.some((wallet) => wallet.id === freighterWallet.id)) {
+    wallets.push(freighterWallet);
+  }
+
+  return sortWallets(wallets);
 }
 
 export async function getAvailableWallets() {
-  return discoverInjectedWallets();
+  const wallets = await discoverInjectedWallets();
+  if (ACTIVE_NETWORK.kind === 'stellar') {
+    return wallets.filter((wallet) => wallet.type === 'stellar');
+  }
+  return wallets.filter((wallet) => wallet.type !== 'stellar');
 }
 
 export async function resolveWalletSelection(selection, wallets = []) {
@@ -197,12 +253,20 @@ export async function resolveWalletSelection(selection, wallets = []) {
     return matchedWallet;
   }
 
+  if (ACTIVE_NETWORK.kind === 'stellar' && String(selection) !== 'stellar:freighter') {
+    return null;
+  }
+
   if (typeof window === 'undefined') {
     return null;
   }
 
   if (String(selection).includes('substrate:polkadot-js') && window.injectedWeb3?.['polkadot-js']) {
     return normalizeSubstrateWallet('polkadot-js', window.injectedWeb3['polkadot-js']);
+  }
+
+  if (String(selection) === 'stellar:freighter') {
+    return detectFreighterWallet();
   }
 
   return null;

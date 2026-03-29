@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useWallet } from '../context/WalletContext';
+import { ACTIVE_NETWORK } from '../networkConfig.js';
 import { paymentTokenAddress, paymentTokenDisplayName, paymentTokenSymbol } from '../contactInfo';
 import CreateStreamForm from '../components/CreateStreamForm';
 import StreamList from '../components/StreamList';
@@ -42,6 +43,9 @@ function RouteExplorer({
   isCallingRoute,
   onCallRoute,
 }) {
+  const sessionLabel = ACTIVE_NETWORK.kind === 'stellar' ? 'payment session' : 'stream';
+  const sessionLabelPlural = ACTIVE_NETWORK.kind === 'stellar' ? 'payment sessions' : 'streams';
+  const recipientLabel = ACTIVE_NETWORK.kind === 'stellar' ? 'service account' : 'service wallet';
   const selectedRoute = routes.find((route) => route.path === selectedRoutePath) || routes[0];
 
   return (
@@ -52,11 +56,11 @@ function RouteExplorer({
             <Globe className="w-5 h-5 text-emerald-300" /> Endpoint Explorer
           </h3>
           <p className="text-sm text-white/50 mt-1">
-            Hit every backend route from the frontend. Protected routes can reuse an active stream that pays the service wallet.
+            Hit every backend route from the frontend. Protected routes can reuse an active {sessionLabel} that pays the {recipientLabel}.
           </p>
         </div>
         <div className="text-xs text-white/40 font-mono">
-          {matchingStreams.length} compatible stream{matchingStreams.length === 1 ? '' : 's'}
+          {matchingStreams.length} compatible {matchingStreams.length === 1 ? sessionLabel : sessionLabelPlural}
         </div>
       </div>
 
@@ -101,7 +105,9 @@ function RouteExplorer({
           </div>
 
           <label className="block">
-            <span className="block text-sm text-white/70 mb-1.5">Active stream for protected routes</span>
+            <span className="block text-sm text-white/70 mb-1.5">
+              Active {sessionLabel} for protected routes
+            </span>
             <select
               className="input-default w-full"
               value={selectedStreamId}
@@ -109,11 +115,13 @@ function RouteExplorer({
               disabled={selectedRoute?.mode === 'free'}
             >
               <option value="">
-                {selectedRoute?.mode === 'free' ? 'Not required for /api/free' : 'Call without a stream header'}
+                {selectedRoute?.mode === 'free'
+                  ? 'Not required for /api/free'
+                  : `Call without a ${ACTIVE_NETWORK.kind === 'stellar' ? 'session' : 'stream'} header`}
               </option>
               {matchingStreams.map((stream) => (
                 <option key={stream.id} value={String(stream.id)}>
-                  Stream #{stream.id} · {Number(stream.totalAmount || 0n) > 0 ? paymentTokenSymbol : 'Budgeted'} · active
+                  {ACTIVE_NETWORK.kind === 'stellar' ? 'Session' : 'Stream'} #{stream.id} · {Number(stream.totalAmount || 0n) > 0 ? paymentTokenSymbol : 'Budgeted'} · active
                 </option>
               ))}
             </select>
@@ -203,6 +211,9 @@ export default function Streams() {
   const compatibleStreams = outgoingStreams.filter(
     (stream) => stream?.isActive && stream?.recipient?.toLowerCase() === catalog?.payments?.recipientAddress?.toLowerCase()
   );
+  const sessionLabel = ACTIVE_NETWORK.kind === 'stellar' ? 'session' : 'stream';
+  const sessionLabelPlural = ACTIVE_NETWORK.kind === 'stellar' ? 'sessions' : 'streams';
+  const recipientLabel = ACTIVE_NETWORK.kind === 'stellar' ? 'service account' : 'service wallet';
 
   const prefillStreamingRoute = (route) => {
     const pricePerSecond = Number(route?.price || 0);
@@ -216,7 +227,7 @@ export default function Streams() {
     setRecipient(catalog?.payments?.recipientAddress || '');
     setDurationSeconds(String(suggestedDuration));
     setAmountEth((pricePerSecond * suggestedDuration).toFixed(4));
-    setStatus(`Prepared a 1 hour stream budget for ${route.path}.`);
+    setStatus(`Prepared a 1 hour ${sessionLabel} budget for ${route.path}.`);
   };
 
   useEffect(() => {
@@ -260,7 +271,7 @@ export default function Streams() {
   const checkClaimableBalance = async () => {
     const id = parseInt(manualStreamId || '0', 10);
     if (!Number.isFinite(id) || id <= 0) {
-      toast.warning('Enter a valid stream ID');
+      toast.warning(`Enter a valid ${sessionLabel} ID`);
       return;
     }
     setIsChecking(true);
@@ -274,7 +285,7 @@ export default function Streams() {
   const handleWithdrawManual = async () => {
     const id = parseInt(manualStreamId || '0', 10);
     if (!Number.isFinite(id) || id <= 0) {
-      toast.warning('Enter a valid stream ID');
+      toast.warning(`Enter a valid ${sessionLabel} ID`);
       return;
     }
     setIsWithdrawing(true);
@@ -347,7 +358,7 @@ export default function Streams() {
         <ArrowRightLeft className="w-16 h-16 text-white/60 mb-4" />
         <h2 className="text-2xl font-bold text-white mb-2">Connect Your Wallet</h2>
         <p className="text-white/60 text-center max-w-md">
-          Connect your wallet to create and manage payment streams.
+          Connect your wallet to create and manage payment {sessionLabelPlural}.
         </p>
       </div>
     );
@@ -395,29 +406,39 @@ export default function Streams() {
           <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-white/40 mb-2">
             <Globe className="w-4 h-4 text-cyan-300" /> Runtime
           </div>
-          <div className="text-lg font-semibold text-white">{catalog?.network?.name || 'Westend Asset Hub'}</div>
-          <div className="text-xs text-white/40 mt-1">Chain ID {catalog?.network?.chainId || '420420421'}</div>
+          <div className="text-lg font-semibold text-white">{catalog?.network?.name || 'Stellar Testnet'}</div>
+          <div className="text-xs text-white/40 mt-1">
+            {ACTIVE_NETWORK.kind === 'stellar'
+              ? `Passphrase ${catalog?.network?.passphrase ? 'configured' : 'default testnet'}`
+              : `Chain ID ${catalog?.network?.chainId ?? '0'}`}
+          </div>
         </div>
         <div className="card-glass p-4 border border-white/5">
           <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-white/40 mb-2">
-            <Shield className="w-4 h-4 text-emerald-300" /> Service Wallet
+            <Shield className="w-4 h-4 text-emerald-300" /> {ACTIVE_NETWORK.kind === 'stellar' ? 'Service Account' : 'Service Wallet'}
           </div>
           <div className="text-lg font-semibold text-white font-mono">{shortAddress(catalog?.payments?.recipientAddress)}</div>
-          <div className="text-xs text-white/40 mt-1">All protected routes settle to this recipient.</div>
+          <div className="text-xs text-white/40 mt-1">All protected routes settle to this {recipientLabel}.</div>
         </div>
         <div className="card-glass p-4 border border-white/5">
           <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-white/40 mb-2">
             <PlugZap className="w-4 h-4 text-purple-300" /> Protected Routes
           </div>
           <div className="text-lg font-semibold text-white">{catalog?.routes?.length || 0}</div>
-          <div className="text-xs text-white/40 mt-1">Use a route preset to prefill the stream form.</div>
+          <div className="text-xs text-white/40 mt-1">
+            {ACTIVE_NETWORK.kind === 'stellar'
+              ? 'Use a route preset to prefill the session form.'
+              : 'Use a route preset to prefill the stream form.'}
+          </div>
         </div>
       </section>
 
       <section className="grid gap-4 md:gap-6 lg:grid-cols-2">
-        <CollapsibleSection title="Create Stream" icon={<Plus className="w-5 h-5" />} defaultOpen={true}>
+        <CollapsibleSection title={ACTIVE_NETWORK.kind === 'stellar' ? 'Create Session' : 'Create Stream'} icon={<Plus className="w-5 h-5" />} defaultOpen={true}>
           <p className="text-sm text-white/50 mb-4">
-            Fund a continuous {paymentTokenSymbol} stream. Flow rate = total amount / duration.
+            {ACTIVE_NETWORK.kind === 'stellar'
+              ? `Fund a reusable ${paymentTokenSymbol} payment session. Metering rate = total amount / duration.`
+              : `Fund a continuous ${paymentTokenSymbol} stream. Flow rate = total amount / duration.`}
           </p>
           <CreateStreamForm
             recipient={recipient}
@@ -434,11 +455,13 @@ export default function Streams() {
 
         <CollapsibleSection title="Withdraw Funds" icon={<Wallet className="w-5 h-5" />} defaultOpen={true}>
           <p className="text-sm text-white/60 mb-4">
-            Enter a stream ID to check and withdraw claimable {paymentTokenSymbol}.
+            Enter a {sessionLabel} ID to check and withdraw claimable {paymentTokenSymbol}.
           </p>
           <div className="grid grid-cols-1 gap-4">
             <label>
-              <span className="block text-sm text-white/70 mb-1.5">Stream ID</span>
+              <span className="block text-sm text-white/70 mb-1.5">
+                {ACTIVE_NETWORK.kind === 'stellar' ? 'Session ID' : 'Stream ID'}
+              </span>
               <input
                 type="number"
                 min={1}
@@ -483,8 +506,8 @@ export default function Streams() {
 
       <div className="grid gap-6 lg:gap-8 lg:grid-cols-2">
         <StreamList
-          title="Incoming Streams"
-          emptyText="No incoming streams found."
+          title={ACTIVE_NETWORK.kind === 'stellar' ? 'Incoming Sessions' : 'Incoming Streams'}
+          emptyText={ACTIVE_NETWORK.kind === 'stellar' ? 'No incoming sessions found.' : 'No incoming streams found.'}
           isLoading={isLoadingStreams}
           streams={incomingStreams}
           variant="incoming"
@@ -493,8 +516,8 @@ export default function Streams() {
           onCancel={cancel}
         />
         <StreamList
-          title="Outgoing Streams"
-          emptyText="No outgoing streams."
+          title={ACTIVE_NETWORK.kind === 'stellar' ? 'Outgoing Sessions' : 'Outgoing Streams'}
+          emptyText={ACTIVE_NETWORK.kind === 'stellar' ? 'No outgoing sessions.' : 'No outgoing streams.'}
           isLoading={isLoadingStreams}
           streams={outgoingStreams}
           variant="outgoing"
@@ -510,11 +533,13 @@ export default function Streams() {
               <PlugZap className="w-5 h-5 text-cyan-300" /> Protected Service Directory
             </h3>
             <p className="text-sm text-white/50 mt-1">
-              Live route policy from the backend. Streaming routes can prefill the form above with the current service wallet.
+              Live route policy from the backend. Streaming routes can prefill the form above with the current {recipientLabel}.
             </p>
           </div>
           <div className="text-xs text-white/40 font-mono">
-            Asset ID {catalog?.payments?.paymentAssetId || 31337}
+            {ACTIVE_NETWORK.kind === 'stellar'
+              ? `${catalog?.payments?.assetCode || paymentTokenSymbol} settlement`
+              : `Asset ID ${catalog?.payments?.paymentAssetId || 31337}`}
           </div>
         </div>
 
@@ -551,7 +576,7 @@ export default function Streams() {
                       className="btn-primary min-h-[40px] px-4"
                       onClick={() => prefillStreamingRoute(route)}
                     >
-                      Prefill 1h Stream
+                      {ACTIVE_NETWORK.kind === 'stellar' ? 'Prefill 1h Session' : 'Prefill 1h Stream'}
                     </button>
                   ) : (
                     <div className="px-3 py-2 rounded-lg border border-white/10 text-xs text-white/40">

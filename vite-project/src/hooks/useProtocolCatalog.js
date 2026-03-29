@@ -12,14 +12,20 @@ import { fetchProtocolCatalog } from '../services/protocolApi';
 const DEFAULT_CATALOG = {
   appName,
   network: {
+    kind: ACTIVE_NETWORK.kind,
     name: ACTIVE_NETWORK.name,
     chainId: ACTIVE_NETWORK.chainId,
     rpcUrl: ACTIVE_NETWORK.rpcUrl,
+    horizonUrl: ACTIVE_NETWORK.horizonUrl,
+    passphrase: ACTIVE_NETWORK.passphrase,
   },
   payments: {
     tokenAddress: paymentTokenAddress,
     tokenSymbol: paymentTokenSymbol,
     tokenDecimals: paymentTokenDecimals,
+    assetCode: ACTIVE_NETWORK.paymentAssetCode,
+    assetIssuer: ACTIVE_NETWORK.paymentAssetIssuer,
+    settlement: ACTIVE_NETWORK.kind === 'stellar' ? 'soroban-sac' : 'evm-erc20',
     paymentAssetId: 31337,
     recipientAddress: '',
     contractAddress,

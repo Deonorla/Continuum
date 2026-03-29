@@ -1,3 +1,5 @@
+import { ACTIVE_NETWORK } from '../networkConfig.js';
+
 function WalletIcon({ wallet }) {
   if (wallet.icon) {
     return (
@@ -29,6 +31,14 @@ export default function WalletPickerModal({
     return null;
   }
 
+  const isStellarRuntime = ACTIVE_NETWORK.kind === 'stellar';
+  const helperCopy = isStellarRuntime
+    ? 'Connect Freighter to sign Stellar session approvals and asset authorizations for the active runtime.'
+    : 'Connect a compatible wallet for the current runtime.';
+  const emptyCopy = isStellarRuntime
+    ? 'No compatible Stellar wallets were detected. Install Freighter and reload this page.'
+    : 'No compatible wallets were detected in this browser.';
+
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
       <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-surface-900/95 p-6 shadow-2xl">
@@ -37,7 +47,7 @@ export default function WalletPickerModal({
             <div className="text-xs uppercase tracking-[0.22em] text-cyan-300">Wallets</div>
             <h2 className="mt-2 text-2xl font-semibold text-white">Choose a wallet</h2>
             <p className="mt-2 text-sm leading-relaxed text-white/50">
-              Connect your polkadot{`.js`} extension for Westend-native signing.
+              {helperCopy}
             </p>
           </div>
 
@@ -82,7 +92,11 @@ export default function WalletPickerModal({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-base font-semibold text-white">{wallet.name}</span>
                     <span className="rounded-full bg-cyan-500/15 px-2 py-0.5 text-[11px] font-mono text-cyan-300">
-                      {wallet.type === 'substrate' ? 'Substrate' : 'EVM'}
+                      {wallet.type === 'substrate'
+                        ? 'Substrate'
+                        : wallet.type === 'stellar'
+                          ? 'Stellar'
+                          : 'EVM'}
                     </span>
                     {isActive && (
                       <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-mono text-emerald-300">
@@ -103,7 +117,7 @@ export default function WalletPickerModal({
 
         {!wallets.length && (
           <div className="rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-white/40">
-            No compatible wallets were detected in this browser.
+            {emptyCopy}
           </div>
         )}
       </div>

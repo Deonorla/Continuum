@@ -31,6 +31,10 @@ export function normalizeRecipientAddress(address: string) {
         throw new Error("Recipient address is required");
     }
 
+    if (/^G[A-Z2-7]{55}$/.test(value)) {
+        return value;
+    }
+
     if (ethers.isAddress(value)) {
         return ethers.getAddress(value);
     }

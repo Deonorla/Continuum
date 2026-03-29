@@ -9,6 +9,11 @@ import {
 } from "react";
 import { ethers } from "ethers";
 import {
+  getNetworkDetails as getFreighterNetworkDetails,
+  signMessage as signFreighterMessage,
+} from '@stellar/freighter-api';
+import { StrKey } from '@stellar/stellar-sdk';
+import {
   contractAddress,
   contractABI,
   paymentTokenAddress,
@@ -20,6 +25,13 @@ import {
 import { useToast } from '../components/ui';
 import { ACTIVE_NETWORK } from '../networkConfig.js';
 import { getAvailableWallets, resolveWalletSelection } from '../lib/wallets.js';
+import {
+  claimPaymentSession,
+  openPaymentSession,
+  cancelPaymentSession,
+  fetchPaymentSessions,
+  fetchPaymentSession,
+} from '../services/rwaApi.js';
 import {
   connectInjectedSubstrateWallet,
   disconnectInjectedSubstrateWallet,
@@ -39,6 +51,7 @@ const TARGET_CHAIN_ID_HEX = ACTIVE_NETWORK.chainIdHex;
 const TOKEN_APPROVAL_GAS_LIMIT = 500000n;
 const STREAM_CREATION_GAS_LIMIT = 1200000n;
 const STREAM_SCAN_LIMIT = 256;
+const IS_STELLAR_RUNTIME = ACTIVE_NETWORK.kind === 'stellar';
 
 function formatAddress(address) {
   if (!address) {
@@ -46,6 +59,114 @@ function formatAddress(address) {
   }
 
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function parseSessionMetadata(metadata) {
+  if (!metadata) {
+    return {};
+  }
+
+  if (typeof metadata === 'object') {
+    return metadata;
+  }
+
+  try {
+    return JSON.parse(String(metadata));
+  } catch {
+    return {};
+  }
+}
+
+function computeSessionClaimable(session) {
+  const totalAmount = BigInt(String(session?.totalAmount || 0));
+  const durationSeconds = Math.max(
+    1,
+    Number(session?.durationSeconds || (Number(session?.stopTime || 0) - Number(session?.startTime || 0)) || 1),
+  );
+  const now = Math.floor(Date.now() / 1000);
+  const elapsed = Math.max(
+    0,
+    Math.min(Number(session?.stopTime || now), now) - Number(session?.startTime || now),
+  );
+  const streamed = (totalAmount * BigInt(elapsed)) / BigInt(durationSeconds);
+  const withdrawn = BigInt(String(session?.amountWithdrawn || 0));
+  return streamed > withdrawn ? streamed - withdrawn : 0n;
+}
+
+function mapSessionToStreamCard(session) {
+  return {
+    id: Number(session.id),
+    sender: session.sender,
+    recipient: session.recipient,
+    totalAmount: BigInt(String(session.totalAmount || 0)),
+    flowRate: BigInt(String(session.flowRate || 0)),
+    startTime: Number(session.startTime || 0),
+    stopTime: Number(session.stopTime || 0),
+    amountWithdrawn: BigInt(String(session.amountWithdrawn || 0)),
+    isActive: Boolean(session.isActive),
+    isFrozen: Boolean(session.isFrozen),
+    metadata: typeof session.metadata === 'string'
+      ? session.metadata
+      : JSON.stringify(session.metadata || {}),
+    claimableInitial: BigInt(String(session.claimableInitial || computeSessionClaimable(session))),
+    refundableAmount: BigInt(String(session.refundableAmount || 0)),
+    sessionKind: 'stellar',
+  };
+}
+
+function createFreighterSigner(address) {
+  return {
+    async getAddress() {
+      return address;
+    },
+    async signMessage(message) {
+      const response = await signFreighterMessage(message, {
+        address,
+        networkPassphrase: ACTIVE_NETWORK.passphrase,
+      });
+      if (response?.error) {
+        throw new Error(response.error.message || 'Freighter could not sign the message.');
+      }
+      if (!response?.signedMessage) {
+        throw new Error('Freighter returned an empty signature.');
+      }
+      if (typeof response.signedMessage === 'string') {
+        return response.signedMessage;
+      }
+
+      const bytes = Array.from(new Uint8Array(response.signedMessage));
+      const binary = bytes.map((value) => String.fromCharCode(value)).join('');
+      return window.btoa(binary);
+    },
+  };
+}
+
+async function fetchStellarPaymentBalance(address) {
+  if (!address || !ACTIVE_NETWORK.horizonUrl) {
+    return "0.0";
+  }
+
+  if (!ACTIVE_NETWORK.paymentAssetCode || !ACTIVE_NETWORK.paymentAssetIssuer) {
+    return "0.0";
+  }
+
+  const response = await fetch(
+    `${String(ACTIVE_NETWORK.horizonUrl).replace(/\/$/, '')}/accounts/${encodeURIComponent(address)}`,
+  );
+  if (!response.ok) {
+    throw new Error(`Unable to load Stellar account ${address}`);
+  }
+
+  const account = await response.json();
+  const balanceEntry = Array.isArray(account?.balances)
+    ? account.balances.find(
+        (entry) =>
+          entry?.asset_code === ACTIVE_NETWORK.paymentAssetCode
+          && entry?.asset_issuer === ACTIVE_NETWORK.paymentAssetIssuer,
+      )
+    : null;
+
+  return balanceEntry?.balance || "0.0";
 }
 
 async function ensureTokenApproval({
@@ -130,6 +251,7 @@ export function WalletProvider({ children }) {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   const contractWithProvider = useMemo(() => {
+    if (IS_STELLAR_RUNTIME) return null;
     if (!provider) return null;
     try {
       return new ethers.Contract(contractAddress, contractABI, provider);
@@ -139,6 +261,7 @@ export function WalletProvider({ children }) {
   }, [provider]);
 
   const contractWithSigner = useMemo(() => {
+    if (IS_STELLAR_RUNTIME) return null;
     if (!signer) return null;
     try {
       return new ethers.Contract(contractAddress, contractABI, signer);
@@ -148,6 +271,7 @@ export function WalletProvider({ children }) {
   }, [signer]);
 
   const getNetworkName = useCallback((id) => {
+    if (IS_STELLAR_RUNTIME) return ACTIVE_NETWORK.name;
     if (!id) return "...";
     if (id === ACTIVE_NETWORK.chainId) return ACTIVE_NETWORK.name;
     return `Chain ${id}`;
@@ -330,6 +454,57 @@ export function WalletProvider({ children }) {
           return;
         }
 
+        if (walletOption.type === 'stellar') {
+          const address = await walletOption.provider?.connect?.();
+          const networkDetails = await getFreighterNetworkDetails();
+          if (networkDetails?.error) {
+            throw new Error(
+              networkDetails.error.message || 'Unable to read the active Freighter network.',
+            );
+          }
+          if (
+            networkDetails?.networkPassphrase
+            && networkDetails.networkPassphrase !== ACTIVE_NETWORK.passphrase
+          ) {
+            throw new Error(
+              `Freighter is connected to ${networkDetails.network || 'a different Stellar network'}. Switch it to ${ACTIVE_NETWORK.name}.`,
+            );
+          }
+
+          const stellarSigner = createFreighterSigner(address);
+          activeWalletProviderRef.current = null;
+          setNativeAccountAddress(null);
+          setSubstrateSession(null);
+          setProvider({
+            kind: 'stellar',
+            rpcUrl: ACTIVE_NETWORK.rpcUrl,
+            horizonUrl: ACTIVE_NETWORK.horizonUrl,
+            publicKey: address,
+          });
+          setSigner(stellarSigner);
+          setWalletAddress(address);
+          setChainId(ACTIVE_NETWORK.chainId);
+          setActiveWallet({
+            id: walletOption.id,
+            name: walletOption.name,
+            type: walletOption.type,
+            description: walletOption.description,
+          });
+          localStorage.setItem('se_wallet', JSON.stringify({ id: walletOption.id }));
+          setIsWalletPickerOpen(false);
+          setNativeApprovalState({
+            checked: true,
+            ready: true,
+            message: 'Stellar authorization signing ready via Freighter',
+            mappedAccountAddress: '',
+          });
+          setStatus(`Connected via ${walletOption.name} · Stellar authorization signing ready`);
+          toast.success(`Connected to ${formatAddress(address)} via ${walletOption.name}`, {
+            title: 'Wallet Connected',
+          });
+          return;
+        }
+
         const ethProvider = walletOption.provider;
 
         if (!ethProvider?.request) {
@@ -400,6 +575,12 @@ export function WalletProvider({ children }) {
     const balanceAddress = nativeAccountAddress || walletAddress;
     if (!balanceAddress) return;
     try {
+      if (IS_STELLAR_RUNTIME) {
+        const balance = await fetchStellarPaymentBalance(balanceAddress);
+        setPaymentBalance(balance);
+        return;
+      }
+
       let balance;
       if (activeWallet?.type === 'substrate' && substrateSession?.api && nativeAccountAddress) {
         const assetAccount = await substrateSession.api.query.assets.account(paymentAssetId, nativeAccountAddress);
@@ -418,6 +599,15 @@ export function WalletProvider({ children }) {
   }, [activeWallet?.type, nativeAccountAddress, paymentAssetId, paymentTokenDecimals, paymentTokenSymbol, substrateSession, walletAddress]);
 
   const requestTestFunds = async () => {
+    if (IS_STELLAR_RUNTIME) {
+      toast.info(
+        `${paymentTokenSymbol} funding happens off-app on Stellar testnet. Fund the connected wallet externally, then refresh the balance.`,
+        { title: 'External Funding Required' },
+      );
+      setStatus(`Waiting for external ${paymentTokenSymbol} funding.`);
+      return;
+    }
+
     toast.info(
       `Circle ${paymentTokenSymbol} is not mintable in-app on Westend. Fund this account externally, then refresh the balance.`,
       { title: "External Funding Required" },
@@ -427,10 +617,26 @@ export function WalletProvider({ children }) {
 
   const fetchStreamsFromEvents = useCallback(
     async (me) => {
-      if (!contractWithProvider || !provider)
-        return { incoming: [], outgoing: [] };
       try {
         const normalizedAddress = me?.toLowerCase();
+
+        if (IS_STELLAR_RUNTIME) {
+          const sessions = await fetchPaymentSessions(me);
+          const streamCards = sessions.map(mapSessionToStreamCard);
+          return {
+            incoming: streamCards.filter(
+              (stream) => String(stream.recipient || '').toLowerCase() === normalizedAddress,
+            ),
+            outgoing: streamCards.filter(
+              (stream) => String(stream.sender || '').toLowerCase() === normalizedAddress,
+            ),
+          };
+        }
+
+        if (!contractWithProvider || !provider) {
+          return { incoming: [], outgoing: [] };
+        }
+
         const readStreamById = async (streamId) => {
           if (activeWallet?.type === 'substrate' && substrateSession) {
             return substrateReadContract(substrateSession, {
@@ -545,6 +751,9 @@ export function WalletProvider({ children }) {
             };
           }),
         );
+        const unique = Array.from(
+          new Map(streamCards.map((stream) => [String(stream.id), stream])).values(),
+        );
         return {
           incoming: unique.filter(s => s.recipient.toLowerCase() === normalizedAddress),
           outgoing: unique.filter(s => s.sender.toLowerCase() === normalizedAddress),
@@ -576,7 +785,9 @@ export function WalletProvider({ children }) {
         "Processing withdrawal...",
       );
 
-      if (activeWallet?.type === 'substrate') {
+      if (IS_STELLAR_RUNTIME) {
+        await claimPaymentSession(streamId, { claimer: walletAddress || '' });
+      } else if (activeWallet?.type === 'substrate') {
         if (!substrateSession) {
           throw new Error('Reconnect your Substrate wallet and try again.');
         }
@@ -596,18 +807,30 @@ export function WalletProvider({ children }) {
       }
 
       toast.dismiss(loadingToast);
-      setStatus("Withdrawn.");
-      toast.success(`Withdrawn from Stream #${streamId}`, {
-        title: "Withdrawal Complete",
-      });
+      setStatus(IS_STELLAR_RUNTIME ? "Session balance claimed." : "Withdrawn.");
+      toast.success(
+        `${IS_STELLAR_RUNTIME ? "Claimed from Session" : "Withdrawn from Stream"} #${streamId}`,
+        {
+          title: IS_STELLAR_RUNTIME ? "Session Claim Complete" : "Withdrawal Complete",
+        },
+      );
       await refreshStreams();
       await fetchPaymentBalance();
     } catch (error) {
       console.error(error);
-      setStatus(error?.shortMessage || error?.message || "Withdraw failed.");
-      toast.error(error?.shortMessage || error?.message || "Withdraw failed", {
-        title: "Withdrawal Failed",
-      });
+      setStatus(
+        error?.shortMessage ||
+          error?.message ||
+          (IS_STELLAR_RUNTIME ? "Session claim failed." : "Withdraw failed."),
+      );
+      toast.error(
+        error?.shortMessage ||
+          error?.message ||
+          (IS_STELLAR_RUNTIME ? "Session claim failed" : "Withdraw failed"),
+        {
+          title: IS_STELLAR_RUNTIME ? "Session Claim Failed" : "Withdrawal Failed",
+        },
+      );
     } finally {
       setIsProcessing(false);
     }
@@ -616,11 +839,15 @@ export function WalletProvider({ children }) {
   const cancel = async (streamId) => {
     let loadingToast;
     try {
-      setStatus("Cancelling stream...");
+      setStatus(IS_STELLAR_RUNTIME ? "Ending session..." : "Cancelling stream...");
       setIsProcessing(true);
-      loadingToast = toast.transaction.pending("Cancelling stream...");
+      loadingToast = toast.transaction.pending(
+        IS_STELLAR_RUNTIME ? "Ending session..." : "Cancelling stream...",
+      );
 
-      if (activeWallet?.type === 'substrate') {
+      if (IS_STELLAR_RUNTIME) {
+        await cancelPaymentSession(streamId, { cancelledBy: walletAddress || '' });
+      } else if (activeWallet?.type === 'substrate') {
         if (!substrateSession) {
           throw new Error('Reconnect your Substrate wallet and try again.');
         }
@@ -642,15 +869,30 @@ export function WalletProvider({ children }) {
       }
 
       toast.dismiss(loadingToast);
-      setStatus("Stream cancelled.");
-      toast.stream.cancelled(streamId);
+      setStatus(IS_STELLAR_RUNTIME ? "Session ended." : "Stream cancelled.");
+      if (IS_STELLAR_RUNTIME) {
+        toast.info(`Session #${streamId} ended.`, {
+          title: "Session Ended",
+        });
+      } else {
+        toast.stream.cancelled(streamId);
+      }
     } catch (error) {
       toast.dismiss(loadingToast);
       console.error(error);
-      setStatus(error?.shortMessage || error?.message || "Cancel failed.");
-      toast.error(error?.shortMessage || error?.message || "Cancel failed", {
-        title: "Cancellation Failed",
-      });
+      setStatus(
+        error?.shortMessage ||
+          error?.message ||
+          (IS_STELLAR_RUNTIME ? "Session end failed." : "Cancel failed."),
+      );
+      toast.error(
+        error?.shortMessage ||
+          error?.message ||
+          (IS_STELLAR_RUNTIME ? "Session end failed" : "Cancel failed"),
+        {
+          title: IS_STELLAR_RUNTIME ? "Session End Failed" : "Cancellation Failed",
+        },
+      );
     } finally {
       setIsProcessing(false);
       try {
@@ -663,12 +905,14 @@ export function WalletProvider({ children }) {
   };
 
   const createStream = async (recipient, duration, amount, metadata = "{}") => {
-    if (!provider || (!signer && activeWallet?.type !== 'substrate')) {
+    if ((!provider && !IS_STELLAR_RUNTIME) || (!signer && activeWallet?.type !== 'substrate' && !IS_STELLAR_RUNTIME)) {
       setStatus("Please connect your wallet.");
       return null;
     }
     try {
-      const normalizedRecipient = normalizeContractAddressInput(recipient);
+      const normalizedRecipient = IS_STELLAR_RUNTIME
+        ? String(recipient || '').trim()
+        : normalizeContractAddressInput(recipient);
       let metadataString = metadata;
       try {
         const parsedMetadata = JSON.parse(metadata || "{}");
@@ -701,7 +945,14 @@ export function WalletProvider({ children }) {
       }
       const existingOutgoingIds = new Set(outgoingStreams.map((stream) => stream.id));
 
-      if (activeWallet?.type === 'substrate') {
+      if (IS_STELLAR_RUNTIME) {
+        if (!walletAddress) {
+          throw new Error('Reconnect your Stellar wallet and try again.');
+        }
+        if (!StrKey.isValidEd25519PublicKey(normalizedRecipient)) {
+          throw new Error('Enter a valid Stellar recipient address before opening a payment session.');
+        }
+      } else if (activeWallet?.type === 'substrate') {
         if (!substrateSession) {
           throw new Error('Reconnect your Substrate wallet and try again.');
         }
@@ -727,11 +978,20 @@ export function WalletProvider({ children }) {
         });
       }
 
-      setStatus("Creating stream...");
+      setStatus(IS_STELLAR_RUNTIME ? "Opening session..." : "Creating stream...");
       setIsProcessing(true);
       let createdId = null;
 
-      if (activeWallet?.type === 'substrate') {
+      if (IS_STELLAR_RUNTIME) {
+        const response = await openPaymentSession({
+          sender: walletAddress,
+          recipient: normalizedRecipient,
+          duration: parsedDuration,
+          amount: totalAmountWei.toString(),
+          metadata: metadataString,
+        });
+        createdId = Number(response?.streamId);
+      } else if (activeWallet?.type === 'substrate') {
         await substrateCallContract(substrateSession, {
           contractAddress,
           abi: contractABI,
@@ -785,19 +1045,37 @@ export function WalletProvider({ children }) {
       }
 
       if (createdId !== null) {
-        setStatus(`Stream created. ID #${createdId}`);
-        toast.stream.created(createdId);
+        setStatus(
+          `${IS_STELLAR_RUNTIME ? "Session opened" : "Stream created"}. ID #${createdId}`,
+        );
+        if (IS_STELLAR_RUNTIME) {
+          toast.success(`Session #${createdId} is ready to use.`, {
+            title: "Session Opened",
+          });
+        } else {
+          toast.stream.created(createdId);
+        }
       } else {
-        setStatus("Stream created.");
-        toast.success("Stream created successfully", {
-          title: "Stream Created",
-        });
+        setStatus(IS_STELLAR_RUNTIME ? "Session opened." : "Stream created.");
+        toast.success(
+          IS_STELLAR_RUNTIME
+            ? "Payment session opened successfully"
+            : "Stream created successfully",
+          {
+            title: IS_STELLAR_RUNTIME ? "Session Opened" : "Stream Created",
+          },
+        );
       }
       return createdId;
     } catch (error) {
-      console.error('Stream creation failed:', error);
+      console.error(
+        `${IS_STELLAR_RUNTIME ? "Session" : "Stream"} creation failed:`,
+        error,
+      );
       setStatus(error?.shortMessage || error?.message || 'Transaction failed.');
-        toast.error(error?.shortMessage || error?.message || 'Transaction failed', { title: 'Stream Creation Failed' });
+      toast.error(error?.shortMessage || error?.message || 'Transaction failed', {
+        title: IS_STELLAR_RUNTIME ? 'Session Setup Failed' : 'Stream Creation Failed',
+      });
       return null;
     } finally {
       setIsProcessing(false);
@@ -805,9 +1083,17 @@ export function WalletProvider({ children }) {
   };
 
   const getClaimableBalance = async (streamId) => {
-    if (!provider) return "0.0";
+    if (!provider && !IS_STELLAR_RUNTIME) return "0.0";
     try {
       let amount;
+      if (IS_STELLAR_RUNTIME) {
+        const session = await fetchPaymentSession(streamId);
+        return ethers.formatUnits(
+          BigInt(String(session?.claimableInitial || computeSessionClaimable(session))),
+          paymentTokenDecimals,
+        );
+      }
+
       if (activeWallet?.type === 'substrate' && substrateSession) {
         amount = await substrateReadContract(substrateSession, {
           contractAddress,
@@ -821,6 +1107,12 @@ export function WalletProvider({ children }) {
       }
       return ethers.formatUnits(amount, paymentTokenDecimals);
     } catch (err) {
+      if (IS_STELLAR_RUNTIME) {
+        const msg = err?.reason || err?.message || String(err);
+        toast.error(msg, { title: 'Balance check failed' });
+        return "0.0";
+      }
+
       // getClaimableBalance reverts if stream.isActive is false.
       // Fall back to computing it from raw stream data so completed/expired
       // streams still show the correct withdrawable amount.
@@ -1005,7 +1297,7 @@ export function WalletProvider({ children }) {
   }, [activeWallet?.name, disconnectWallet, toast]);
 
   useEffect(() => {
-    if (!walletAddress || !contractWithProvider) return;
+    if (!walletAddress) return;
     refreshStreamsRef.current();
     fetchPaymentBalanceRef.current();
     const interval = setInterval(() => {
@@ -1013,7 +1305,7 @@ export function WalletProvider({ children }) {
       fetchPaymentBalanceRef.current();
     }, 15000);
 
-    if (ACTIVE_NETWORK.chainId === 420420421) {
+    if (IS_STELLAR_RUNTIME || !contractWithProvider || ACTIVE_NETWORK.chainId === 420420421) {
       return () => {
         clearInterval(interval);
       };

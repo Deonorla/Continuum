@@ -13,12 +13,12 @@ export default function LandingCTASection() {
         <div className="space-y-4">
           <h2 className="text-4xl md:text-6xl font-black text-white leading-tight">
             The economy of agents<br />runs on{' '}
-            <span style={{ background: 'linear-gradient(90deg,#3b82f6,#a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Stream Engine.</span>
+            <span style={{ background: 'linear-gradient(90deg,#3b82f6,#a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Stella&apos;s Stream Engine.</span>
           </h2>
           <p className="text-lg text-surface-300">Join the developer beta and start powering Stellar USDC payment sessions in minutes.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <a href="#" className="px-8 py-4 border-2 border-white/30 text-white hover:border-white hover:bg-white/5 font-semibold rounded-xl transition-all duration-300 text-lg focus:outline-none focus:ring-2 focus:ring-white/30" aria-label="Read the Stream Engine whitepaper">Read the Whitepaper</a>
+          <a href="#" className="px-8 py-4 border-2 border-white/30 text-white hover:border-white hover:bg-white/5 font-semibold rounded-xl transition-all duration-300 text-lg focus:outline-none focus:ring-2 focus:ring-white/30" aria-label="Read the Stella's Stream Engine whitepaper">Read the Whitepaper</a>
           <Link to="/app" className="px-8 py-4 font-semibold rounded-xl transition-all duration-300 text-lg focus:outline-none focus:ring-2 focus:ring-flowpay-500/50 text-white" style={{ background: 'linear-gradient(135deg,#3b82f6,#a855f7)' }} aria-label="Join the developer beta">Join Developer Beta →</Link>
         </div>
         <div>

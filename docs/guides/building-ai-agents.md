@@ -1,6 +1,6 @@
 # Building AI Agents
 
-Stream Engine is built for agents that need:
+Stella's Stream Engine is built for agents that need:
 
 - machine-readable payment discovery
 - automatic authorization

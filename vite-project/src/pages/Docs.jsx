@@ -21,49 +21,49 @@ import { ACTIVE_NETWORK } from "../networkConfig.js";
 
 const LEGACY_CONTRACT_DEFAULTS = {
   stream: {
-    name: "Stream Engine Stream",
+    name: "Stella's Stream Engine Stream",
     onchainName: "FlowPayStream",
     group: "Payment Rail",
     address: "0x75edbf3d9857521f5fb2f581c896779f5110a8a0",
     role: "Reusable payment stream rail for x402-compatible API and access payments.",
   },
   rwaHub: {
-    name: "Stream Engine RWA Hub",
+    name: "Stella's Stream Engine RWA Hub",
     onchainName: "FlowPayRWAHub",
     group: "RWA Rail",
     address: "0x1286a0fe3413dd70083df2d654677a7c39096753",
     role: "Main RWA orchestrator for minting, yield funding, claims, flash advance, and admin actions.",
   },
   assetNft: {
-    name: "Stream Engine Asset NFT",
+    name: "Stella's Stream Engine Asset NFT",
     onchainName: "FlowPayAssetNFT",
     group: "RWA Rail",
     address: "0x0340b3f493bae901f740c494b2f7744f5fffe348",
     role: "ERC-721 digital twin contract for productive real-world rental assets.",
   },
   assetRegistry: {
-    name: "Stream Engine Asset Registry",
+    name: "Stella's Stream Engine Asset Registry",
     onchainName: "FlowPayAssetRegistry",
     group: "RWA Rail",
     address: "0x9db31d67bd603508cfac61dcd31d98dfbd46cf5f",
     role: "Onchain asset identity registry for rights model, property reference hash, public metadata hash, evidence roots, and verification status.",
   },
   attestationRegistry: {
-    name: "Stream Engine Attestation Registry",
+    name: "Stella's Stream Engine Attestation Registry",
     onchainName: "FlowPayAssetAttestationRegistry",
     group: "RWA Rail",
     address: "",
     role: "Role-based attestation registry for lawyers, inspectors, valuers, insurers, registrars, issuers, and compliance operators.",
   },
   assetStream: {
-    name: "Stream Engine Asset Stream",
+    name: "Stella's Stream Engine Asset Stream",
     onchainName: "FlowPayAssetStream",
     group: "RWA Rail",
     address: "0x2d6bda7095b2d6c9d4eee9f754f2a1eba6114396",
     role: "Asset-linked yield engine that keeps future revenue coupled to NFT ownership.",
   },
   complianceGuard: {
-    name: "Stream Engine Compliance Guard",
+    name: "Stella's Stream Engine Compliance Guard",
     onchainName: "FlowPayComplianceGuard",
     group: "RWA Rail",
     address: "0x72a979756061c5993a4c9c95e87519e9492dd721",
@@ -73,7 +73,7 @@ const LEGACY_CONTRACT_DEFAULTS = {
 
 const STELLAR_RUNTIME_COMPONENT_DEFAULTS = {
   sessionMeter: {
-    name: "Stream Engine Session Meter",
+    name: "Stella's Stream Engine Session Meter",
     onchainName: "SessionMeter",
     group: "Payment Rail",
     address: "stellar:session-meter",
@@ -87,35 +87,35 @@ const STELLAR_RUNTIME_COMPONENT_DEFAULTS = {
     role: "Settlement asset used for session funding, direct payments, rentals, and yield operations.",
   },
   assetTwin: {
-    name: "Stream Engine Asset Twin",
+    name: "Stella's Stream Engine Asset Twin",
     onchainName: "AssetTwin",
     group: "RWA Rail",
     address: "stellar:asset-twin",
     role: "Digital twin representation for productive rental assets and ownership-linked yield.",
   },
   assetRegistry: {
-    name: "Stream Engine RWA Registry",
+    name: "Stella's Stream Engine RWA Registry",
     onchainName: "RwaRegistry",
     group: "RWA Rail",
     address: "stellar:rwa-registry",
     role: "Asset identity anchor for rights model, property reference hash, public metadata hash, evidence roots, and verification status.",
   },
   attestationRegistry: {
-    name: "Stream Engine Attestation Registry",
+    name: "Stella's Stream Engine Attestation Registry",
     onchainName: "AttestationRegistry",
     group: "RWA Rail",
     address: "stellar:attestation-registry",
     role: "Role-based attestation registry for lawyers, inspectors, valuers, insurers, registrars, issuers, and compliance operators.",
   },
   yieldVault: {
-    name: "Stream Engine Yield Vault",
+    name: "Stella's Stream Engine Yield Vault",
     onchainName: "YieldVault",
     group: "RWA Rail",
     address: "stellar:yield-vault",
     role: "Asset-linked revenue engine that keeps future yield coupled to the current twin owner.",
   },
   policyService: {
-    name: "Stream Engine Policy Orchestrator",
+    name: "Stella's Stream Engine Policy Orchestrator",
     onchainName: "PolicyOrchestrator",
     group: "RWA Rail",
     address: "stellar:policy-orchestrator",
@@ -345,9 +345,9 @@ function buildSections(catalog) {
       title: "Overview",
       eyebrow: "Start Here",
       summary:
-        "What Stream Engine is, what problem it solves, and how the pieces fit together.",
+        "What Stella's Stream Engine is, what problem it solves, and how the pieces fit together.",
       plainEnglish:
-        'If x402 is the sign on the shop door saying "you must pay before entry", Stream Engine is the running tab that lets the agent pay once, keep using the service, and settle fairly over time.',
+        `If x402 is the sign on the shop door saying "you must pay before entry", Stella's Stream Engine is the running tab that lets the agent pay once, keep using the service, and settle fairly over time.`,
       takeaways: [
         "x402 is the payment handshake, not the payment engine.",
         "Streaming is the reusable settlement rail that makes repeated paid usage practical.",
@@ -356,11 +356,11 @@ function buildSections(catalog) {
       points: [
         {
           title: "What the project is",
-          body: `Stream Engine is a machine-payments and rental-RWA system running on ${networkName}. It combines payment negotiation, reusable settlement, and asset verification in one product.`,
+          body: `Stella's Stream Engine is a machine-payments and rental-RWA system running on ${networkName}. It combines payment negotiation, reusable settlement, and asset verification in one product.`,
         },
         {
           title: "What problem it solves",
-          body: "Repeated onchain payments are too expensive and too slow for agents. Stream Engine replaces repeated checkout with one reusable payment session or stream.",
+          body: "Repeated onchain payments are too expensive and too slow for agents. Stella's Stream Engine replaces repeated checkout with one reusable payment session or stream.",
         },
         {
           title: "What the moving parts are",
@@ -368,7 +368,7 @@ function buildSections(catalog) {
         },
         {
           title: "What not to confuse",
-          body: "x402 is not the session or stream. x402 says payment is required. Stream Engine decides how to satisfy that payment requirement efficiently.",
+          body: "x402 is not the session or stream. x402 says payment is required. Stella's Stream Engine decides how to satisfy that payment requirement efficiently.",
         },
       ],
       stepsTitle: "The full product loop",
@@ -397,7 +397,7 @@ function buildSections(catalog) {
       ],
       faqs: [
         {
-          question: "Is Stream Engine only for API payments?",
+          question: "Is Stella's Stream Engine only for API payments?",
           answer:
             "No. It handles API payments and rental RWAs. The same stream logic can power machine payments, rental access, and asset-linked revenue flows.",
         },
@@ -567,7 +567,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
       takeaways: [
         "x402 is the language of the paywall.",
         "It standardizes discovery of price, token, recipient, and mode.",
-        "Stream Engine plugs into x402 instead of replacing it.",
+        "Stella's Stream Engine plugs into x402 instead of replacing it.",
       ],
       points: [
         {
@@ -583,8 +583,8 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
           body: "Agents cannot survive random checkout flows. They need a standard handshake so they can parse cost, decide on a strategy, and continue without human help.",
         },
         {
-          title: "Why Stream Engine fits",
-          body: "Stream Engine is the settlement backend behind the x402 response. The protocol says payment is required; Stream Engine makes satisfying that payment cheap enough to use in practice.",
+          title: "Why Stella's Stream Engine fits",
+          body: "Stella's Stream Engine is the settlement backend behind the x402 response. The protocol says payment is required; Stella's Stream Engine makes satisfying that payment cheap enough to use in practice.",
         },
       ],
       stepsTitle: "Request flow with x402",
@@ -639,7 +639,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
         {
           question: "Why do some payment headers still say FlowPay?",
           answer:
-            "Those are legacy wire-format names kept for compatibility with the current runtime and SDK. Product-facing branding is Stream Engine, but the live HTTP header keys still use the older X-FlowPay-* prefix today.",
+            "Those are legacy wire-format names kept for compatibility with the current runtime and SDK. Product-facing branding is Stella's Stream Engine, but the live HTTP header keys still use the older X-FlowPay-* prefix today.",
         },
       ],
     },
@@ -663,7 +663,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
           body: "Agents may call a route many times per session. A one-payment-per-call model turns useful work into fee burn.",
         },
         {
-          title: "How Stream Engine helps",
+          title: "How Stella's Stream Engine helps",
           body: "Once the stream is open, the agent can keep working against the same payment session instead of repeating the same checkout step.",
         },
         {
@@ -723,7 +723,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
       summary:
         "The product makes more sense when you understand the roles separately: provider, payer, agent, owner, renter, verifier, and admin.",
       plainEnglish:
-        "Every person or system in Stream Engine has a job. Confusion usually starts when people mix up the owner, renter, payer, and verifier as if they are the same party.",
+        "Every person or system in Stella's Stream Engine has a job. Confusion usually starts when people mix up the owner, renter, payer, and verifier as if they are the same party.",
       takeaways: [
         "The payer is not always the same as the owner.",
         "The renter is not the owner of the NFT.",
@@ -830,13 +830,13 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
         },
         {
           title: "Why this module exists",
-          body: "Most onchain RWAs today stop at tokenization. They prove that something was minted, but they do not make the asset operational or rental-aware. Stream Engine focuses on productive assets that can be verified, rented, and linked to future yield.",
+          body: "Most onchain RWAs today stop at tokenization. They prove that something was minted, but they do not make the asset operational or rental-aware. Stella's Stream Engine focuses on productive assets that can be verified, rented, and linked to future yield.",
         },
       ],
       stepsTitle: "The RWA Studio workflow",
       steps: [
         "Describe the asset in plain language: what it is, where it is, and what monthly yield the owner expects.",
-        "Attach the supporting documents. Stream Engine fingerprints them in-browser and keeps the raw files private by default.",
+        "Attach the supporting documents. Stella's Stream Engine fingerprints them in-browser and keeps the raw files private by default.",
         "Let the app generate the internal property reference, verification tag seed, and public metadata package automatically while the platform handles issuer onboarding in the background.",
         "Mint the rental twin and read the signed v2 verification payload that comes back from the API.",
         "If the asset type has required attestation roles, collect and record them to move from Pending Attestation to verified.",
@@ -858,7 +858,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
         },
         {
           title: "What this RWA layer supports",
-          headers: ["Asset type", "Why it fits Stream Engine"],
+          headers: ["Asset type", "Why it fits Stella's Stream Engine"],
           rows: [
             [
               "Houses / apartments",
@@ -913,18 +913,18 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
           body: "Productive assets are easier to model because there is a revenue stream to watch, not just a hope that resale price rises later.",
         },
         {
-          title: "Why Stream Engine cares",
+          title: "Why Stella's Stream Engine cares",
           body: "Once an asset produces ongoing cash flow, it makes sense to stream and track that cash flow instead of pretending the asset is just a JPEG with metadata.",
         },
         {
           title: "Why we do not start with gold or silver",
-          body: "Gold and silver can be valuable, but they are passive holdings. Owning them does not automatically create a revenue stream. Stream Engine starts with assets that can be rented because rental flows are where streaming and coupling add real utility.",
+          body: "Gold and silver can be valuable, but they are passive holdings. Owning them does not automatically create a revenue stream. Stella's Stream Engine starts with assets that can be rented because rental flows are where streaming and coupling add real utility.",
         },
       ],
       tables: [
         {
           title: "Static vs productive assets",
-          headers: ["Type", "What it mainly offers", "What Stream Engine adds"],
+          headers: ["Type", "What it mainly offers", "What Stella's Stream Engine adds"],
           rows: [
             [
               "Collectible NFT",
@@ -978,10 +978,10 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
         },
         {
           title: "Why this was the core inspiration",
-          body: "A lot of RWA NFTs today are still passive wrappers around non-productive assets. Stream Engine makes coupling central because productive assets are only truly useful when future revenue cleanly follows the NFT that represents the asset.",
+          body: "A lot of RWA NFTs today are still passive wrappers around non-productive assets. Stella's Stream Engine makes coupling central because productive assets are only truly useful when future revenue cleanly follows the NFT that represents the asset.",
         },
         {
-          title: "How Stream Engine handles it",
+          title: "How Stella's Stream Engine handles it",
           body: "The stream checks the current NFT owner when claims happen. That means claim rights follow live ownership.",
         },
         {
@@ -1157,7 +1157,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
         },
         {
           title: "Why we only care about productive assets here",
-          body: "Gold, silver, and passive commodity wrappers can be tokenized, but they do not naturally produce rental cash flow. Stream Engine focuses on houses, fleets, heavy machinery, and other rent-producing assets because those assets justify streaming, refund logic, live metering, and ownership-linked yield.",
+          body: "Gold, silver, and passive commodity wrappers can be tokenized, but they do not naturally produce rental cash flow. Stella's Stream Engine focuses on houses, fleets, heavy machinery, and other rent-producing assets because those assets justify streaming, refund logic, live metering, and ownership-linked yield.",
         },
         {
           title: "IoT and machine enforcement",
@@ -1169,7 +1169,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
         },
         {
           title: "Why productive RWAs need this architecture",
-          body: "Most onchain RWAs today are passive wrappers around assets that do not naturally produce cash flow. Stream Engine focuses on productive assets like houses, fleets, and heavy machinery because they can be rented, measured, refunded when returned early, and paired with IoT or smart-lock controls.",
+          body: "Most onchain RWAs today are passive wrappers around assets that do not naturally produce cash flow. Stella's Stream Engine focuses on productive assets like houses, fleets, and heavy machinery because they can be rented, measured, refunded when returned early, and paired with IoT or smart-lock controls.",
         },
         {
           title: "Trust boundary",
@@ -1232,34 +1232,34 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
           headers: ["RWA piece", "What it stores or controls", "Why the system needs it"],
           rows: [
             [
-              stellar ? "Stream Engine Asset Twin" : "Stream Engine Asset NFT",
+              stellar ? "Stella's Stream Engine Asset Twin" : "Stella's Stream Engine Asset NFT",
               "The digital twin and current owner",
               "Without it there is no durable ownership anchor for the productive asset",
             ],
             [
-              "Stream Engine Asset Registry",
+              "Stella's Stream Engine Asset Registry",
               `Rights model, property reference hash, public metadata hash, evidence roots, status, linked ${stellar ? "yield" : "stream"} facts`,
               "Without it buyers and auditors cannot prove that the asset record is complete and current",
             ],
             [
-              "Stream Engine Attestation Registry",
+              "Stella's Stream Engine Attestation Registry",
               "Role-based attestations, expiries, and revocations",
               "Without it the verifier cannot prove that lawyers, inspectors, valuers, or insurers actually signed off on the evidence set",
             ],
             [
-              stellar ? "Stream Engine Yield Vault" : "Stream Engine Asset Stream",
+              stellar ? "Stella's Stream Engine Yield Vault" : "Stella's Stream Engine Asset Stream",
               "Time-based yield logic, flash-advance behavior, future revenue state",
               `Without it the asset becomes just another static ${stellar ? "twin" : "NFT"} with no revenue engine`,
             ],
             [
-              stellar ? "Stream Engine Policy Orchestrator" : "Stream Engine Compliance Guard",
+              stellar ? "Stella's Stream Engine Policy Orchestrator" : "Stella's Stream Engine Compliance Guard",
               stellar ? "Issuer onboarding, compliance, and freeze flags" : "Freeze and compliance flags",
               stellar
                 ? "Without it there is no clean runtime boundary for admin and regulated actions"
                 : "Without it there is no contract-level stop switch for regulated or disputed actions",
             ],
             [
-              stellar ? "Backend relay + operator surface" : "Stream Engine RWA Hub",
+              stellar ? "Backend relay + operator surface" : "Stella's Stream Engine RWA Hub",
               "High-level orchestration across minting, funding, claims, and admin actions",
               "Without it the app would need to coordinate too many raw calls manually",
             ],
@@ -1270,37 +1270,37 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
           headers: [stellar ? "Component" : "Contract", "Why it exists", "What breaks without it"],
           rows: [
             [
-              stellar ? "Stream Engine Session Meter" : "Stream Engine Stream",
+              stellar ? "Stella's Stream Engine Session Meter" : "Stella's Stream Engine Stream",
               `Create, cancel, and settle reusable payment ${stellar ? "sessions" : "streams"}`,
               "Agents fall back to repeated checkout and high-fee per-request settlement",
             ],
             [
-              stellar ? "Stream Engine Asset Twin" : "Stream Engine Asset NFT",
+              stellar ? "Stella's Stream Engine Asset Twin" : "Stella's Stream Engine Asset NFT",
               `Mint the productive rental asset ${stellar ? "twin" : "NFT"}`,
               "There is no durable digital twin for the real asset",
             ],
             [
-              "Stream Engine Asset Registry",
+              "Stella's Stream Engine Asset Registry",
               "Store asset identity, evidence roots, rights model, and verification state",
               "Verifiers cannot prove the asset record that the NFT is supposed to represent",
             ],
             [
-              "Stream Engine Attestation Registry",
+              "Stella's Stream Engine Attestation Registry",
               "Store attestation roles, signatures, expiry, and revocation state",
               "Verifiers cannot tell whether legal, inspection, insurance, or valuation review was actually completed",
             ],
             [
-              stellar ? "Stream Engine Yield Vault" : "Stream Engine Asset Stream",
+              stellar ? "Stella's Stream Engine Yield Vault" : "Stella's Stream Engine Asset Stream",
               "Handle asset-linked yield and flash advance behavior",
               `Future rental revenue cannot be ${stellar ? "metered" : "streamed"} or coupled cleanly to ${stellar ? "twin" : "NFT"} ownership`,
             ],
             [
-              stellar ? "Stream Engine Policy Orchestrator" : "Stream Engine Compliance Guard",
+              stellar ? "Stella's Stream Engine Policy Orchestrator" : "Stella's Stream Engine Compliance Guard",
               "Store compliance and freeze state",
               "Admins cannot block claims or withdrawals when policy or regulation requires intervention",
             ],
             [
-              stellar ? "Backend relay + operator surface" : "Stream Engine RWA Hub",
+              stellar ? "Backend relay + operator surface" : "Stella's Stream Engine RWA Hub",
               "Coordinate minting, funding, claims, and admin actions",
               "Frontend and backend would need to orchestrate too many raw contract calls directly",
             ],
@@ -1308,7 +1308,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
         },
         {
           title: "Why the RWA side is different from passive tokenization",
-          headers: ["RWA model", "What ownership gives you", "Why Stream Engine prefers it"],
+          headers: ["RWA model", "What ownership gives you", "Why Stella's Stream Engine prefers it"],
           rows: [
             [
               "Passive asset NFT",
@@ -1349,7 +1349,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
             [
               "Rent",
               "User funds access and pays only for actual usage time",
-              stellar ? "Session Meter + app access controls" : "Stream Engine Stream + app access controls",
+              stellar ? "Session Meter + app access controls" : "Stella's Stream Engine Stream + app access controls",
             ],
             [
               "Generate yield",
@@ -1424,8 +1424,8 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
             "Why do the onchain deployment ids still say FlowPay?",
           answer:
             stellar
-              ? "Because the repo still carries legacy FlowPay identifiers for compatibility with older code, docs, and archived deployments. The product is now Stream Engine, but not every internal name was worth breaking for the hackathon pivot."
-              : "Those are the actual deployed Solidity contract identifiers. The product is now Stream Engine, but the deployed contract names were kept so the existing chain deployment, ABI references, and tooling did not have to be broken or redeployed just for naming.",
+              ? "Because the repo still carries legacy FlowPay identifiers for compatibility with older code, docs, and archived deployments. The product is now Stella's Stream Engine, but not every internal name was worth breaking for the hackathon pivot."
+              : "Those are the actual deployed Solidity contract identifiers. The product is now Stella's Stream Engine, but the deployed contract names were kept so the existing chain deployment, ABI references, and tooling did not have to be broken or redeployed just for naming.",
         },
         {
           question:
@@ -1495,9 +1495,9 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
       ],
       faqs: [
         {
-          question: "What is the fastest way to understand Stream Engine?",
+          question: "What is the fastest way to understand Stella's Stream Engine?",
           answer:
-            "Remember this sentence: x402 tells the client that payment is required, and Stream Engine makes that payment reusable through streams so agents and rental flows stay economical.",
+            "Remember this sentence: x402 tells the client that payment is required, and Stella's Stream Engine makes that payment reusable through streams so agents and rental flows stay economical.",
         },
       ],
     },
@@ -2129,7 +2129,7 @@ function ArchitectureDiagram({ catalog }) {
                 ))}
               </div>
               <div className="mt-4 rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.06] p-4 text-sm leading-7 text-white/65">
-                {`This is the part many RWA projects skip. Stream Engine does not stop at proving that a house, fleet, or machine exists. It also tracks who owns the digital twin, what metadata and verification facts are bound to it, how rental revenue is generated, and why future yield must follow whoever owns the ${stellar ? "twin" : "NFT"} now.`}
+                {`This is the part many RWA projects skip. Stella's Stream Engine does not stop at proving that a house, fleet, or machine exists. It also tracks who owns the digital twin, what metadata and verification facts are bound to it, how rental revenue is generated, and why future yield must follow whoever owns the ${stellar ? "twin" : "NFT"} now.`}
               </div>
             </div>
           </div>
@@ -2319,7 +2319,7 @@ export default function Docs() {
           <div className="flex items-center gap-2">
             <BookOpen className="h-4 w-4 text-cyan-400" />
             <span className="text-sm font-semibold text-white">
-              Stream Engine Handbook
+              Stella's Stream Engine Handbook
             </span>
           </div>
         </div>

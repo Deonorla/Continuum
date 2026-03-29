@@ -1,6 +1,6 @@
-# Stream Engine Documentation
+# Stella's Stream Engine Documentation
 
-Stream Engine is an x402-compatible payment and settlement stack for AI agents and rental RWAs. The current hackathon path is **Stellar-first**.
+Stella's Stream Engine is an x402-compatible payment and settlement stack for AI agents and rental RWAs. The current hackathon path is **Stellar-first**.
 
 ## Current Runtime
 
@@ -15,7 +15,7 @@ Stream Engine is an x402-compatible payment and settlement stack for AI agents a
 
 ## What This Docs Set Covers
 
-- how x402 signaling works in Stream Engine
+- how x402 signaling works in Stella's Stream Engine
 - how reusable payment sessions reduce agent payment overhead
 - how the Stellar deployment is configured
 - how the SDK, middleware, relay layer, and runtime services fit together

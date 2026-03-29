@@ -8,7 +8,7 @@ if (usePolkadotToolchain) {
 }
 const solidityVersion = usePolkadotToolchain
   ? process.env.FLOWPAY_POLKADOT_SOLC_VERSION || "0.8.28"
-  : "0.8.20";
+  : "0.8.24";
 
 const flowPayRuntime = createFlowPayRuntimeConfig();
 const westendRuntime = createWestendRuntimeConfig();

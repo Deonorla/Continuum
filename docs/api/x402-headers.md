@@ -1,6 +1,6 @@
 # x402 Headers
 
-The middleware still uses legacy `X-FlowPay-*` header names on the wire for compatibility, even though the product name is Stream Engine.
+The middleware still uses legacy `X-FlowPay-*` header names on the wire for compatibility, even though the product name is Stella's Stream Engine.
 
 ## Common Headers
 

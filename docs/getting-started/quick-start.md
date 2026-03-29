@@ -1,6 +1,6 @@
 # Quick Start
 
-Get Stream Engine running locally in a few minutes.
+Get Stella's Stream Engine running locally in a few minutes.
 
 ## Step 1: Install and start the stack
 
@@ -28,14 +28,14 @@ The request flow is:
 1. agent requests a protected resource
 2. API returns `HTTP 402 Payment Required`
 3. x402-style response describes payment terms
-4. Stream Engine decides direct settlement vs reusable session/stream compatibility
+4. Stella's Stream Engine decides direct settlement vs reusable session/stream compatibility
 5. payment is satisfied
 6. request is retried
 
 That is the key architectural split:
 
 - `x402` handles payment discovery
-- Stream Engine handles payment execution
+- Stella's Stream Engine handles payment execution
 
 ## Step 4: Create a stream
 

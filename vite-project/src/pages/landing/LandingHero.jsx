@@ -344,7 +344,7 @@ export default function LandingHero({
             to="/app"
             className="group relative px-8 py-3.5 rounded-xl font-semibold text-white overflow-hidden focus:outline-none focus:ring-2 focus:ring-flowpay-500/50"
             style={{ background: "linear-gradient(135deg,#3b82f6,#a855f7)" }}
-            aria-label="Launch Stream Engine"
+            aria-label="Launch Stella's Stream Engine"
           >
             <span className="relative z-10">Launch App →</span>
             <span

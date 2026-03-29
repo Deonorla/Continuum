@@ -19,13 +19,13 @@ export default function LandingNavbar() {
     >
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between" aria-label="Main navigation">
         {/* Logo */}
-        <a href="#" className="flex items-center gap-2 group" aria-label="Stream Engine home">
+        <a href="#" className="flex items-center gap-2 group" aria-label="Stella's Stream Engine home">
           <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
             <path d="M4 14 Q8 8 14 14 Q20 20 24 14" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
             <path d="M4 18 Q8 12 14 18 Q20 24 24 18" stroke="#a855f7" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.6"/>
             <circle cx="14" cy="14" r="2.5" fill="#3b82f6"/>
           </svg>
-          <span className="text-white font-bold text-lg tracking-tight">Stream Engine</span>
+          <span className="text-white font-bold text-lg tracking-tight">Stella's Stream Engine</span>
         </a>
 
         {/* Desktop nav */}
@@ -42,7 +42,7 @@ export default function LandingNavbar() {
         </div>
 
         <div className="hidden md:flex items-center gap-3">
-          <Link to="/app" className="px-5 py-2 bg-flowpay-500 hover:bg-flowpay-600 text-white text-sm font-semibold rounded-lg shadow-glow-sm animate-glow-pulse transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-flowpay-500/50" aria-label="Launch Stream Engine app">
+          <Link to="/app" className="px-5 py-2 bg-flowpay-500 hover:bg-flowpay-600 text-white text-sm font-semibold rounded-lg shadow-glow-sm animate-glow-pulse transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-flowpay-500/50" aria-label="Launch Stella's Stream Engine app">
             Launch App
           </Link>
         </div>

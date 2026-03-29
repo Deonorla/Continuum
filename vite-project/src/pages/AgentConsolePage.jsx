@@ -216,7 +216,7 @@ export default function AgentConsolePage() {
     if (nextAlerts.length === 0) {
       nextAlerts.push({
         type: 'info',
-        message: 'No active warnings. Stream Engine policy checks are healthy.',
+        message: "No active warnings. Stella's Stream Engine policy checks are healthy.",
         time: 'Current session',
       });
     }

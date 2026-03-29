@@ -56,7 +56,7 @@ const BarChart = ({ groups, colors }) => {
                     <div className={`w-2 h-2 rounded-full ${colors[0].split(' ')[0]}`} /> Standard x402
                 </div>
                 <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${colors[1].split(' ')[0]}`} /> Stream Engine
+                    <div className={`w-2 h-2 rounded-full ${colors[1].split(' ')[0]}`} /> Stella's Stream Engine
                 </div>
             </div>
         </div>
@@ -109,9 +109,9 @@ const NPlusOneVisualizer = () => {
                     <div className="text-[10px] text-error-400 font-mono">5 Requests = 5 Transactions</div>
                 </div>
 
-                {/* Stream Engine */}
+                {/* Stella's Stream Engine */}
                 <div className="flex flex-col items-center justify-center space-y-6 border-l border-white/5 pl-8">
-                    <div className="text-xs font-bold text-flowpay-400 uppercase">Stream Engine Solution</div>
+                    <div className="text-xs font-bold text-flowpay-400 uppercase">Stella's Stream Engine Solution</div>
                     <div className="relative">
                         <div className="w-12 h-12 rounded-xl bg-flowpay-500 flex items-center justify-center shadow-glow">
                             <Bot className="w-6 h-6 text-white" />
@@ -209,7 +209,7 @@ export function EfficiencyMetrics({ metrics }) {
                             colors={['bg-error-500 shadow-glow-error', 'bg-success-500 shadow-glow-success']}
                         />
                         <p className="mt-4 text-[10px] text-white/40 italic">
-                            Estimated from the current Stellar-backed runtime and Stream Engine route overhead.
+                            Estimated from the current Stellar-backed runtime and Stella's Stream Engine route overhead.
                         </p>
                     </div>
 

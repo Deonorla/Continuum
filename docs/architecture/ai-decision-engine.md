@@ -1,6 +1,6 @@
 # AI Decision Engine
 
-Stream Engine uses an AI-assisted strategy layer to decide **how** to satisfy a payment request, not whether a route is paid.
+Stella's Stream Engine uses an AI-assisted strategy layer to decide **how** to satisfy a payment request, not whether a route is paid.
 
 ## What It Does
 

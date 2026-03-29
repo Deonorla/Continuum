@@ -2,7 +2,7 @@
 
 > Legacy note: this page documents the archived Westend stream contract. The active hackathon path uses backend-managed Stellar payment sessions for the demo.
 
-`FlowPayStream` is the stream settlement contract used behind Stream Engine’s x402 flow.
+`FlowPayStream` is the stream settlement contract used behind Stella's Stream Engine x402 flow.
 
 ## Deployment
 
@@ -34,4 +34,4 @@ claimable = (elapsed * flowRate) - amountWithdrawn
 
 - amounts are denominated in USDC base units with `6` decimals
 - the contract exposes `paymentToken()` as the canonical token getter
-- Stream Engine uses metadata to tag agent actions, route purpose, and RWA rental context
+- Stella's Stream Engine uses metadata to tag agent actions, route purpose, and RWA rental context

@@ -1,6 +1,6 @@
 # Provider Integration
 
-Providers integrate Stream Engine in two layers:
+Providers integrate Stella's Stream Engine in two layers:
 
 ## HTTP Layer
 

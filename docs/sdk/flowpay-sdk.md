@@ -1,6 +1,6 @@
 # FlowPaySDK
 
-`FlowPaySDK` is the main agent runtime class. The product is now **Stream Engine**, but the exported class name remains for compatibility.
+`FlowPaySDK` is the main agent runtime class. The product is now **Stella's Stream Engine**, but the exported class name remains for compatibility.
 
 ## Role
 

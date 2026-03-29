@@ -2,7 +2,7 @@
 
 > Legacy note: this page is kept only as an archived deployment reference. The active hackathon runtime is now Stellar.
 
-This repo deploys Stream Engine to **Westend Asset Hub** using:
+This repo deploys Stella's Stream Engine to **Westend Asset Hub** using:
 
 - `WND` for gas
 - `Circle USDC` asset id `31337` for payment and RWA flows

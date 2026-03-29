@@ -1,6 +1,6 @@
 # Payment Sessions And Streams
 
-Reusable payment state is the settlement primitive behind Stream Engine.
+Reusable payment state is the settlement primitive behind Stella's Stream Engine.
 
 ## What They Solve
 

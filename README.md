@@ -1,6 +1,6 @@
-# Stream Engine on Stellar
+# Stella's Stream Engine on Stellar
 
-**Stream Engine** is an `x402`-compatible payment and settlement stack for AI agents plus a rental-RWA backend for verified productive assets.
+**Stella's Stream Engine** is an `x402`-compatible payment and settlement stack for AI agents plus a rental-RWA backend for verified productive assets.
 
 The current hackathon path is now **Stellar-first**:
 

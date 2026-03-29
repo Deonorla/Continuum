@@ -1,6 +1,6 @@
 # SDK Reference
 
-The SDK is the agent runtime for Stream Engine.
+The SDK is the agent runtime for Stella's Stream Engine.
 
 Its core job is not just "send tokens." Its job is to turn `x402` payment requirements into usable agent behavior.
 
@@ -9,7 +9,7 @@ Its core job is not just "send tokens." Its job is to turn `x402` payment requir
 - `x402` provides payment negotiation
 - the SDK parses those requirements
 - the SDK chooses direct settlement or reusable session flow
-- Stream Engine runtime adapters execute the chosen payment path
+- Stella's Stream Engine runtime adapters execute the chosen payment path
 
 That means the SDK is the decision and execution bridge between HTTP paywalls and onchain settlement.
 
@@ -80,7 +80,7 @@ With this runtime:
 
 ## Compatibility Note
 
-The product is now **Stream Engine**, but some exported classes still keep earlier FlowPay names for compatibility with the existing codebase.
+The product is now **Stella's Stream Engine**, but some exported classes still keep earlier FlowPay names for compatibility with the existing codebase.
 
 ## Next Steps
 

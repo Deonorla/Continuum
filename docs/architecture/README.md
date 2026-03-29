@@ -2,7 +2,7 @@
 
 > Legacy note: the older Westend deployment remains in the repo for reference only. The current demo path is Stellar-backed.
 
-Stream Engine has two linked rails:
+Stella's Stream Engine has two linked rails:
 
 1. an **x402-compatible payment rail** for agents and paid APIs
 2. a **productive RWA rail** for verified rental twins and ownership-linked yield
@@ -21,7 +21,7 @@ The important design choice in v2 is that RWA NFTs are **not presented as direct
 agent / user / renter
   -> frontend or sdk
   -> x402 middleware + RWA API
-  -> Stream Engine runtime services on Stellar testnet
+  -> Stella's Stream Engine runtime services on Stellar testnet
   -> private evidence vault + IPFS + indexer
   -> productive real-world asset
 ```

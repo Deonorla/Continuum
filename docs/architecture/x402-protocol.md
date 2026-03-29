@@ -1,13 +1,13 @@
 # x402 Protocol
 
-In Stream Engine, `x402` is the **payment negotiation layer**, not the settlement layer.
+In Stella's Stream Engine, `x402` is the **payment negotiation layer**, not the settlement layer.
 
 ## Mental Model
 
 | Layer | Responsibility |
 |------|-----------------|
 | x402 | “payment is required, here are the terms” |
-| Stream Engine | satisfy those terms through direct settlement or reusable payment state |
+| Stella's Stream Engine | satisfy those terms through direct settlement or reusable payment state |
 | Middleware | verify the proof and unlock the resource |
 
 ## Typical Flow
@@ -38,4 +38,4 @@ In Stream Engine, `x402` is the **payment negotiation layer**, not the settlemen
 
 ## Why It Matters
 
-x402 makes paid APIs machine-readable for agents. Stream Engine makes them economically usable when request volume is high.
+x402 makes paid APIs machine-readable for agents. Stella's Stream Engine makes them economically usable when request volume is high.

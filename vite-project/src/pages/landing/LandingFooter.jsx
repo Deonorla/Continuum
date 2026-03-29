@@ -18,7 +18,7 @@ export default function LandingFooter() {
                 <path d="M4 18 Q8 12 14 18 Q20 24 24 18" stroke="#a855f7" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.6"/>
                 <circle cx="14" cy="14" r="2.5" fill="#3b82f6"/>
               </svg>
-              <span className="text-white font-bold">Stream Engine</span>
+              <span className="text-white font-bold">Stella's Stream Engine</span>
             </div>
             <p className="text-sm text-surface-500">Money moves at machine speed.</p>
             <div className="flex items-center gap-1.5">
@@ -41,7 +41,7 @@ export default function LandingFooter() {
         </div>
 
         <div className="border-t border-surface-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-xs text-surface-600">© {new Date().getFullYear()} Stream Engine. MIT License. Built for Stellar Testnet.</p>
+          <p className="text-xs text-surface-600">© {new Date().getFullYear()} Stella's Stream Engine. MIT License. Built for Stellar Testnet.</p>
           <div className="flex items-center gap-6">
             {[
               { label: 'Twitter/X', href: '#', icon: <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg> },

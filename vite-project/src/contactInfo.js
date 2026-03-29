@@ -1,19 +1,26 @@
 const env = typeof import.meta !== 'undefined' ? import.meta.env || {} : {};
+const runtimeKind = (env.VITE_FLOWPAY_RUNTIME_KIND || 'stellar').toLowerCase();
 
-export const appName = 'Stream Engine';
+export const appName = "Stella's Stream Engine";
 export const streamContractName = 'StreamEngineStream';
 
 export const contractAddress = env.VITE_CONTRACT_ADDRESS
   || env.VITE_FLOWPAY_CONTRACT_ADDRESS
-  || '0x75edbf3d9857521f5fb2f581c896779f5110a8a0';
+  || (runtimeKind === 'stellar'
+    ? 'stellar:session-meter'
+    : '0x75edbf3d9857521f5fb2f581c896779f5110a8a0');
 
 export const paymentTokenAddress = env.VITE_FLOWPAY_PAYMENT_TOKEN_ADDRESS
-  || '0x00007a6900000000000000000000000001200000';
+  || (runtimeKind === 'stellar'
+    ? 'stellar:usdc-sac'
+    : '0x00007a6900000000000000000000000001200000');
 
 export const paymentTokenSymbol = env.VITE_FLOWPAY_PAYMENT_TOKEN_SYMBOL || 'USDC';
 export const paymentTokenDisplayName = env.VITE_FLOWPAY_PAYMENT_TOKEN_NAME || 'Circle USDC';
-export const paymentTokenDecimals = Number(env.VITE_FLOWPAY_PAYMENT_TOKEN_DECIMALS || 6);
-export const paymentAssetId = Number(env.VITE_FLOWPAY_PAYMENT_ASSET_ID || 31337);
+export const paymentTokenDecimals = Number(
+  env.VITE_FLOWPAY_PAYMENT_TOKEN_DECIMALS || (runtimeKind === 'stellar' ? 7 : 6),
+);
+export const paymentAssetId = Number(env.VITE_FLOWPAY_PAYMENT_ASSET_ID || (runtimeKind === 'stellar' ? 0 : 31337));
 export const rwaApiBaseUrl = env.VITE_RWA_API_URL || 'http://localhost:3001';
 
 // 2. Uses the Vercel Environment Variable for the ABI if it exists, otherwise falls back to the hardcoded ABI.

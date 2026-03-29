@@ -4,9 +4,9 @@
 
 ## General
 
-### What is Stream Engine?
+### What is Stella's Stream Engine?
 
-Stream Engine is an `x402`-compatible payment and settlement stack for AI agents and rental RWAs.
+Stella's Stream Engine is an `x402`-compatible payment and settlement stack for AI agents and rental RWAs.
 
 It combines:
 
@@ -14,23 +14,23 @@ It combines:
 - reusable payment streams for agent workloads
 - verification, provenance, and yield streaming for rental assets
 
-### What problem does Stream Engine solve?
+### What problem does Stella's Stream Engine solve?
 
 It solves the agent payment efficiency problem.
 
-Without a reusable settlement rail, a naive paid API flow can require a fresh onchain payment for every request. Stream Engine reduces that repeated execution overhead by letting an agent open one stream and reuse it across many requests.
+Without a reusable settlement rail, a naive paid API flow can require a fresh onchain payment for every request. Stella's Stream Engine reduces that repeated execution overhead by letting an agent open one stream and reuse it across many requests.
 
-### Is Stream Engine replacing x402?
+### Is Stella's Stream Engine replacing x402?
 
 No.
 
 `x402` is the paywall handshake.
-Stream Engine is the settlement layer behind that handshake.
+Stella's Stream Engine is the settlement layer behind that handshake.
 
 The clean model is:
 
 - `x402` says: "payment is required, here are the terms"
-- `Stream Engine` says: "satisfy that requirement with direct settlement or a reusable stream"
+- `Stella's Stream Engine` says: "satisfy that requirement with direct settlement or a reusable stream"
 
 ### Why is x402 useful here?
 
@@ -50,7 +50,7 @@ That is the role of `HTTP 402 Payment Required` plus machine-readable headers.
 
 The active hackathon runtime is **Stellar testnet**.
 
-### What payment asset does Stream Engine use?
+### What payment asset does Stella's Stream Engine use?
 
 Stellar test **USDC** via SAC:
 
@@ -70,7 +70,7 @@ Its job is to:
 4. verify session or payment proof when the client retries
 5. serve the resource when payment requirements are satisfied
 
-### Does Stream Engine require a new payment for every API call?
+### Does Stella's Stream Engine require a new payment for every API call?
 
 Not when streaming is used.
 
@@ -116,7 +116,7 @@ The SDK is the runtime that:
 5. executes the payment path
 6. retries the request
 
-### Does Stream Engine only work for streaming payments?
+### Does Stella's Stream Engine only work for streaming payments?
 
 No.
 
@@ -129,7 +129,7 @@ That is why route mode and runtime policy both matter.
 
 ## RWA
 
-### How do RWAs fit into Stream Engine?
+### How do RWAs fit into Stella's Stream Engine?
 
 The RWA lane uses the same payment and streaming mindset for rental assets:
 
@@ -151,7 +151,7 @@ Verification checks:
 
 ### Why do I still see "FlowPay" names in code and contracts?
 
-Because some identifiers are kept for compatibility while the product is now branded as **Stream Engine**.
+Because some identifiers are kept for compatibility while the product is now branded as **Stella's Stream Engine**.
 
 Examples include:
 

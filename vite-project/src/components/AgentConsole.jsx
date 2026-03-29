@@ -345,7 +345,7 @@ const EndpointDirectory = ({ endpoints }) => {
                                 {endpoint.mode === 'per-request' ? 'Direct' : 'Streaming'}
                             </span>
                         </div>
-                        <div className="mt-2 text-sm text-white/60">{endpoint.description || 'Protected Stream Engine service'}</div>
+                        <div className="mt-2 text-sm text-white/60">{endpoint.description || "Protected Stella's Stream Engine service"}</div>
                         <div className="mt-3 font-mono text-sm text-cyan-300">
                             {endpoint.price} {paymentTokenSymbol} {endpoint.mode === 'per-request' ? 'per call' : '/ sec'}
                         </div>
@@ -370,7 +370,7 @@ export function AgentConsole({
     credential,
     onRefreshCredential,
 }) {
-    const [agentIdInput, setAgentIdInput] = useState(config.agentId || "Stream Engine Agent");
+    const [agentIdInput, setAgentIdInput] = useState(config.agentId || "Stella's Stream Engine Agent");
     const [limits, setLimits] = useState({
         daily: config.spendingLimits?.daily || config.spendingLimits?.dailyLimit || '100',
         weekly: config.spendingLimits?.weekly || '500',
@@ -380,7 +380,7 @@ export function AgentConsole({
     const [showModal, setShowModal] = useState(null);
 
     useEffect(() => {
-        setAgentIdInput(config.agentId || "Stream Engine Agent");
+        setAgentIdInput(config.agentId || "Stella's Stream Engine Agent");
         setLimits({
             daily: config.spendingLimits?.daily || config.spendingLimits?.dailyLimit || '100',
             weekly: config.spendingLimits?.weekly || '500',

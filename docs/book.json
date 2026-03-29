@@ -1,7 +1,7 @@
 {
-  "title": "Stream Engine Documentation",
+  "title": "Stella's Stream Engine Documentation",
   "description": "x402-compatible agent payments plus productive RWA verification on Stellar",
-  "author": "Stream Engine Team",
+  "author": "Stella's Stream Engine Team",
   "language": "en",
   "gitbook": ">=3.0.0",
   "links": {

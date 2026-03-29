@@ -334,7 +334,7 @@ export function evmToSubstrateAccountId(evmAddress) {
   return `0x${hex}${'ee'.repeat(12)}`;
 }
 
-async function listInjectedSubstrateAccounts(appName = 'Stream Engine') {
+async function listInjectedSubstrateAccounts(appName = "Stella's Stream Engine") {
   const injectedWeb3 = window.injectedWeb3 || {};
   const extensionEntries = Object.entries(injectedWeb3);
   if (!extensionEntries.length) {
@@ -448,7 +448,7 @@ async function ensureMappedSubstrateAccount(api, account, evmAddress) {
   await signSubstrateTx(api, account, api.tx.revive.mapAccount());
 }
 
-async function getInjectedAccountsForSource(source, appName = 'Stream Engine') {
+async function getInjectedAccountsForSource(source, appName = "Stella's Stream Engine") {
   const extension = window.injectedWeb3?.[source];
   if (!extension) {
     throw new Error(`Substrate extension "${source}" is not available in this browser.`);
@@ -463,7 +463,7 @@ async function getInjectedAccountsForSource(source, appName = 'Stream Engine') {
   }));
 }
 
-export async function connectInjectedSubstrateWallet(source, appName = 'Stream Engine') {
+export async function connectInjectedSubstrateWallet(source, appName = "Stella's Stream Engine") {
   const { ApiPromise, WsProvider } = await import('@polkadot/api');
   const accounts = await getInjectedAccountsForSource(source, appName);
 

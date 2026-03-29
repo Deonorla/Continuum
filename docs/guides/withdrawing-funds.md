@@ -1,6 +1,6 @@
 # Withdrawing Funds
 
-There are two different withdrawal ideas in Stream Engine:
+There are two different withdrawal ideas in Stella's Stream Engine:
 
 ## Payment Sessions
 

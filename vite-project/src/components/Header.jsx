@@ -34,13 +34,13 @@ export default function Header({
         aria-label="App navigation"
       >
         {/* Logo */}
-        <Link to="/" className="flex items-center gap-2 shrink-0 group" aria-label="Stream Engine home">
+        <Link to="/" className="flex items-center gap-2 shrink-0 group" aria-label="Stella's Stream Engine home">
           <svg width="26" height="26" viewBox="0 0 28 28" fill="none" aria-hidden="true">
             <path d="M4 14 Q8 8 14 14 Q20 20 24 14" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
             <path d="M4 18 Q8 12 14 18 Q20 24 24 18" stroke="#a855f7" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.6"/>
             <circle cx="14" cy="14" r="2.5" fill="#3b82f6"/>
           </svg>
-          <span className="text-white font-bold text-base tracking-tight hidden sm:block">Stream Engine</span>
+          <span className="text-white font-bold text-base tracking-tight hidden sm:block">Stella's Stream Engine</span>
         </Link>
 
         {/* Desktop nav — scrollable so it never wraps */}

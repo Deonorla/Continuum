@@ -77,7 +77,7 @@ const RecipientInput = ({ value, onChange, isValid }) => {
         </div>
       </div>
       <div className="text-xs leading-5 text-white/45">
-        Enter an EVM `0x...` address or a Substrate `5...` / SS58 address. Stream Engine will resolve Substrate recipients to the contract-compatible address automatically.
+        Enter an EVM `0x...` address or a Substrate `5...` / SS58 address. Stella's Stream Engine will resolve Substrate recipients to the contract-compatible address automatically.
       </div>
       {showValidation && isResolved && resolvedRecipient && resolvedRecipient !== value ? (
         <div className="rounded-xl border border-cyan-400/15 bg-cyan-400/5 px-3 py-2 text-xs text-cyan-200">

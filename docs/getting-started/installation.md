@@ -2,7 +2,7 @@
 
 > Legacy note: any Westend-specific setup below is retained for reference only. The primary hackathon runtime is now Stellar.
 
-Install the full Stream Engine workspace:
+Install the full Stella's Stream Engine workspace:
 
 ```bash
 npm run install:all

@@ -241,7 +241,9 @@ export function WalletProvider({ children }) {
   const [chainId, setChainId] = useState(null);
   const [status, setStatus] = useState("Choose a wallet to connect");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isConnectingWallet, setIsConnectingWallet] = useState(false);
+  const [isConnectingWallet, setIsConnectingWallet] = useState(
+    () => !!localStorage.getItem('se_wallet'),
+  );
   const [paymentBalance, setPaymentBalance] = useState("0.0");
   const [xlmBalance, setXlmBalance] = useState("0.0");
   const [availableWallets, setAvailableWallets] = useState([]);
@@ -391,7 +393,7 @@ export function WalletProvider({ children }) {
   );
 
   const connectWallet = useCallback(
-    async (walletSelection) => {
+    async (walletSelection, { silent = false } = {}) => {
       if (!walletSelection) {
         await openWalletPicker();
         return;
@@ -461,7 +463,7 @@ export function WalletProvider({ children }) {
             mappedAccountAddress: session.substrateAddress,
           });
           setStatus(`Connected via ${walletOption.name} · native substrate signer ready`);
-          toast.success(
+          if (!silent) toast.success(
             `Connected to ${formatAddress(session.evmAddress)} via ${walletOption.name}`,
             { title: 'Wallet Connected' },
           );
@@ -513,7 +515,7 @@ export function WalletProvider({ children }) {
             mappedAccountAddress: '',
           });
           setStatus(`Connected via ${walletOption.name} · Stellar authorization signing ready`);
-          toast.success(`Connected to ${formatAddress(address)} via ${walletOption.name}`, {
+          if (!silent) toast.success(`Connected to ${formatAddress(address)} via ${walletOption.name}`, {
             title: 'Wallet Connected',
           });
           return;
@@ -573,7 +575,7 @@ export function WalletProvider({ children }) {
         }
       }
       setStatus(nextStatus);
-      toast.success(`Connected to ${formatAddress(address)} via ${walletOption.name}`, { title: 'Wallet Connected' });
+      if (!silent) toast.success(`Connected to ${formatAddress(address)} via ${walletOption.name}`, { title: 'Wallet Connected' });
     } catch (error) {
       console.error('Connection failed:', error);
       activeWalletProviderRef.current = null;
@@ -1191,7 +1193,7 @@ export function WalletProvider({ children }) {
     if (!saved || walletAddress) return;
     try {
       const { id } = JSON.parse(saved);
-      connectWallet(id).catch(() => localStorage.removeItem('se_wallet'));
+      connectWallet(id, { silent: true }).catch(() => localStorage.removeItem('se_wallet'));
     } catch {
       localStorage.removeItem('se_wallet');
     }

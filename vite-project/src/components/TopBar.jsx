@@ -3,7 +3,7 @@ import { Copy, Check, Wallet, LogOut, Menu } from 'lucide-react';
 import { useWallet } from '../context/WalletContext';
 
 export default function TopBar({ title, onMenuClick }) {
-  const { walletAddress, disconnectWallet, openWalletPicker } = useWallet();
+  const { walletAddress, disconnectWallet, openWalletPicker, isConnectingWallet } = useWallet();
   const [copied, setCopied] = useState(false);
 
   const copy = () => {
@@ -41,6 +41,11 @@ export default function TopBar({ title, onMenuClick }) {
               <LogOut size={16} />
             </button>
           </>
+        ) : isConnectingWallet ? (
+          <div className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 text-xs font-label font-bold uppercase tracking-widest">
+            <Wallet size={14} className="animate-pulse" />
+            <span className="hidden sm:inline">Connecting…</span>
+          </div>
         ) : (
           <button onClick={openWalletPicker}
             className="flex items-center gap-2 px-4 py-2 rounded-xl ethereal-gradient text-white text-xs font-label font-bold uppercase tracking-widest shadow-lg shadow-blue-500/20 hover:opacity-90 transition-all whitespace-nowrap">

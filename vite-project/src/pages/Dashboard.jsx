@@ -114,12 +114,7 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <div className="flex justify-center">
-        <div className="bg-white text-slate-500 px-6 py-3 rounded-lg flex items-center gap-3 font-mono text-xs border border-slate-100 shadow-sm">
-          <span className="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
-          <span>Connected via Freighter • Stellar Testnet</span>
-        </div>
-      </div>
+
     </div>
   );
 }

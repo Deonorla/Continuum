@@ -7,15 +7,20 @@ import {
   Bot,
   Building2,
   Coins,
+  Cpu,
   Database,
   ExternalLink,
   FileSearch,
+  Info,
   Link2,
+  Plus,
   ScanLine,
   ShieldCheck,
   Wallet,
   Waypoints,
+  Zap,
 } from "lucide-react";
+import { cn } from "../lib/cn";
 import { useProtocolCatalog } from "../hooks/useProtocolCatalog";
 import { ACTIVE_NETWORK } from "../networkConfig.js";
 
@@ -1508,19 +1513,19 @@ function renderContent(md) {
   return md.split("\n").map((line, i) => {
     if (line.startsWith("# "))
       return (
-        <h1 key={i} className="text-2xl font-bold text-white mb-4 mt-2">
+        <h1 key={i} className="text-2xl font-bold text-slate-900 mb-4 mt-2">
           {line.slice(2)}
         </h1>
       );
     if (line.startsWith("## "))
       return (
-        <h2 key={i} className="text-lg font-semibold text-white mb-3 mt-6">
+        <h2 key={i} className="text-lg font-semibold text-slate-900 mb-3 mt-6">
           {line.slice(3)}
         </h2>
       );
     if (line.startsWith("### "))
       return (
-        <h3 key={i} className="text-base font-semibold text-cyan-300 mb-2 mt-4">
+        <h3 key={i} className="text-base font-semibold text-primary mb-2 mt-4">
           {line.slice(4)}
         </h3>
       );
@@ -1544,7 +1549,7 @@ function renderContent(md) {
             ) : (
               <td
                 key={j}
-                className="px-3 py-2 text-white/50 text-sm border-b border-white/5"
+                className="px-3 py-2 text-slate-400 text-sm border-b border-white/5"
               >
                 {c}
               </td>
@@ -1555,13 +1560,13 @@ function renderContent(md) {
     }
     if (line.startsWith("- ") || line.startsWith("* "))
       return (
-        <li key={i} className="text-white/60 text-sm ml-4 list-disc">
+        <li key={i} className="text-slate-500 text-sm ml-4 list-disc">
           {line.slice(2)}
         </li>
       );
     if (line === "") return <div key={i} className="h-2" />;
     return (
-      <p key={i} className="text-white/60 text-sm leading-relaxed">
+      <p key={i} className="text-slate-500 text-sm leading-relaxed">
         {line}
       </p>
     );
@@ -1580,7 +1585,7 @@ function DocContent({ content }) {
     if (tableRows.length) {
       blocks.push(
         <div key={blocks.length} className="overflow-x-auto my-4">
-          <table className="w-full border border-white/10 rounded-lg overflow-hidden text-sm">
+          <table className="w-full border border-slate-100 rounded-lg overflow-hidden text-sm">
             <tbody>{tableRows}</tbody>
           </table>
         </div>,
@@ -1600,7 +1605,7 @@ function DocContent({ content }) {
       blocks.push(
         <pre
           key={blocks.length}
-          className="bg-black/40 border border-white/10 rounded-lg p-4 overflow-x-auto my-3 text-xs text-cyan-200 font-mono leading-relaxed"
+          className="bg-black/40 border border-slate-100 rounded-lg p-4 overflow-x-auto my-3 text-xs text-blue-600 font-mono leading-relaxed"
         >
           {codeLines.join("\n")}
         </pre>,
@@ -1628,7 +1633,7 @@ function DocContent({ content }) {
               <td
                 key={j}
                 className={`px-3 py-2 text-sm ${
-                  j === 0 ? "text-white/80 font-medium" : "text-white/50"
+                  j === 0 ? "text-white/80 font-medium" : "text-slate-400"
                 }`}
               >
                 {c.trim().replace(/`([^`]+)`/g, (_, m) => m)}
@@ -1645,7 +1650,7 @@ function DocContent({ content }) {
       blocks.push(
         <h1
           key={blocks.length}
-          className="text-2xl font-bold text-white mb-3 mt-2"
+          className="text-2xl font-bold text-slate-900 mb-3 mt-2"
         >
           {line.slice(2)}
         </h1>,
@@ -1656,7 +1661,7 @@ function DocContent({ content }) {
       blocks.push(
         <h2
           key={blocks.length}
-          className="text-lg font-semibold text-white mb-2 mt-6 pb-2 border-b border-white/10"
+          className="text-lg font-semibold text-slate-900 mb-2 mt-6 pb-2 border-b border-slate-100"
         >
           {line.slice(3)}
         </h2>,
@@ -1667,7 +1672,7 @@ function DocContent({ content }) {
       blocks.push(
         <h3
           key={blocks.length}
-          className="text-sm font-semibold text-cyan-300 mb-2 mt-4"
+          className="text-sm font-semibold text-primary mb-2 mt-4"
         >
           {line.slice(4)}
         </h3>,
@@ -1678,7 +1683,7 @@ function DocContent({ content }) {
       blocks.push(
         <li
           key={blocks.length}
-          className="text-white/60 text-sm ml-5 list-disc leading-relaxed"
+          className="text-slate-500 text-sm ml-5 list-disc leading-relaxed"
         >
           {line.slice(2)}
         </li>,
@@ -1692,12 +1697,12 @@ function DocContent({ content }) {
     // inline code
     const parts = line.split(/`([^`]+)`/);
     blocks.push(
-      <p key={blocks.length} className="text-white/60 text-sm leading-relaxed">
+      <p key={blocks.length} className="text-slate-500 text-sm leading-relaxed">
         {parts.map((p, j) =>
           j % 2 === 1 ? (
             <code
               key={j}
-              className="bg-white/10 text-cyan-300 px-1 py-0.5 rounded text-xs font-mono"
+              className="bg-white/10 text-primary px-1 py-0.5 rounded text-xs font-mono"
             >
               {p}
             </code>
@@ -1715,7 +1720,7 @@ function DocContent({ content }) {
 function StatusBanner({ isLoading, error }) {
   if (isLoading) {
     return (
-      <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
+      <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
         Loading the live runtime catalog. The handbook can still render from built-in defaults while data arrives.
       </div>
     );
@@ -1724,7 +1729,7 @@ function StatusBanner({ isLoading, error }) {
   if (error) {
     return (
       <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-        The backend catalog is offline, so this handbook is using local fallback values. Start the backend with <code className="rounded bg-black/20 px-1.5 py-0.5 font-mono text-xs">npm run start:all</code> if you want live route and contract config.
+        The backend catalog is offline, so this handbook is using local fallback values. Start the backend with <code className="rounded bg-slate-50 px-1.5 py-0.5 font-mono text-xs">npm run start:all</code> if you want live route and contract config.
       </div>
     );
   }
@@ -1738,50 +1743,31 @@ function StatusBanner({ isLoading, error }) {
 
 function StatCard({ label, value }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-      <div className="text-[11px] uppercase tracking-[0.2em] text-white/35">
-        {label}
-      </div>
-      <div className="mt-2 break-words text-lg font-semibold text-white">
-        {value}
-      </div>
+    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400 font-label">{label}</div>
+      <div className="mt-2 break-words text-lg font-bold text-slate-900 font-headline">{value}</div>
     </div>
   );
 }
 
 function PlainLanguageCard({ text }) {
-  if (!text) {
-    return null;
-  }
-
+  if (!text) return null;
   return (
-    <div className="rounded-[28px] border border-cyan-400/15 bg-cyan-400/[0.08] p-6">
-      <div className="text-xs uppercase tracking-[0.24em] text-cyan-300">
-        Plain English
-      </div>
-      <p className="mt-3 text-base leading-8 text-cyan-50/90">{text}</p>
+    <div className="rounded-[28px] border border-teal-100 bg-teal-50 p-6">
+      <div className="text-xs uppercase tracking-[0.24em] text-secondary font-label font-bold">Plain English</div>
+      <p className="mt-3 text-base leading-8 text-slate-700">{text}</p>
     </div>
   );
 }
 
 function TakeawayPanel({ items = [] }) {
-  if (!items.length) {
-    return null;
-  }
-
+  if (!items.length) return null;
   return (
-    <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6">
-      <div className="text-xs uppercase tracking-[0.24em] text-cyan-300">
-        If You Remember Three Things
-      </div>
+    <div className="rounded-[28px] border border-slate-100 bg-slate-50 p-6">
+      <div className="text-xs uppercase tracking-[0.24em] text-primary font-label font-bold">If You Remember Three Things</div>
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         {items.map((item) => (
-          <div
-            key={item}
-            className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm leading-7 text-white/65"
-          >
-            {item}
-          </div>
+          <div key={item} className="rounded-2xl border border-slate-100 bg-white p-4 text-sm leading-7 text-slate-600 shadow-sm">{item}</div>
         ))}
       </div>
     </div>
@@ -1789,19 +1775,13 @@ function TakeawayPanel({ items = [] }) {
 }
 
 function InsightGrid({ items = [] }) {
-  if (!items.length) {
-    return null;
-  }
-
+  if (!items.length) return null;
   return (
     <div className="grid gap-4 xl:grid-cols-2">
       {items.map((item) => (
-        <div
-          key={item.title}
-          className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6"
-        >
-          <div className="text-sm font-semibold text-white">{item.title}</div>
-          <p className="mt-3 text-sm leading-7 text-white/60">{item.body}</p>
+        <div key={item.title} className="rounded-[28px] border border-slate-100 bg-white p-6 shadow-sm">
+          <div className="text-sm font-bold text-slate-900 font-headline">{item.title}</div>
+          <p className="mt-3 text-sm leading-7 text-slate-500">{item.body}</p>
         </div>
       ))}
     </div>
@@ -1809,16 +1789,11 @@ function InsightGrid({ items = [] }) {
 }
 
 function CodeCard({ code }) {
-  if (!code) {
-    return null;
-  }
-
+  if (!code) return null;
   return (
-    <div className="rounded-[28px] border border-white/10 bg-black/25 p-6">
-      <div className="text-xs uppercase tracking-[0.24em] text-cyan-300">
-        Core Logic
-      </div>
-      <pre className="mt-4 overflow-x-auto rounded-2xl bg-black/30 p-4 text-sm leading-7 text-cyan-200">
+    <div className="rounded-[28px] border border-slate-100 bg-white p-6 shadow-sm">
+      <div className="text-xs uppercase tracking-[0.24em] text-primary font-label font-bold">Core Logic</div>
+      <pre className="mt-4 overflow-x-auto rounded-2xl bg-slate-900 p-4 text-sm leading-7 text-blue-300">
         <code>{code}</code>
       </pre>
     </div>
@@ -1826,25 +1801,17 @@ function CodeCard({ code }) {
 }
 
 function StepList({ title, steps = [] }) {
-  if (!steps.length) {
-    return null;
-  }
-
+  if (!steps.length) return null;
   return (
-    <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6">
-      <div className="text-xs uppercase tracking-[0.24em] text-cyan-300">
-        {title}
-      </div>
+    <div className="rounded-[28px] border border-slate-100 bg-white p-6 shadow-sm">
+      <div className="text-xs uppercase tracking-[0.24em] text-primary font-label font-bold">{title}</div>
       <div className="mt-4 space-y-3">
         {steps.map((step, index) => (
-          <div
-            key={`${index + 1}-${step}`}
-            className="flex items-start gap-4 rounded-2xl border border-white/10 bg-black/20 p-4"
-          >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-cyan-400/25 bg-cyan-400/15 text-sm font-semibold text-cyan-100">
+          <div key={`${index + 1}-${step}`} className="flex items-start gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-slate-900 font-headline">
               {index + 1}
             </div>
-            <div className="pt-0.5 text-sm leading-7 text-white/65">{step}</div>
+            <div className="pt-0.5 text-sm leading-7 text-slate-600">{step}</div>
           </div>
         ))}
       </div>
@@ -1853,24 +1820,16 @@ function StepList({ title, steps = [] }) {
 }
 
 function DataTable({ title, headers = [], rows = [] }) {
-  if (!rows.length) {
-    return null;
-  }
-
+  if (!rows.length) return null;
   return (
-    <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6">
-      <div className="text-xs uppercase tracking-[0.24em] text-cyan-300">
-        {title}
-      </div>
+    <div className="rounded-[28px] border border-slate-100 bg-white p-6 shadow-sm">
+      <div className="text-xs uppercase tracking-[0.24em] text-primary font-label font-bold">{title}</div>
       <div className="mt-4 overflow-x-auto">
         <table className="min-w-full border-separate border-spacing-0">
           <thead>
             <tr>
               {headers.map((header) => (
-                <th
-                  key={header}
-                  className="border-b border-white/10 px-4 py-3 text-left text-[11px] uppercase tracking-[0.2em] text-white/40"
-                >
+                <th key={header} className="border-b border-slate-100 px-4 py-3 text-left text-[11px] uppercase tracking-[0.2em] text-slate-400 font-label">
                   {header}
                 </th>
               ))}
@@ -1878,12 +1837,9 @@ function DataTable({ title, headers = [], rows = [] }) {
           </thead>
           <tbody>
             {rows.map((row, index) => (
-              <tr key={`${title}-${index}`}>
+              <tr key={`${title}-${index}`} className="hover:bg-slate-50 transition-colors">
                 {row.map((cell, cellIndex) => (
-                  <td
-                    key={`${title}-${index}-${cellIndex}`}
-                    className="border-b border-white/6 px-4 py-4 align-top text-sm leading-7 text-white/65"
-                  >
+                  <td key={`${title}-${index}-${cellIndex}`} className="border-b border-slate-50 px-4 py-4 align-top text-sm leading-7 text-slate-600">
                     {cell}
                   </td>
                 ))}
@@ -1897,34 +1853,22 @@ function DataTable({ title, headers = [], rows = [] }) {
 }
 
 function ExplorerLinks({ items = [] }) {
-  if (!items.length) {
-    return null;
-  }
-
+  if (!items.length) return null;
   return (
-    <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6">
-      <div className="text-xs uppercase tracking-[0.24em] text-cyan-300">
-        Explorer Links
-      </div>
+    <div className="rounded-[28px] border border-slate-100 bg-white p-6 shadow-sm">
+      <div className="text-xs uppercase tracking-[0.24em] text-primary font-label font-bold">Explorer Links</div>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         {items.map((item) => (
-          <a
-            key={`${item.label}-${item.value}`}
-            href={item.href}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-2xl border border-white/10 bg-black/20 p-4 transition-colors hover:border-cyan-400/30 hover:bg-cyan-400/[0.06]"
-          >
+          <a key={`${item.label}-${item.value}`} href={item.href} target="_blank" rel="noreferrer"
+            className="rounded-2xl border border-slate-100 bg-slate-50 p-4 transition-colors hover:border-blue-200 hover:bg-blue-50">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold text-white">{item.label}</div>
-                <div className="mt-2 break-all font-mono text-xs text-cyan-200">
-                  {item.value}
-                </div>
+                <div className="text-sm font-bold text-slate-900 font-headline">{item.label}</div>
+                <div className="mt-2 break-all font-mono text-xs text-primary">{item.value}</div>
               </div>
-              <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-white/45" />
+              <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
             </div>
-            <div className="mt-3 text-xs text-white/45">{item.note}</div>
+            <div className="mt-3 text-xs text-slate-400">{item.note}</div>
           </a>
         ))}
       </div>
@@ -1933,21 +1877,13 @@ function ExplorerLinks({ items = [] }) {
 }
 
 function FaqList({ items = [] }) {
-  if (!items.length) {
-    return null;
-  }
-
+  if (!items.length) return null;
   return (
     <div className="space-y-3">
       {items.map((item) => (
-        <details
-          key={item.question}
-          className="rounded-2xl border border-white/10 bg-white/[0.03] p-5"
-        >
-          <summary className="cursor-pointer list-none text-sm font-semibold text-white">
-            {item.question}
-          </summary>
-          <p className="mt-3 text-sm leading-7 text-white/60">{item.answer}</p>
+        <details key={item.question} className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+          <summary className="cursor-pointer list-none text-sm font-bold text-slate-900 font-headline">{item.question}</summary>
+          <p className="mt-3 text-sm leading-7 text-slate-500">{item.answer}</p>
         </details>
       ))}
     </div>
@@ -1972,13 +1908,13 @@ function ArchitectureDiagram({ catalog }) {
 
   return (
     <div className="space-y-4">
-      <div className="text-xs uppercase tracking-[0.24em] text-cyan-300">
+      <div className="text-xs uppercase tracking-[0.24em] text-primary">
         Full Project Architecture
       </div>
-      <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5 md:p-6">
+      <div className="rounded-[28px] border border-slate-100 bg-white p-5 md:p-6">
         <div className="space-y-6">
           <div>
-            <div className="mb-3 text-[11px] uppercase tracking-[0.22em] text-white/35">
+            <div className="mb-3 text-[11px] uppercase tracking-[0.22em] text-slate-400">
               1. People, agents, and devices
             </div>
             <div className="grid gap-3 md:grid-cols-3">
@@ -1998,12 +1934,12 @@ function ArchitectureDiagram({ catalog }) {
               ].map((item) => (
                 <div
                   key={item.title}
-                  className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                  className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
                 >
                   <div className="text-sm font-semibold text-white">
                     {item.title}
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-white/55">
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
                     {item.body}
                   </p>
                 </div>
@@ -2012,13 +1948,13 @@ function ArchitectureDiagram({ catalog }) {
           </div>
 
           <div className="flex justify-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-cyan-200">
+            <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-blue-600">
               Requests, rentals, and verification flow into the app layer
             </div>
           </div>
 
           <div>
-            <div className="mb-3 text-[11px] uppercase tracking-[0.22em] text-white/35">
+            <div className="mb-3 text-[11px] uppercase tracking-[0.22em] text-slate-400">
               2. App and coordination layer
             </div>
             <div className="grid gap-3 xl:grid-cols-3">
@@ -2038,12 +1974,12 @@ function ArchitectureDiagram({ catalog }) {
               ].map((item) => (
                 <div
                   key={item.title}
-                  className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                  className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
                 >
                   <div className="text-sm font-semibold text-white">
                     {item.title}
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-white/55">
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
                     {item.body}
                   </p>
                 </div>
@@ -2052,36 +1988,36 @@ function ArchitectureDiagram({ catalog }) {
           </div>
 
           <div className="flex justify-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-cyan-200">
+            <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-blue-600">
               App calls split into the payment rail and the productive RWA rail
             </div>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[1fr_1.2fr]">
-            <div className="rounded-[26px] border border-white/10 bg-black/20 p-5">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-300">
+            <div className="rounded-[26px] border border-slate-100 bg-slate-50 p-5">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-primary">
                 3. Payment Rail
               </div>
               <div className="mt-4 space-y-3">
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="rounded-2xl border border-slate-100 bg-white p-4">
                   <div className="text-sm font-semibold text-white">
                     Service recipient wallet
                   </div>
-                  <div className="mt-2 break-all font-mono text-xs text-cyan-200">
+                  <div className="mt-2 break-all font-mono text-xs text-blue-600">
                     {paymentRecipient}
                   </div>
-                  <p className="mt-3 text-sm leading-6 text-white/55">
+                  <p className="mt-3 text-sm leading-6 text-slate-500">
                     Final receiver for API settlement and paid-route revenue.
                   </p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="rounded-2xl border border-slate-100 bg-white p-4">
                   <div className="text-sm font-semibold text-white">
                     {stellar ? `Stellar ${tokenSymbol} settlement asset` : `Circle ${tokenSymbol} asset precompile`}
                   </div>
-                  <div className="mt-2 break-all font-mono text-xs text-cyan-200">
+                  <div className="mt-2 break-all font-mono text-xs text-blue-600">
                     {paymentTokenAddress}
                   </div>
-                  <p className="mt-3 text-sm leading-6 text-white/55">
+                  <p className="mt-3 text-sm leading-6 text-slate-500">
                     {stellar
                       ? `${paymentAssetCode}${paymentAssetIssuer ? ` / ${paymentAssetIssuer}` : " via SAC"} used for direct settlement, rental funding, and yield operations.`
                       : `Native payment asset ${paymentAssetId} used for approvals, direct settlement, rental funding, and yield operations.`}
@@ -2090,15 +2026,15 @@ function ArchitectureDiagram({ catalog }) {
                 {paymentContracts.map((contract) => (
                   <div
                     key={contract.name}
-                    className="rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.06] p-4"
+                    className="rounded-2xl border border-teal-100 bg-blue-50 p-4"
                   >
                     <div className="text-sm font-semibold text-white">
                       {contract.name}
                     </div>
-                    <div className="mt-2 break-all font-mono text-xs text-cyan-200">
+                    <div className="mt-2 break-all font-mono text-xs text-blue-600">
                       {contract.address}
                     </div>
-                    <p className="mt-3 text-sm leading-6 text-white/55">
+                    <p className="mt-3 text-sm leading-6 text-slate-500">
                       {contract.role}
                     </p>
                   </div>
@@ -2106,42 +2042,42 @@ function ArchitectureDiagram({ catalog }) {
               </div>
             </div>
 
-            <div className="rounded-[26px] border border-white/10 bg-black/20 p-5">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-300">
+            <div className="rounded-[26px] border border-slate-100 bg-slate-50 p-5">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-primary">
                 4. Productive RWA Rail
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 {rwaContracts.map((contract) => (
                   <div
                     key={contract.name}
-                    className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+                    className="rounded-2xl border border-slate-100 bg-white p-4"
                   >
                     <div className="text-sm font-semibold text-white">
                       {contract.name}
                     </div>
-                    <div className="mt-2 break-all font-mono text-xs text-cyan-200">
+                    <div className="mt-2 break-all font-mono text-xs text-blue-600">
                       {contract.address}
                     </div>
-                    <p className="mt-3 text-sm leading-6 text-white/55">
+                    <p className="mt-3 text-sm leading-6 text-slate-500">
                       {contract.role}
                     </p>
                   </div>
                 ))}
               </div>
-              <div className="mt-4 rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.06] p-4 text-sm leading-7 text-white/65">
+              <div className="mt-4 rounded-2xl border border-teal-100 bg-blue-50 p-4 text-sm leading-7 text-slate-600">
                 {`This is the part many RWA projects skip. Stella's Stream Engine does not stop at proving that a house, fleet, or machine exists. It also tracks who owns the digital twin, what metadata and verification facts are bound to it, how rental revenue is generated, and why future yield must follow whoever owns the ${stellar ? "twin" : "NFT"} now.`}
               </div>
             </div>
           </div>
 
           <div className="flex justify-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-cyan-200">
+            <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-blue-600">
               Onchain truth connects back to physical assets and public verification
             </div>
           </div>
 
           <div>
-            <div className="mb-3 text-[11px] uppercase tracking-[0.22em] text-white/35">
+            <div className="mb-3 text-[11px] uppercase tracking-[0.22em] text-slate-400">
               5. External truth, physical control, and public proof
             </div>
             <div className="grid gap-3 md:grid-cols-4">
@@ -2171,12 +2107,12 @@ function ArchitectureDiagram({ catalog }) {
               ].map((item) => (
                 <div
                   key={item.title}
-                  className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                  className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
                 >
                   <div className="text-sm font-semibold text-white">
                     {item.title}
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-white/55">
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
                     {item.body}
                   </p>
                 </div>
@@ -2195,7 +2131,7 @@ function DeployedContractCards({ catalog }) {
 
   return (
     <div className="space-y-4">
-      <div className="text-xs uppercase tracking-[0.24em] text-cyan-300">
+      <div className="text-xs uppercase tracking-[0.24em] text-primary">
         {stellar ? "Live Runtime Components" : "Live Deployed Solidity Contracts"}
       </div>
       <div className="grid gap-4 xl:grid-cols-2">
@@ -2204,17 +2140,17 @@ function DeployedContractCards({ catalog }) {
           return (
             <div
               key={contract.name}
-              className="rounded-[26px] border border-white/10 bg-white/[0.03] p-5"
+              className="rounded-[26px] border border-slate-100 bg-white p-5"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-white">
                     {contract.name}
                   </div>
-                  <div className="mt-1 text-xs uppercase tracking-[0.18em] text-cyan-300">
+                  <div className="mt-1 text-xs uppercase tracking-[0.18em] text-primary">
                     {contract.group} · {stellar ? "runtime component" : "Solidity contract"}
                   </div>
-                  <div className="mt-2 text-[11px] uppercase tracking-[0.16em] text-white/35">
+                  <div className="mt-2 text-[11px] uppercase tracking-[0.16em] text-slate-400">
                     Runtime id: {contract.onchainName}
                   </div>
                 </div>
@@ -2223,26 +2159,26 @@ function DeployedContractCards({ catalog }) {
                     href={href}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 rounded-full border border-white/10 px-3 py-1 text-xs text-white/55 transition-colors hover:text-white"
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-100 px-3 py-1 text-xs text-slate-500 transition-colors hover:text-white"
                   >
                     Explorer
                     <ExternalLink className="h-3.5 w-3.5" />
                   </a>
                 ) : (
-                  <span className="inline-flex items-center rounded-full border border-white/10 px-3 py-1 text-xs text-white/45">
+                  <span className="inline-flex items-center rounded-full border border-slate-100 px-3 py-1 text-xs text-slate-400">
                     Catalog
                   </span>
                 )}
               </div>
 
-              <div className="mt-4 rounded-2xl bg-black/25 p-3 font-mono text-xs text-cyan-200 break-all">
+              <div className="mt-4 rounded-2xl bg-white p-3 font-mono text-xs text-blue-600 break-all">
                 {contract.address}
               </div>
 
-              <p className="mt-4 text-sm leading-6 text-white/60">
+              <p className="mt-4 text-sm leading-6 text-slate-500">
                 {contract.role}
               </p>
-              <p className="mt-3 text-sm leading-6 text-white/45">
+              <p className="mt-3 text-sm leading-6 text-slate-400">
                 {contract.note}
               </p>
             </div>
@@ -2255,40 +2191,16 @@ function DeployedContractCards({ catalog }) {
 
 function SectionButton({ section, isActive, onClick }) {
   const Icon = section.icon || BookOpen;
-
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        "w-full rounded-2xl border px-4 py-3 text-left transition-all",
-        isActive
-          ? "border-cyan-400/40 bg-cyan-400/10 shadow-[0_0_0_1px_rgba(34,211,238,0.08)]"
-          : "border-white/8 bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.05]",
-      ].join(" ")}
-    >
-      <div className="flex items-start gap-3">
-        <div
-          className={[
-            "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border",
-            isActive
-              ? "border-cyan-400/30 bg-cyan-400/15 text-cyan-200"
-              : "border-white/10 bg-black/20 text-white/55",
-          ].join(" ")}
-        >
-          <Icon className="h-4 w-4" />
-        </div>
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-white">{section.title}</div>
-          <div className="mt-1 text-xs leading-5 text-white/45">
-            {section.summary}
-          </div>
-        </div>
-      </div>
-    </button>
+    <div onClick={onClick} className={cn(
+      "flex items-center gap-3 py-2 px-4 rounded-lg cursor-pointer transition-all text-sm",
+      isActive ? "bg-blue-50 text-blue-600 font-bold" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+    )}>
+      <Icon size={16} />
+      <span>{section.title}</span>
+    </div>
   );
 }
-
 
 export default function Docs() {
   const { catalog, isLoading, error } = useProtocolCatalog();
@@ -2297,175 +2209,227 @@ export default function Docs() {
   const stellar = isStellarRuntime(catalog);
   const sections = useMemo(() => buildSections(catalog), [catalog]);
   const resolvedSection = section === "contracts" ? "architecture" : section;
-  const activeSection =
-    sections.find((entry) => entry.id === resolvedSection) || sections[0];
+  const activeSection = sections.find((entry) => entry.id === resolvedSection) || sections[0];
   const routeCount = catalog?.routes?.length || 3;
-  const configuredContractCount = buildContractRows(catalog).filter(
-    ([, value]) => value && value !== "Not configured",
-  ).length;
+  const configuredContractCount = buildContractRows(catalog).filter(([, value]) => value && value !== "Not configured").length;
+
+  // Group sections for sidebar
+  const gettingStarted = sections.filter(s => ["overview","streams","agents"].includes(s.id));
+  const coreProtocol   = sections.filter(s => ["x402","architecture"].includes(s.id));
+  const rwaEcosystem   = sections.filter(s => ["rwa","productive-rwa","revenue","verification"].includes(s.id));
+  const resources      = sections.filter(s => !["overview","streams","agents","x402","architecture","rwa","productive-rwa","revenue","verification"].includes(s.id));
 
   return (
-    <div className="min-h-screen bg-surface-950 text-white">
-      <div className="sticky top-0 z-50 border-b border-surface-700 bg-surface-900/90 px-4 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-7xl items-center gap-4">
-          <Link
-            to="/app"
-            className="flex items-center gap-1.5 text-sm text-white/50 transition-colors hover:text-white"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            App
-          </Link>
-          <div className="h-4 w-px bg-white/10" />
-          <div className="flex items-center gap-2">
-            <BookOpen className="h-4 w-4 text-cyan-400" />
-            <span className="text-sm font-semibold text-white">
-              Stella's Stream Engine Handbook
-            </span>
-          </div>
+    <div className="flex min-h-screen bg-white">
+      {/* Docs Sidebar */}
+      <aside className="w-64 border-r border-slate-100 p-6 space-y-10 hidden xl:block sticky top-0 h-screen overflow-y-auto shrink-0">
+        <div className="space-y-1">
+          <h2 className="text-xl font-headline font-black uppercase tracking-tighter text-slate-900">Documentation</h2>
+          <p className="text-[10px] font-label text-slate-400 uppercase tracking-widest">Technical Guides</p>
         </div>
-      </div>
 
-      <div className="mx-auto flex w-full max-w-7xl gap-8 px-4 py-8">
-        <aside className="hidden w-72 shrink-0 lg:block">
-          <div className="sticky top-20 space-y-4">
-            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-              <div className="text-xs uppercase tracking-[0.22em] text-cyan-300">
-                Docs Map
-              </div>
-              <div className="mt-2 text-xl font-semibold text-white">
-                Understand every moving part
-              </div>
-              <p className="mt-3 text-sm leading-7 text-white/55">
-                This page explains the full product model in plain language:
-                payment negotiation, reusable settlement, agent flows, RWAs,
-                verification, and runtime components.
-              </p>
+        {[
+          { title: "Getting Started", items: gettingStarted.length ? gettingStarted : sections.slice(0, 3) },
+          { title: "Core Protocol",   items: coreProtocol.length   ? coreProtocol   : sections.slice(3, 5) },
+          { title: "RWA Ecosystem",   items: rwaEcosystem.length   ? rwaEcosystem   : sections.slice(5, 9) },
+          { title: "Resources",       items: resources.length      ? resources      : sections.slice(9) },
+        ].map(({ title, items }) => items.length ? (
+          <div key={title} className="space-y-2">
+            <h4 className="text-[10px] font-label font-bold uppercase tracking-[0.2em] text-slate-400 px-4 mb-3">{title}</h4>
+            {items.map((entry) => (
+              <SectionButton key={entry.id} section={entry} isActive={activeSection.id === entry.id}
+                onClick={() => navigate(`/app/docs/${entry.id}`)} />
+            ))}
+          </div>
+        ) : null)}
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 p-4 sm:p-8 lg:p-16 max-w-5xl mx-auto space-y-24 min-w-0">
+        {isLoading && <div className="text-xs text-slate-400">Loading...</div>}
+        {error && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{error}</div>}
+
+        {/* Header */}
+        <section className="space-y-6">
+          <div className="flex items-center gap-3">
+            <div className="px-3 py-1 bg-teal-50 rounded-full flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span>
+              <span className="text-[10px] font-label font-bold uppercase tracking-widest text-secondary">Live System v2.0</span>
             </div>
-            <div className="space-y-2">
-              {sections.map((entry) => (
-                <SectionButton
-                  key={entry.id}
-                  section={entry}
-                  isActive={activeSection.id === entry.id}
-                  onClick={() => navigate(`/app/docs/${entry.id}`)}
-                />
+          </div>
+          <h1 className="text-6xl font-headline font-black uppercase tracking-tighter text-slate-900">{activeSection.title}</h1>
+          <p className="text-xl font-body text-slate-500 leading-relaxed max-w-3xl">{activeSection.summary}</p>
+        </section>
+
+        {/* Start Here + Architecture Node */}
+        <section className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="lg:col-span-7 bg-slate-50 p-6 sm:p-10 rounded-[2.5rem] border border-slate-100 space-y-10">
+            <h3 className="text-2xl font-headline font-black uppercase tracking-tighter">Start Here</h3>
+            <div className="grid grid-cols-3 gap-6">
+              <div>
+                <p className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400 mb-2">Network</p>
+                <p className="text-sm font-bold text-primary">{catalog?.network?.name || (stellar ? "Stellar Testnet" : "Westend Asset Hub")}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400 mb-2">Token</p>
+                <p className="text-sm font-bold text-primary">{stellar ? "Stellar" : "Circle"} {catalog?.payments?.tokenSymbol || "USDC"}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400 mb-2">{stellar ? "Settlement" : "Asset Id"}</p>
+                <p className="text-sm font-bold text-primary">{stellar ? (catalog?.payments?.settlement || "soroban-sac") : String(catalog?.payments?.paymentAssetId || 31337)}</p>
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 flex items-start gap-4">
+              <Info className="text-primary shrink-0" size={20} />
+              <p className="text-xs text-slate-500 leading-relaxed">{activeSection.plainEnglish || "The system orchestrates trustless payment streams and real-world asset tokenization."}</p>
+            </div>
+          </div>
+
+          <div className="lg:col-span-5 bg-slate-900 p-6 sm:p-10 rounded-[2.5rem] relative overflow-hidden">
+            <div className="absolute inset-0 opacity-20 blueprint-bg"></div>
+            <div className="relative z-10 h-full flex flex-col justify-between">
+              <div className="space-y-4">
+                <h3 className="text-2xl font-headline font-black uppercase tracking-tighter text-white">Architecture Node</h3>
+                <p className="text-sm text-white/40">Visualize the flow of streaming assets across the network map.</p>
+              </div>
+              <div className="mt-12 flex justify-center">
+                <div className="w-32 h-32 rounded-full border-2 border-blue-500/30 flex items-center justify-center relative">
+                  <div className="absolute inset-0 animate-ping rounded-full border border-blue-500/20"></div>
+                  <Cpu size={48} className="text-primary" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Takeaways */}
+        {activeSection.takeaways?.length ? (
+          <section className="space-y-12">
+            <p className="text-[10px] font-label font-bold uppercase tracking-[0.4em] text-slate-400 text-center">If you remember three things</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {activeSection.takeaways.map((item, i) => (
+                <div key={i} className="p-10 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm space-y-6">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-primary">
+                    <Zap size={24} />
+                  </div>
+                  <p className="text-sm text-slate-500 leading-relaxed">{item}</p>
+                </div>
               ))}
             </div>
-          </div>
-        </aside>
+          </section>
+        ) : null}
 
-        <main className="min-w-0 flex-1">
-          <div className="space-y-6">
-            {isLoading && <div className="text-xs text-white/40 px-1">Loading...</div>}
-            {error && <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">{error}</div>}
-
-            <div className="rounded-[32px] border border-white/10 bg-white/[0.03] p-6 md:p-8">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="max-w-3xl">
-                  <div className="text-xs uppercase tracking-[0.24em] text-cyan-300">
-                    {activeSection.eyebrow}
-                  </div>
-                  <h1 className="mt-3 text-3xl font-black tracking-tight text-white md:text-4xl">
-                    {activeSection.title}
-                  </h1>
-                  <p className="mt-4 max-w-2xl text-sm leading-8 text-white/60 md:text-base">
-                    {activeSection.summary}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                  <div className="text-[11px] uppercase tracking-[0.22em] text-white/35">
-                    Current section
-                  </div>
-                  <div className="mt-2 text-sm font-medium text-white">
-                    {activeSection.title}
-                  </div>
-                </div>
+        {/* Insight Points */}
+        {activeSection.points?.length ? (
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {activeSection.points.map((item) => (
+              <div key={item.title} className="p-10 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm space-y-4">
+                <h4 className="text-xl font-headline font-black uppercase tracking-tighter">{item.title}</h4>
+                <p className="text-sm text-slate-500 leading-relaxed">{item.body}</p>
               </div>
-
-              <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                <StatCard
-                  label="Network"
-                  value={catalog?.network?.name || (stellar ? "Stellar Testnet" : "Westend Asset Hub")}
-                />
-                <StatCard
-                  label="Payment Token"
-                  value={`${stellar ? "Stellar" : "Circle"} ${catalog?.payments?.tokenSymbol || "USDC"}`}
-                />
-                <StatCard
-                  label={stellar ? "Settlement" : "Asset Id"}
-                  value={stellar
-                    ? (catalog?.payments?.settlement || "soroban-sac")
-                    : String(catalog?.payments?.paymentAssetId || 31337)}
-                />
-                <StatCard label="Paid Routes" value={String(routeCount)} />
-                <StatCard
-                  label={stellar ? "Components Wired" : "Contracts Wired"}
-                  value={String(configuredContractCount)}
-                />
-              </div>
-            </div>
-
-            <div className="lg:hidden">
-              <select
-                value={activeSection.id}
-                onChange={(event) =>
-                  navigate(`/app/docs/${event.target.value}`)
-                }
-                className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white outline-none"
-              >
-                {sections.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <PlainLanguageCard text={activeSection.plainEnglish} />
-
-            <TakeawayPanel items={activeSection.takeaways} />
-
-            <InsightGrid items={activeSection.points} />
-
-            {activeSection.id === "architecture" ? (
-              <ArchitectureDiagram catalog={catalog} />
-            ) : null}
-
-            {activeSection.code ? <CodeCard code={activeSection.code} /> : null}
-
-            {activeSection.steps?.length ? (
-              <StepList
-                title={activeSection.stepsTitle || "How it works"}
-                steps={activeSection.steps}
-              />
-            ) : null}
-
-            {activeSection.tables?.map((table) => (
-              <DataTable
-                key={table.title}
-                title={table.title}
-                headers={table.headers}
-                rows={table.rows}
-              />
             ))}
+          </section>
+        ) : null}
 
-            {activeSection.id === "architecture" ? (
-              <DeployedContractCards catalog={catalog} />
-            ) : null}
+        {/* Architecture Diagram */}
+        {activeSection.id === "architecture" ? <ArchitectureDiagram catalog={catalog} /> : null}
 
-            <ExplorerLinks items={activeSection.links} />
-
-            {activeSection.faqs?.length ? (
-              <div className="space-y-4">
-                <div className="text-xs uppercase tracking-[0.24em] text-cyan-300">
-                  Common Questions
-                </div>
-                <FaqList items={activeSection.faqs} />
+        {/* Steps — Product Loop style */}
+        {activeSection.steps?.length ? (
+          <section className="bg-slate-900 p-6 sm:p-12 lg:p-20 rounded-[3rem] text-white relative overflow-hidden">
+            <div className="absolute inset-0 opacity-10 blueprint-bg pointer-events-none"></div>
+            <div className="relative z-10 space-y-16">
+              <h2 className="text-5xl font-headline font-black uppercase tracking-tighter">{activeSection.stepsTitle || "How It Works"}</h2>
+              <div className="space-y-8">
+                {activeSection.steps.map((step, i) => (
+                  <div key={i} className="flex gap-8 items-start group">
+                    <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center text-sm font-bold shrink-0 group-hover:bg-primary transition-colors text-white">
+                      {i + 1}
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-white/70 text-sm leading-relaxed">{step}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        {/* Code */}
+        {activeSection.code ? <CodeCard code={activeSection.code} /> : null}
+
+        {/* Tables */}
+        {activeSection.tables?.map((table) => (
+          <section key={table.title} className="space-y-12">
+            <h3 className="text-2xl font-headline font-black uppercase tracking-tighter">{table.title}</h3>
+            <div className="overflow-hidden rounded-3xl border border-slate-100">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50">
+                    {table.headers.map(h => (
+                      <th key={h} className="p-6 text-[10px] font-label font-bold uppercase tracking-widest text-slate-400">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {table.rows.map((row, i) => (
+                    <tr key={i} className="hover:bg-slate-50 transition-colors">
+                      {row.map((cell, j) => (
+                        <td key={j} className="p-6 text-sm text-slate-600">{cell}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ))}
+
+        {/* Deployed Contracts */}
+        {activeSection.id === "architecture" ? <DeployedContractCards catalog={catalog} /> : null}
+
+        {/* Explorer Links */}
+        <ExplorerLinks items={activeSection.links} />
+
+        {/* FAQs */}
+        {activeSection.faqs?.length ? (
+          <section className="space-y-12">
+            <h3 className="text-2xl font-headline font-black uppercase tracking-tighter">Common Questions</h3>
+            <div className="space-y-4">
+              {activeSection.faqs.map((item, i) => (
+                <details key={i} className="p-8 rounded-3xl border border-slate-100 group cursor-pointer hover:border-primary transition-colors">
+                  <summary className="flex justify-between items-center list-none">
+                    <h4 className="text-lg font-headline font-bold text-slate-900">{item.question}</h4>
+                    <Plus size={20} className="text-primary shrink-0" />
+                  </summary>
+                  <p className="mt-4 text-sm text-slate-500 leading-relaxed">{item.answer}</p>
+                </details>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {/* Mobile section picker */}
+        <div className="lg:hidden">
+          <select value={activeSection.id} onChange={(e) => navigate(`/app/docs/${e.target.value}`)}
+            className="w-full rounded-2xl border border-slate-100 bg-white px-4 py-3 text-sm text-slate-900 outline-none shadow-sm">
+            {sections.map((entry) => (
+              <option key={entry.id} value={entry.id}>{entry.title}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Footer */}
+        <footer className="pt-24 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-8 text-[10px] font-label font-bold uppercase tracking-widest text-slate-400">
+          <p>© 2024 STELLA'S STREAM ENGINE. BUILT FOR THE ETHEREAL ARCHITECT.</p>
+          <div className="flex gap-8">
+            {["Privacy Policy","Terms of Service","GitHub","Discord"].map(l => (
+              <a key={l} href="#" className="hover:text-primary transition-colors">{l}</a>
+            ))}
           </div>
-        </main>
-      </div>
+        </footer>
+      </main>
     </div>
   );
 }

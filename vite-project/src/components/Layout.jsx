@@ -1,103 +1,49 @@
-import { useWallet } from '../context/WalletContext';
-import { ACTIVE_NETWORK } from '../networkConfig.js';
-import Header from './Header';
+import { useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import Sidebar from './Sidebar';
+import TopBar from './TopBar';
 import WalletPickerModal from './WalletPickerModal';
-import { MobileBottomNav, ErrorBoundary } from './ui';
-import { LayoutDashboard, ArrowRightLeft, Bot, BookOpen, Building2 } from 'lucide-react';
+import { useWallet } from '../context/WalletContext';
 
-const tabs = [
-  { id: 'dashboard', path: '/app',         icon: LayoutDashboard, label: 'Dashboard'     },
-  { id: 'streams',   path: '/app/streams',  icon: ArrowRightLeft,  label: 'Streams'       },
-  { id: 'rwa',       path: '/app/rwa',      icon: Building2,       label: 'RWA Studio'    },
-  { id: 'agent',     path: '/app/agent',    icon: Bot,             label: 'Agent Console' },
-  { id: 'docs',      path: '/app/docs',     icon: BookOpen,        label: 'Docs'          },
-];
+function getTitle(pathname) {
+  if (pathname.startsWith('/app/streams')) return 'Streams';
+  if (pathname.startsWith('/app/rwa'))     return 'RWA Studio';
+  if (pathname.startsWith('/app/agent'))   return 'Agent Console';
+  if (pathname.startsWith('/app/verify'))  return 'Asset Verification';
+  if (pathname.startsWith('/app/rent'))    return 'Asset Marketplace';
+  if (pathname.startsWith('/app/docs'))    return 'Documentation';
+  return 'Dashboard';
+}
 
 export default function Layout({ children }) {
+  const { pathname } = useLocation();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const {
-    walletAddress,
-    walletDisplayAddress,
-    chainId,
-    getNetworkName,
-    connectWallet,
-    openWalletPicker,
-    closeWalletPicker,
-    isWalletPickerOpen,
-    availableWallets,
-    activeWallet,
-    paymentBalance,
-    status,
-    isProcessing,
-    isConnectingWallet,
-    disconnectWallet,
+    isWalletPickerOpen, closeWalletPicker,
+    availableWallets, isConnectingWallet,
+    activeWallet, connectWallet, disconnectWallet,
   } = useWallet();
 
-  const orderedWallets = [...availableWallets].sort((left, right) => {
-    if (ACTIVE_NETWORK.kind === 'stellar') {
-      if (left.id === 'stellar:freighter') return -1;
-      if (right.id === 'stellar:freighter') return 1;
-      return left.name.localeCompare(right.name);
-    }
-    if (left.id === 'substrate:polkadot-js') return -1;
-    if (right.id === 'substrate:polkadot-js') return 1;
-    if (left.type === 'substrate' && right.type !== 'substrate') return -1;
-    if (left.type !== 'substrate' && right.type === 'substrate') return 1;
-    return left.name.localeCompare(right.name);
-  });
+  const isLanding = pathname === '/';
+  if (isLanding) return <>{children}</>;
 
   return (
-    <div className="min-h-screen w-full">
-      <div className="absolute inset-0 bg-grid bg-[size:24px_24px] opacity-20 pointer-events-none" />
+    <div className="min-h-screen bg-surface">
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      <Header
-        walletAddress={walletDisplayAddress}
-        chainId={chainId}
-        networkName={getNetworkName(chainId)}
-        onConnect={openWalletPicker}
-        onManageWallets={openWalletPicker}
-        walletLabel={activeWallet?.name || ''}
-        balance={paymentBalance}
-        tabs={tabs}
-      />
-
-      <main className="mx-auto w-full max-w-7xl px-4 pb-36 md:pb-24">
-        <div className="mt-6 md:mt-8">
-          <ErrorBoundary>
-            {children}
-          </ErrorBoundary>
-        </div>
+      <main className="lg:pl-64 min-h-screen flex flex-col">
+        <TopBar title={getTitle(pathname)} onMenuClick={() => setSidebarOpen(true)} />
+        <div className="flex-1 overflow-auto">{children}</div>
       </main>
-
-      {/* Mobile Bottom Navigation */}
-      <MobileBottomNav
-        walletAddress={walletDisplayAddress}
-        tabs={tabs}
-      />
-
-      {/* Status Bar */}
-      <div className="pointer-events-none fixed bottom-20 md:bottom-6 left-1/2 z-40 w-[92%] max-w-3xl -translate-x-1/2">
-        <div className="pointer-events-auto card-glass flex items-center gap-3 px-4 py-3">
-          <div className={`h-2 w-2 rounded-full ${(isProcessing || isConnectingWallet) ? 'bg-cyan-400 animate-pulse' : 'bg-emerald-400'}`} />
-          <div className="font-mono text-sm sm:text-base text-white/90 truncate flex items-center gap-2">
-            {(isProcessing || isConnectingWallet) && (
-              <svg className="h-4 w-4 animate-spin text-cyan-300" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-              </svg>
-            )}
-            <span className="truncate">{status}</span>
-          </div>
-        </div>
-      </div>
 
       <WalletPickerModal
         isOpen={isWalletPickerOpen}
-        wallets={orderedWallets}
+        wallets={availableWallets}
         isConnecting={isConnectingWallet}
-        activeWalletId={activeWallet?.id || ''}
+        activeWalletId={activeWallet?.id}
         onClose={closeWalletPicker}
-        onSelect={connectWallet}
-        onDisconnect={walletAddress ? () => { disconnectWallet(); closeWalletPicker(); } : null}
+        onSelect={(wallet) => connectWallet(wallet.id)}
+        onDisconnect={activeWallet ? () => { disconnectWallet(); closeWalletPicker(); } : null}
       />
     </div>
   );

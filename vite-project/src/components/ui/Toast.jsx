@@ -10,33 +10,38 @@ const ToastContext = createContext(null);
 const toastConfig = {
   success: {
     Icon: CheckCircle,
-    bgClass: 'bg-success-500/10 border-success-500/30',
-    iconClass: 'text-success-500',
-    textClass: 'text-success-400',
+    bgClass: 'bg-white border-slate-100',
+    iconClass: 'text-secondary',
+    textClass: 'text-secondary',
+    barClass: 'bg-secondary',
   },
   error: {
     Icon: XCircle,
-    bgClass: 'bg-error-500/10 border-error-500/30',
-    iconClass: 'text-error-500',
-    textClass: 'text-error-400',
+    bgClass: 'bg-white border-red-100',
+    iconClass: 'text-red-500',
+    textClass: 'text-red-500',
+    barClass: 'bg-red-500',
   },
   warning: {
     Icon: AlertTriangle,
-    bgClass: 'bg-warning-500/10 border-warning-500/30',
-    iconClass: 'text-warning-500',
-    textClass: 'text-warning-400',
+    bgClass: 'bg-white border-amber-100',
+    iconClass: 'text-amber-500',
+    textClass: 'text-amber-500',
+    barClass: 'bg-amber-500',
   },
   info: {
     Icon: Info,
-    bgClass: 'bg-flowpay-500/10 border-flowpay-500/30',
-    iconClass: 'text-flowpay-500',
-    textClass: 'text-flowpay-400',
+    bgClass: 'bg-white border-blue-100',
+    iconClass: 'text-primary',
+    textClass: 'text-primary',
+    barClass: 'bg-primary',
   },
   loading: {
     Icon: Loader2,
-    bgClass: 'bg-white/5 border-white/20',
-    iconClass: 'text-white/60 animate-spin',
-    textClass: 'text-white/80',
+    bgClass: 'bg-white border-slate-100',
+    iconClass: 'text-slate-400 animate-spin',
+    textClass: 'text-slate-500',
+    barClass: 'bg-slate-300',
   },
 };
 
@@ -62,8 +67,8 @@ function Toast({ id, type = 'info', title, message, duration = 5000, onDismiss, 
   return (
     <div
       className={`
-        relative flex items-start gap-3 p-4 rounded-xl border backdrop-blur-md
-        shadow-lg max-w-sm w-full
+        relative flex items-start gap-3 p-4 rounded-2xl border shadow-lg shadow-slate-200/60
+        max-w-sm w-full font-body
         transition-all duration-200 ease-out
         ${config.bgClass}
         ${isExiting ? 'opacity-0 translate-x-full' : 'opacity-100 translate-x-0'}
@@ -72,25 +77,22 @@ function Toast({ id, type = 'info', title, message, duration = 5000, onDismiss, 
       role="alert"
     >
       {/* Icon */}
-      <div className={`flex-shrink-0 ${config.iconClass}`}>
+      <div className={`flex-shrink-0 mt-0.5 ${config.iconClass}`}>
         <IconComponent className="w-5 h-5" />
       </div>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
         {title && (
-          <p className={`font-semibold text-sm ${config.textClass}`}>{title}</p>
+          <p className="font-bold text-sm text-slate-900 font-headline">{title}</p>
         )}
         {message && (
-          <p className="text-sm text-white/70 mt-0.5">{message}</p>
+          <p className="text-sm text-slate-500 mt-0.5 leading-relaxed">{message}</p>
         )}
         {action && (
           <button
-            onClick={() => {
-              action.onClick();
-              handleDismiss();
-            }}
-            className="mt-2 text-sm font-medium text-flowpay-400 hover:text-flowpay-300 transition-colors"
+            onClick={() => { action.onClick(); handleDismiss(); }}
+            className={`mt-2 text-xs font-bold uppercase tracking-widest font-label ${config.textClass} hover:opacity-70 transition-opacity`}
           >
             {action.label}
           </button>
@@ -100,7 +102,7 @@ function Toast({ id, type = 'info', title, message, duration = 5000, onDismiss, 
       {/* Dismiss Button */}
       <button
         onClick={handleDismiss}
-        className="flex-shrink-0 p-1 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+        className="flex-shrink-0 p-1 rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-50 transition-colors"
         aria-label="Dismiss"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -108,14 +110,12 @@ function Toast({ id, type = 'info', title, message, duration = 5000, onDismiss, 
         </svg>
       </button>
 
-      {/* Progress Bar (for auto-dismiss) */}
+      {/* Progress Bar */}
       {duration && type !== 'loading' && (
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/10 rounded-b-xl overflow-hidden">
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-slate-100 rounded-b-2xl overflow-hidden">
           <div
-            className={`h-full ${config.textClass.replace('text-', 'bg-')}`}
-            style={{
-              animation: `shrink ${duration}ms linear forwards`,
-            }}
+            className={`h-full ${config.barClass}`}
+            style={{ animation: `shrink ${duration}ms linear forwards` }}
           />
         </div>
       )}

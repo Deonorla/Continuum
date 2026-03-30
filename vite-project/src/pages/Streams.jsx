@@ -1,610 +1,269 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
+import { ArrowRight, ArrowUpRight, ArrowDownLeft, Plus, Wallet, Shield, Zap, RefreshCw } from 'lucide-react';
 import { useWallet } from '../context/WalletContext';
-import { ACTIVE_NETWORK } from '../networkConfig.js';
-import { paymentTokenAddress, paymentTokenDisplayName, paymentTokenSymbol } from '../contactInfo';
-import CreateStreamForm from '../components/CreateStreamForm';
 import StreamList from '../components/StreamList';
-import { CollapsibleSection, SkeletonStreamCard } from '../components/ui';
-import { ArrowRightLeft, Coins, Plus, Wallet, PlugZap, Globe, Shield } from 'lucide-react';
-import { useProtocolCatalog } from '../hooks/useProtocolCatalog';
-import { callRoute } from '../services/routeApi';
 
-const PUBLIC_ROUTE = {
-  path: '/api/free',
-  mode: 'free',
-  price: '0',
-  description: 'Public route with no payment requirement.',
-};
-
-function formatResponseBody(body) {
-  if (body == null) {
-    return 'No response body';
-  }
-
-  if (typeof body === 'string') {
-    return body;
-  }
-
-  try {
-    return JSON.stringify(body, null, 2);
-  } catch {
-    return String(body);
-  }
-}
-
-function RouteExplorer({
-  routes,
-  matchingStreams,
-  selectedRoutePath,
-  setSelectedRoutePath,
-  selectedStreamId,
-  setSelectedStreamId,
-  routeResult,
-  isCallingRoute,
-  onCallRoute,
-}) {
-  const sessionLabel = ACTIVE_NETWORK.kind === 'stellar' ? 'payment session' : 'stream';
-  const sessionLabelPlural = ACTIVE_NETWORK.kind === 'stellar' ? 'payment sessions' : 'streams';
-  const recipientLabel = ACTIVE_NETWORK.kind === 'stellar' ? 'service account' : 'service wallet';
-  const selectedRoute = routes.find((route) => route.path === selectedRoutePath) || routes[0];
-
-  return (
-    <section className="card-glass p-4 md:p-6 border border-white/5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-            <Globe className="w-5 h-5 text-emerald-300" /> Endpoint Explorer
-          </h3>
-          <p className="text-sm text-white/50 mt-1">
-            Hit every backend route from the frontend. Protected routes can reuse an active {sessionLabel} that pays the {recipientLabel}.
-          </p>
-        </div>
-        <div className="text-xs text-white/40 font-mono">
-          {matchingStreams.length} compatible {matchingStreams.length === 1 ? sessionLabel : sessionLabelPlural}
-        </div>
-      </div>
-
-      <div className="mt-6 grid gap-4 lg:grid-cols-[1.15fr,0.85fr]">
-        <div className="space-y-4">
-          <label className="block">
-            <span className="block text-sm text-white/70 mb-1.5">Backend route</span>
-            <select
-              className="input-default w-full"
-              value={selectedRoutePath}
-              onChange={(event) => setSelectedRoutePath(event.target.value)}
-            >
-              {routes.map((route) => (
-                <option key={route.path} value={route.path}>
-                  {route.path} · {route.mode}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold text-white font-mono">{selectedRoute?.path}</span>
-              <span className={`rounded-full px-2 py-0.5 text-[11px] font-mono border ${
-                selectedRoute?.mode === 'streaming'
-                  ? 'border-cyan-500/30 text-cyan-300 bg-cyan-500/10'
-                  : selectedRoute?.mode === 'per-request'
-                    ? 'border-amber-500/30 text-amber-300 bg-amber-500/10'
-                    : 'border-emerald-500/30 text-emerald-300 bg-emerald-500/10'
-              }`}>
-                {selectedRoute?.mode}
-              </span>
-            </div>
-            <div className="text-sm text-white/55 mt-3">{selectedRoute?.description}</div>
-            <div className="text-xs text-white/35 mt-3">
-              {selectedRoute?.mode === 'streaming'
-                ? `${selectedRoute?.price} ${paymentTokenSymbol}/sec`
-                : selectedRoute?.mode === 'per-request'
-                  ? `${selectedRoute?.price} ${paymentTokenSymbol} per request`
-                  : 'No payment required'}
-            </div>
-          </div>
-
-          <label className="block">
-            <span className="block text-sm text-white/70 mb-1.5">
-              Active {sessionLabel} for protected routes
-            </span>
-            <select
-              className="input-default w-full"
-              value={selectedStreamId}
-              onChange={(event) => setSelectedStreamId(event.target.value)}
-              disabled={selectedRoute?.mode === 'free'}
-            >
-              <option value="">
-                {selectedRoute?.mode === 'free'
-                  ? 'Not required for /api/free'
-                  : `Call without a ${ACTIVE_NETWORK.kind === 'stellar' ? 'session' : 'stream'} header`}
-              </option>
-              {matchingStreams.map((stream) => (
-                <option key={stream.id} value={String(stream.id)}>
-                  {ACTIVE_NETWORK.kind === 'stellar' ? 'Session' : 'Stream'} #{stream.id} · {Number(stream.totalAmount || 0n) > 0 ? paymentTokenSymbol : 'Budgeted'} · active
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <button
-            type="button"
-            className="btn-primary min-h-[44px] px-4"
-            onClick={onCallRoute}
-            disabled={!selectedRoute || isCallingRoute}
-          >
-            {isCallingRoute ? 'Calling route...' : `Call ${selectedRoute?.path}`}
-          </button>
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-          <div className="text-xs uppercase tracking-[0.18em] text-white/40 mb-3">Latest response</div>
-          {routeResult ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-sm text-white/60">{routeResult.path}</div>
-                <div className={`rounded-full px-3 py-1 text-xs font-mono ${
-                  routeResult.ok
-                    ? 'bg-emerald-500/15 text-emerald-300'
-                    : routeResult.status === 402
-                      ? 'bg-amber-500/15 text-amber-300'
-                      : 'bg-red-500/15 text-red-300'
-                }`}>
-                  HTTP {routeResult.status}
-                </div>
-              </div>
-
-              <div className="rounded-xl bg-white/5 p-3">
-                <div className="text-xs uppercase tracking-[0.18em] text-white/40 mb-2">Headers</div>
-                <pre className="overflow-auto text-xs text-white/65">{formatResponseBody(routeResult.headers)}</pre>
-              </div>
-
-              <div className="rounded-xl bg-white/5 p-3">
-                <div className="text-xs uppercase tracking-[0.18em] text-white/40 mb-2">Body</div>
-                <pre className="overflow-auto text-xs text-white/72 whitespace-pre-wrap break-words">
-                  {formatResponseBody(routeResult.body)}
-                </pre>
-              </div>
-            </div>
-          ) : (
-            <div className="text-sm text-white/45 leading-6">
-              Call a route to inspect its live payload, payment headers, or 402 requirements.
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function shortAddress(address = '') {
-  if (!address) {
-    return 'Unavailable';
-  }
-  return `${address.slice(0, 8)}…${address.slice(-6)}`;
-}
+const DURATION_OPTIONS = [
+  { label: '1 Hour',   seconds: 3600 },
+  { label: '24 Hours', seconds: 86400 },
+  { label: '7 Days',   seconds: 604800 },
+  { label: '30 Days',  seconds: 2592000 },
+];
 
 export default function Streams() {
   const {
-    walletAddress, paymentBalance, isProcessing, isInitialLoad, isLoadingStreams,
-    incomingStreams, setIncomingStreams, outgoingStreams,
-    fetchPaymentBalance, createStream, withdraw, cancel,
-    formatEth, getClaimableBalance, setStatus, toast
+    walletAddress,
+    paymentBalance,
+    paymentTokenSymbol,
+    incomingStreams,
+    outgoingStreams,
+    isLoadingStreams,
+    isProcessing,
+    createStream,
+    withdraw,
+    cancel,
+    formatEth,
+    fetchPaymentBalance,
+    refreshStreams,
   } = useWallet();
-  const { catalog } = useProtocolCatalog();
 
-  const [recipient, setRecipient] = useState('');
-  const [amountEth, setAmountEth] = useState('');
-  const [durationSeconds, setDurationSeconds] = useState('86400');
-  const [manualStreamId, setManualStreamId] = useState('');
-  const [claimableBalance, setClaimableBalance] = useState('0.0');
-  const [selectedRoutePath, setSelectedRoutePath] = useState('/api/free');
-  const [selectedStreamId, setSelectedStreamId] = useState('');
-  const [routeResult, setRouteResult] = useState(null);
-  const [isCallingRoute, setIsCallingRoute] = useState(false);
-  const [isChecking, setIsChecking] = useState(false);
-  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [recipient, setRecipient]   = useState('');
+  const [amount, setAmount]         = useState('');
+  const [duration, setDuration]     = useState(DURATION_OPTIONS[0].seconds);
+  const [sessionId, setSessionId]   = useState('');
 
-  const explorerRoutes = [PUBLIC_ROUTE, ...(catalog?.routes || [])].filter(
-    (route, index, routes) => routes.findIndex((candidate) => candidate.path === route.path) === index
-  );
-  const compatibleStreams = outgoingStreams.filter(
-    (stream) => stream?.isActive && stream?.recipient?.toLowerCase() === catalog?.payments?.recipientAddress?.toLowerCase()
-  );
-  const sessionLabel = ACTIVE_NETWORK.kind === 'stellar' ? 'session' : 'stream';
-  const sessionLabelPlural = ACTIVE_NETWORK.kind === 'stellar' ? 'sessions' : 'streams';
-  const recipientLabel = ACTIVE_NETWORK.kind === 'stellar' ? 'service account' : 'service wallet';
-
-  const prefillStreamingRoute = (route) => {
-    const pricePerSecond = Number(route?.price || 0);
-    const suggestedDuration = 3600;
-
-    if (route?.mode !== 'streaming') {
-      toast.warning('This endpoint is configured for direct settlement. Use the agent console to automate it.');
-      return;
-    }
-
-    setRecipient(catalog?.payments?.recipientAddress || '');
-    setDurationSeconds(String(suggestedDuration));
-    setAmountEth((pricePerSecond * suggestedDuration).toFixed(4));
-    setStatus(`Prepared a 1 hour ${sessionLabel} budget for ${route.path}.`);
-  };
-
-  useEffect(() => {
-    if (!catalog?.routes?.length) {
-      return;
-    }
-
-    setSelectedRoutePath((current) => {
-      if (explorerRoutes.some((route) => route.path === current)) {
-        return current;
-      }
-      return PUBLIC_ROUTE.path;
-    });
-  }, [catalog?.routes?.length]);
-
-  useEffect(() => {
-    if (!compatibleStreams.length) {
-      setSelectedStreamId('');
-      return;
-    }
-
-    setSelectedStreamId((current) => {
-      if (current && compatibleStreams.some((stream) => String(stream.id) === String(current))) {
-        return current;
-      }
-      return String(compatibleStreams[0].id);
-    });
-  }, [compatibleStreams]);
-
-  const handleCreateStream = async (e) => {
+  const handleCreate = async (e) => {
     e.preventDefault();
-    const streamId = await createStream(recipient, durationSeconds, amountEth);
-    if (streamId !== null) {
-      setRecipient('');
-      setAmountEth('');
-      setDurationSeconds('');
-      setManualStreamId(String(streamId));
-    }
+    if (!recipient || !amount) return;
+    await createStream(recipient, duration, amount);
+    setRecipient('');
+    setAmount('');
   };
 
-  const checkClaimableBalance = async () => {
-    const id = parseInt(manualStreamId || '0', 10);
-    if (!Number.isFinite(id) || id <= 0) {
-      toast.warning(`Enter a valid ${sessionLabel} ID`);
-      return;
-    }
-    setIsChecking(true);
-    setStatus('Checking claimable balance...');
-    const balance = await getClaimableBalance(id);
-    setClaimableBalance(balance);
-    setStatus('Fetched claimable balance.');
-    setIsChecking(false);
+  const handleWithdraw = async (e) => {
+    e.preventDefault();
+    if (!sessionId) return;
+    await withdraw(Number(sessionId));
+    setSessionId('');
   };
-
-  const handleWithdrawManual = async () => {
-    const id = parseInt(manualStreamId || '0', 10);
-    if (!Number.isFinite(id) || id <= 0) {
-      toast.warning(`Enter a valid ${sessionLabel} ID`);
-      return;
-    }
-    setIsWithdrawing(true);
-    try {
-      await withdraw(id);
-      await checkClaimableBalance();
-    } finally {
-      setIsWithdrawing(false);
-    }
-  };
-
-  const handleCallRoute = async () => {
-    const selectedRoute = explorerRoutes.find((route) => route.path === selectedRoutePath);
-    if (!selectedRoute) {
-      return;
-    }
-
-    setIsCallingRoute(true);
-    setStatus(`Calling ${selectedRoute.path}...`);
-
-    try {
-      const result = await callRoute(selectedRoute.path, {
-        streamId: selectedRoute.mode === 'free' ? undefined : selectedStreamId || undefined,
-      });
-      setRouteResult({
-        ...result,
-        path: selectedRoute.path,
-      });
-      setStatus(`Received HTTP ${result.status} from ${selectedRoute.path}.`);
-    } catch (error) {
-      console.error('Route call failed', error);
-      setRouteResult({
-        ok: false,
-        status: 0,
-        path: selectedRoute.path,
-        headers: {},
-        body: { error: error.message || 'Route call failed' },
-      });
-      setStatus(`Route call failed for ${selectedRoute.path}.`);
-      toast.error(error.message || 'Unable to call the route right now.', { title: 'Route call failed' });
-    } finally {
-      setIsCallingRoute(false);
-    }
-  };
-
-  // Live claimable ticker
-  const tickerRef = useRef(null);
-  useEffect(() => {
-    if (!incomingStreams.length) return;
-    const tick = () => {
-      setIncomingStreams((prev) =>
-        prev.map((s) => {
-          if (!s.isActive) return s;
-          const now = Math.floor(Date.now() / 1000);
-          const cappedNow = Math.min(now, s.stopTime);
-          const elapsed = Math.max(0, cappedNow - s.startTime);
-          const streamed = BigInt(elapsed) * BigInt(s.flowRate);
-          const claimable = streamed > BigInt(s.amountWithdrawn) ? streamed - BigInt(s.amountWithdrawn) : 0n;
-          return { ...s, claimableInitial: claimable };
-        })
-      );
-    };
-    tickerRef.current = setInterval(tick, 1000);
-    return () => clearInterval(tickerRef.current);
-  }, [incomingStreams.length, setIncomingStreams]);
-
-  if (!walletAddress) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20">
-        <ArrowRightLeft className="w-16 h-16 text-white/60 mb-4" />
-        <h2 className="text-2xl font-bold text-white mb-2">Connect Your Wallet</h2>
-        <p className="text-white/60 text-center max-w-md">
-          Connect your wallet to create and manage payment {sessionLabelPlural}.
-        </p>
-      </div>
-    );
-  }
-
-  if (isInitialLoad && isLoadingStreams) {
-    return (
-      <div className="space-y-4 animate-fade-in">
-        {[...Array(3)].map((_, i) => <SkeletonStreamCard key={i} />)}
-      </div>
-    );
-  }
 
   return (
-    <div className="space-y-8 md:space-y-12 animate-fade-in">
-      {/* Payment Balance Card */}
-      <section className="card-glass p-4 md:p-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
-              <Coins className="w-5 h-5" /> {paymentTokenDisplayName} Balance
-            </h3>
-            <p className="text-2xl font-mono text-cyan-300">
-              {Number(paymentBalance).toLocaleString(undefined, { maximumFractionDigits: 4 })} {paymentTokenSymbol}
-            </p>
-            <p className="text-xs text-white/50 mt-1 font-mono truncate">
-              Token: {paymentTokenAddress}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className="btn-default min-h-[44px] px-4"
-              onClick={fetchPaymentBalance}
-              disabled={isProcessing}
-            >
-              Refresh
+    <div className="p-4 sm:p-8 max-w-[1600px] mx-auto space-y-12">
+      {/* Stats Bar */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm flex justify-between items-center relative overflow-hidden">
+          <div className="absolute -top-12 -right-12 w-48 h-48 bg-blue-50 blur-[80px] rounded-full"></div>
+          <div className="relative z-10">
+            <p className="text-[10px] font-label font-bold uppercase tracking-[0.2em] text-slate-400 mb-2">USDC Balance</p>
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-4xl font-headline font-black text-slate-900 tracking-tighter">{paymentBalance}</h3>
+              <span className="text-lg font-headline font-bold text-primary">USDC</span>
+            </div>
+            <button onClick={fetchPaymentBalance} className="mt-4 flex items-center gap-2 text-[10px] font-label font-bold uppercase tracking-widest text-primary hover:opacity-70 transition-opacity">
+              <RefreshCw size={12} /> Refresh
             </button>
           </div>
-        </div>
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-3">
-        <div className="card-glass p-4 border border-white/5">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-white/40 mb-2">
-            <Globe className="w-4 h-4 text-cyan-300" /> Runtime
-          </div>
-          <div className="text-lg font-semibold text-white">{catalog?.network?.name || 'Stellar Testnet'}</div>
-          <div className="text-xs text-white/40 mt-1">
-            {ACTIVE_NETWORK.kind === 'stellar'
-              ? `Passphrase ${catalog?.network?.passphrase ? 'configured' : 'default testnet'}`
-              : `Chain ID ${catalog?.network?.chainId ?? '0'}`}
+          <div className="relative z-10 w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center text-primary">
+            <Wallet size={28} />
           </div>
         </div>
-        <div className="card-glass p-4 border border-white/5">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-white/40 mb-2">
-            <Shield className="w-4 h-4 text-emerald-300" /> {ACTIVE_NETWORK.kind === 'stellar' ? 'Service Account' : 'Service Wallet'}
-          </div>
-          <div className="text-lg font-semibold text-white font-mono">{shortAddress(catalog?.payments?.recipientAddress)}</div>
-          <div className="text-xs text-white/40 mt-1">All protected routes settle to this {recipientLabel}.</div>
-        </div>
-        <div className="card-glass p-4 border border-white/5">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-white/40 mb-2">
-            <PlugZap className="w-4 h-4 text-purple-300" /> Protected Routes
-          </div>
-          <div className="text-lg font-semibold text-white">{catalog?.routes?.length || 0}</div>
-          <div className="text-xs text-white/40 mt-1">
-            {ACTIVE_NETWORK.kind === 'stellar'
-              ? 'Use a route preset to prefill the session form.'
-              : 'Use a route preset to prefill the stream form.'}
-          </div>
-        </div>
-      </section>
 
-      <section className="grid gap-4 md:gap-6 lg:grid-cols-2">
-        <CollapsibleSection title={ACTIVE_NETWORK.kind === 'stellar' ? 'Create Session' : 'Create Stream'} icon={<Plus className="w-5 h-5" />} defaultOpen={true}>
-          <p className="text-sm text-white/50 mb-4">
-            {ACTIVE_NETWORK.kind === 'stellar'
-              ? `Fund a reusable ${paymentTokenSymbol} payment session. Metering rate = total amount / duration.`
-              : `Fund a continuous ${paymentTokenSymbol} stream. Flow rate = total amount / duration.`}
-          </p>
-          <CreateStreamForm
-            recipient={recipient}
-            setRecipient={setRecipient}
-            amountEth={amountEth}
-            setAmountEth={setAmountEth}
-            durationSeconds={durationSeconds}
-            setDurationSeconds={setDurationSeconds}
-            balance={paymentBalance}
-            onSubmit={handleCreateStream}
-            isProcessing={isProcessing}
-          />
-        </CollapsibleSection>
-
-        <CollapsibleSection title="Withdraw Funds" icon={<Wallet className="w-5 h-5" />} defaultOpen={true}>
-          <p className="text-sm text-white/60 mb-4">
-            Enter a {sessionLabel} ID to check and withdraw claimable {paymentTokenSymbol}.
-          </p>
-          <div className="grid grid-cols-1 gap-4">
-            <label>
-              <span className="block text-sm text-white/70 mb-1.5">
-                {ACTIVE_NETWORK.kind === 'stellar' ? 'Session ID' : 'Stream ID'}
-              </span>
-              <input
-                type="number"
-                min={1}
-                placeholder="e.g. 1"
-                value={manualStreamId}
-                onChange={(e) => setManualStreamId(e.target.value)}
-                className="input-default w-full"
-              />
-            </label>
-
-            <div className="flex flex-col sm:flex-row gap-2">
-              <button
-                type="button"
-                className="btn-default flex-1 min-h-[44px] flex items-center justify-center gap-2"
-                onClick={checkClaimableBalance}
-                disabled={isChecking}
-              >
-                {isChecking && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-                {isChecking ? 'Checking...' : 'Check Balance'}
-              </button>
-              <button
-                type="button"
-                className="btn-primary flex-1 min-h-[44px] flex items-center justify-center gap-2"
-                onClick={handleWithdrawManual}
-                disabled={!manualStreamId || parseFloat(claimableBalance || '0') <= 0 || isWithdrawing}
-              >
-                {isWithdrawing && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-                {isWithdrawing ? 'Withdrawing...' : 'Withdraw'}
-              </button>
+        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm flex justify-between items-center relative overflow-hidden">
+          <div className="absolute -top-12 -right-12 w-48 h-48 bg-teal-50 blur-[80px] rounded-full"></div>
+          <div className="relative z-10">
+            <p className="text-[10px] font-label font-bold uppercase tracking-[0.2em] text-slate-400 mb-2">Outgoing</p>
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-4xl font-headline font-black text-slate-900 tracking-tighter">{outgoingStreams.length}</h3>
+              <span className="text-lg font-headline font-bold text-secondary">streams</span>
             </div>
-
-            <p className="text-sm text-white/70">
-              Can Withdraw:{' '}
-              <span className="font-mono text-cyan-300">
-                {Number(claimableBalance || '0').toLocaleString(undefined, { maximumFractionDigits: 6 })}
-              </span>{' '}
-              {paymentTokenSymbol}
-            </p>
           </div>
-        </CollapsibleSection>
-      </section>
+          <div className="relative z-10 w-14 h-14 rounded-2xl bg-teal-50 flex items-center justify-center text-secondary">
+            <ArrowUpRight size={28} />
+          </div>
+        </div>
 
-      <div className="grid gap-6 lg:gap-8 lg:grid-cols-2">
-        <StreamList
-          title={ACTIVE_NETWORK.kind === 'stellar' ? 'Incoming Sessions' : 'Incoming Streams'}
-          emptyText={ACTIVE_NETWORK.kind === 'stellar' ? 'No incoming sessions found.' : 'No incoming streams found.'}
-          isLoading={isLoadingStreams}
-          streams={incomingStreams}
-          variant="incoming"
-          formatEth={formatEth}
-          onWithdraw={withdraw}
-          onCancel={cancel}
-        />
-        <StreamList
-          title={ACTIVE_NETWORK.kind === 'stellar' ? 'Outgoing Sessions' : 'Outgoing Streams'}
-          emptyText={ACTIVE_NETWORK.kind === 'stellar' ? 'No outgoing sessions.' : 'No outgoing streams.'}
-          isLoading={isLoadingStreams}
-          streams={outgoingStreams}
-          variant="outgoing"
-          formatEth={formatEth}
-          onCancel={cancel}
-        />
+        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
+              <Zap size={16} />
+            </div>
+            <p className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400">Runtime</p>
+          </div>
+          <h4 className="text-xl font-headline font-bold text-slate-900">Stellar Testnet</h4>
+          <p className="text-xs text-slate-400 mt-1">Soroban Node v2.0.4</p>
+        </div>
+
+        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden">
+          <div className="absolute top-4 right-4">
+            <span className="flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-secondary"></span>
+            </span>
+          </div>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white">
+              <Shield size={16} />
+            </div>
+            <p className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400">Incoming</p>
+          </div>
+          <h4 className="text-xl font-headline font-bold text-slate-900">{incomingStreams.length} Active</h4>
+          <p className="text-xs text-slate-400 mt-1">
+            {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'Not connected'}
+          </p>
+        </div>
       </div>
 
-      <section className="card-glass p-4 md:p-6 border border-white/5">
-        <div className="flex items-center justify-between gap-4 mb-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-              <PlugZap className="w-5 h-5 text-cyan-300" /> Protected Service Directory
-            </h3>
-            <p className="text-sm text-white/50 mt-1">
-              Live route policy from the backend. Streaming routes can prefill the form above with the current {recipientLabel}.
-            </p>
+      {/* Create Stream + Withdraw */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="lg:col-span-8 bg-white p-6 sm:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
+          <div className="flex justify-between items-center mb-10">
+            <h3 className="text-3xl font-headline font-black uppercase tracking-tighter">Create New Stream</h3>
+            <div className="flex items-center gap-2 px-4 py-2 bg-teal-50 rounded-full">
+              <span className={`w-2 h-2 rounded-full ${walletAddress ? 'bg-secondary animate-pulse' : 'bg-slate-300'}`}></span>
+              <span className="text-[10px] font-label font-bold uppercase tracking-widest text-secondary">
+                {walletAddress ? 'Wallet Ready' : 'Not Connected'}
+              </span>
+            </div>
           </div>
-          <div className="text-xs text-white/40 font-mono">
-            {ACTIVE_NETWORK.kind === 'stellar'
-              ? `${catalog?.payments?.assetCode || paymentTokenSymbol} settlement`
-              : `Asset ID ${catalog?.payments?.paymentAssetId || 31337}`}
-          </div>
-        </div>
-
-        {catalog?.routes?.length ? (
-          <div className="grid gap-3">
-            {catalog.routes.map((route) => (
-              <div
-                key={`${route.path}-${route.mode}`}
-                className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <span className="text-sm font-semibold text-white font-mono">{route.path}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-mono border ${
-                      route.mode === 'streaming'
-                        ? 'border-cyan-500/30 text-cyan-300 bg-cyan-500/10'
-                        : 'border-amber-500/30 text-amber-300 bg-amber-500/10'
-                    }`}>
-                      {route.mode}
-                    </span>
-                  </div>
-                  <div className="text-sm text-white/55">{route.description || 'Protected route'}</div>
-                  <div className="text-xs text-white/35 mt-2">
-                    {route.mode === 'streaming'
-                      ? `${route.price} ${paymentTokenSymbol}/sec`
-                      : `${route.price} ${paymentTokenSymbol} per request`}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  {route.mode === 'streaming' ? (
-                    <button
-                      type="button"
-                      className="btn-primary min-h-[40px] px-4"
-                      onClick={() => prefillStreamingRoute(route)}
-                    >
-                      {ACTIVE_NETWORK.kind === 'stellar' ? 'Prefill 1h Session' : 'Prefill 1h Stream'}
-                    </button>
-                  ) : (
-                    <div className="px-3 py-2 rounded-lg border border-white/10 text-xs text-white/40">
-                      Direct-only route
-                    </div>
-                  )}
+          <form onSubmit={handleCreate} className="space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="space-y-3">
+                <label className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400 ml-1">1. Recipient</label>
+                <input
+                  type="text"
+                  className="w-full bg-slate-50 border-none rounded-2xl px-6 py-4 focus:ring-2 focus:ring-blue-200 text-sm"
+                  placeholder="G... Stellar address"
+                  value={recipient}
+                  onChange={e => setRecipient(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-3">
+                <label className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400 ml-1">2. Amount (USDC)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    className="w-full bg-slate-50 border-none rounded-2xl px-6 py-4 focus:ring-2 focus:ring-blue-200 text-sm pr-16"
+                    placeholder="0.00"
+                    value={amount}
+                    onChange={e => setAmount(e.target.value)}
+                    required
+                  />
+                  <span className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">USDC</span>
                 </div>
               </div>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center text-white/35 text-sm">
-            No protected routes are configured yet.
-          </div>
-        )}
-      </section>
+              <div className="space-y-3">
+                <label className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400 ml-1">3. Duration</label>
+                <select
+                  className="w-full bg-slate-50 border-none rounded-2xl px-6 py-4 focus:ring-2 focus:ring-blue-200 text-sm appearance-none"
+                  value={duration}
+                  onChange={e => setDuration(Number(e.target.value))}
+                >
+                  {DURATION_OPTIONS.map(opt => (
+                    <option key={opt.seconds} value={opt.seconds}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={isProcessing || !walletAddress}
+              className="w-full md:w-auto px-12 py-5 bg-primary text-white rounded-2xl font-headline font-black text-lg uppercase tracking-tighter hover:shadow-2xl hover:shadow-blue-500/30 hover:-translate-y-1 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+            >
+              {isProcessing ? 'Processing...' : <><Plus size={20} /> Initialize Stream <ArrowRight size={20} /></>}
+            </button>
+          </form>
+        </div>
 
-      <RouteExplorer
-        routes={explorerRoutes}
-        matchingStreams={compatibleStreams}
-        selectedRoutePath={selectedRoutePath}
-        setSelectedRoutePath={setSelectedRoutePath}
-        selectedStreamId={selectedStreamId}
-        setSelectedStreamId={setSelectedStreamId}
-        routeResult={routeResult}
-        isCallingRoute={isCallingRoute}
-        onCallRoute={handleCallRoute}
-      />
+        <div className="lg:col-span-4 bg-slate-50 p-6 sm:p-10 rounded-[2.5rem] border border-slate-100 flex flex-col justify-between">
+          <div>
+            <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-primary shadow-sm mb-8">
+              <Wallet size={24} />
+            </div>
+            <h3 className="text-2xl font-headline font-black uppercase tracking-tighter mb-4">Withdraw Funds</h3>
+            <p className="text-slate-500 text-sm leading-relaxed mb-8">Enter a session ID to claim available stream funds.</p>
+            <input
+              type="text"
+              className="w-full bg-white border-none rounded-2xl px-6 py-4 focus:ring-2 focus:ring-blue-200 text-sm mb-4"
+              placeholder="Session ID (e.g. 42)"
+              value={sessionId}
+              onChange={e => setSessionId(e.target.value)}
+            />
+          </div>
+          <button
+            onClick={handleWithdraw}
+            disabled={isProcessing || !sessionId || !walletAddress}
+            className="w-full py-4 border-2 border-primary text-primary rounded-2xl font-label uppercase tracking-widest text-xs font-bold hover:bg-primary hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Withdraw Session
+          </button>
+        </div>
+      </div>
+
+      {/* Stream Lists */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {[
+          { icon: ArrowDownLeft, label: 'Incoming Streams', color: 'text-secondary', streams: incomingStreams, variant: 'incoming' },
+          { icon: ArrowUpRight,  label: 'Outgoing Streams', color: 'text-primary',   streams: outgoingStreams, variant: 'outgoing' },
+        ].map(({ icon: Icon, label, color, streams: list, variant }) => (
+          <div key={label} className="space-y-6">
+            <div className="flex justify-between items-center px-2">
+              <div className="flex items-center gap-3">
+                <Icon className={color} size={20} />
+                <h3 className="text-xl font-headline font-bold text-slate-900">{label}</h3>
+              </div>
+              <button onClick={refreshStreams} className="text-slate-400 hover:text-primary transition-colors">
+                <RefreshCw size={16} />
+              </button>
+            </div>
+            {list.length === 0 && !isLoadingStreams ? (
+              <div className="bg-slate-50 rounded-[2.5rem] p-12 border border-slate-100 flex flex-col items-center justify-center text-center min-h-[300px]">
+                <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center text-slate-200 mb-6">
+                  <Icon size={32} />
+                </div>
+                <p className="text-slate-400 text-sm">
+                  {variant === 'incoming' ? 'No incoming streams detected.' : "You haven't initialized any streams."}
+                </p>
+              </div>
+            ) : (
+              <StreamList
+                title=""
+                streams={list}
+                variant={variant}
+                formatEth={formatEth}
+                onWithdraw={withdraw}
+                onCancel={cancel}
+                isLoading={isLoadingStreams}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Service Directory */}
+      <div className="bg-slate-50 p-6 sm:p-10 rounded-[2.5rem] border border-slate-100">
+        <div className="flex justify-between items-center mb-10">
+          <div>
+            <h3 className="text-2xl font-headline font-black uppercase tracking-tighter mb-2">Protected Service Directory</h3>
+            <p className="text-slate-500 text-sm">Configure backend routes that require active payment sessions.</p>
+          </div>
+          <button className="px-6 py-3 bg-slate-900 text-white rounded-xl font-label text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-primary transition-colors">
+            <Plus size={16} /> Register Route
+          </button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          {[1,2,3,4].map(i => (
+            <div key={i} className="bg-white/50 border border-slate-100 rounded-2xl p-8 flex flex-col items-center justify-center text-center">
+              <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-slate-300 mb-4">
+                <Shield size={20} />
+              </div>
+              <p className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-300">Empty Slot</p>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

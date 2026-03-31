@@ -20,13 +20,14 @@ function useCountUp(target, duration = 1600, active = false) {
 
 export default function LandingStats({
   tokenSymbol = "USDC",
-  settlement = "soroban-sac",
+  paymentAssetId = 31337,
   routeCount = 0,
   assetCount = 0,
   contractCount = 0,
 }) {
   const routesValue = useCountUp(routeCount, 1600, true);
   const assetsValue = useCountUp(assetCount, 1600, true);
+  const assetIdValue = useCountUp(paymentAssetId, 1600, true);
   const contractsValue = useCountUp(contractCount, 1600, true);
 
   const stats = [
@@ -39,8 +40,8 @@ export default function LandingStats({
       value: assetsValue.toLocaleString(),
     },
     {
-      label: `${tokenSymbol} Settlement`,
-      value: settlement,
+      label: `${tokenSymbol} Asset ID`,
+      value: assetIdValue.toLocaleString(),
     },
     {
       label: "Contracts Live",
@@ -54,7 +55,7 @@ export default function LandingStats({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           {stats.map((stat, i) => (
             <div key={i} className="space-y-1">
-              <p className="text-3xl font-mono font-bold text-stream-400 tabular-nums">
+              <p className="text-3xl font-mono font-bold text-flowpay-400 tabular-nums">
                 {stat.value}
               </p>
               <p className="text-xs text-surface-400 uppercase tracking-widest">

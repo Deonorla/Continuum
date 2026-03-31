@@ -482,9 +482,14 @@ export function WalletProvider({ children }) {
             networkDetails?.networkPassphrase
             && networkDetails.networkPassphrase !== ACTIVE_NETWORK.passphrase
           ) {
-            throw new Error(
-              `Freighter is connected to ${networkDetails.network || 'a different Stellar network'}. Switch it to ${ACTIVE_NETWORK.name}.`,
+            const current = networkDetails.network || 'Mainnet';
+            setIsWalletPickerOpen(false);
+            setIsConnectingWallet(false);
+            toast.error(
+              `Freighter is on ${current}. Open Freighter → Settings → Network and switch to ${ACTIVE_NETWORK.name}.`,
+              { title: 'Wrong Network', duration: 8000 },
             );
+            return;
           }
 
           const stellarSigner = createFreighterSigner(address);

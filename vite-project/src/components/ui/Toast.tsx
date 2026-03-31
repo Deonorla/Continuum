@@ -1,122 +1,72 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { CheckCircle, XCircle, AlertTriangle, Info, Loader2 } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, Info, Loader2, X } from 'lucide-react';
 import { paymentTokenSymbol } from '../../contactInfo';
 import { ACTIVE_NETWORK } from '../../networkConfig';
 
-// Toast Context
 const ToastContext = createContext(null);
 
-// Toast Types Configuration
-const toastConfig = {
-  success: {
-    Icon: CheckCircle,
-    bgClass: 'bg-white border-slate-100',
-    iconClass: 'text-secondary',
-    textClass: 'text-secondary',
-    barClass: 'bg-secondary',
-  },
-  error: {
-    Icon: XCircle,
-    bgClass: 'bg-white border-red-100',
-    iconClass: 'text-red-500',
-    textClass: 'text-red-500',
-    barClass: 'bg-red-500',
-  },
-  warning: {
-    Icon: AlertTriangle,
-    bgClass: 'bg-white border-amber-100',
-    iconClass: 'text-amber-500',
-    textClass: 'text-amber-500',
-    barClass: 'bg-amber-500',
-  },
-  info: {
-    Icon: Info,
-    bgClass: 'bg-white border-blue-100',
-    iconClass: 'text-primary',
-    textClass: 'text-primary',
-    barClass: 'bg-primary',
-  },
-  loading: {
-    Icon: Loader2,
-    bgClass: 'bg-white border-slate-100',
-    iconClass: 'text-slate-400 animate-spin',
-    textClass: 'text-slate-500',
-    barClass: 'bg-slate-300',
-  },
+const CONFIGS = {
+  success: { Icon: CheckCircle, accent: 'bg-emerald-500', iconClass: 'text-emerald-500', pill: 'bg-emerald-50 text-emerald-600 border-emerald-100' },
+  error:   { Icon: XCircle,     accent: 'bg-red-500',     iconClass: 'text-red-500',     pill: 'bg-red-50 text-red-600 border-red-100'           },
+  warning: { Icon: AlertTriangle,accent: 'bg-amber-400',  iconClass: 'text-amber-500',   pill: 'bg-amber-50 text-amber-600 border-amber-100'     },
+  info:    { Icon: Info,         accent: 'bg-blue-500',   iconClass: 'text-blue-500',    pill: 'bg-blue-50 text-blue-600 border-blue-100'        },
+  loading: { Icon: Loader2,      accent: 'bg-slate-300',  iconClass: 'text-slate-400 animate-spin', pill: 'bg-slate-50 text-slate-500 border-slate-100' },
 };
 
-// Individual Toast Component
 function Toast({ id, type = 'info', title, message, duration = 5000, onDismiss, action }) {
-  const [isExiting, setIsExiting] = useState(false);
-  const config = toastConfig[type] || toastConfig.info;
-  const IconComponent = config.Icon;
+  const [exiting, setExiting] = useState(false);
+  const cfg = CONFIGS[type] || CONFIGS.info;
+  const Icon = cfg.Icon;
 
-  const handleDismiss = useCallback(() => {
-    setIsExiting(true);
-    setTimeout(() => onDismiss(id), 200);
+  const dismiss = useCallback(() => {
+    setExiting(true);
+    setTimeout(() => onDismiss(id), 250);
   }, [id, onDismiss]);
 
-  // Auto-dismiss
   useEffect(() => {
     if (duration && type !== 'loading') {
-      const timer = setTimeout(handleDismiss, duration);
-      return () => clearTimeout(timer);
+      const t = setTimeout(dismiss, duration);
+      return () => clearTimeout(t);
     }
-  }, [duration, type, handleDismiss]);
+  }, [duration, type, dismiss]);
 
   return (
     <div
-      className={`
-        relative flex items-start gap-3 p-4 rounded-2xl border shadow-lg shadow-slate-200/60
-        max-w-sm w-full font-body
-        transition-all duration-200 ease-out
-        ${config.bgClass}
-        ${isExiting ? 'opacity-0 translate-x-full' : 'opacity-100 translate-x-0'}
-        animate-slide-up
-      `}
       role="alert"
+      className={`relative flex items-start gap-3 w-80 bg-white rounded-2xl shadow-xl shadow-black/10 border border-slate-100 overflow-hidden transition-all duration-250
+        ${exiting ? 'opacity-0 translate-x-4 scale-95' : 'opacity-100 translate-x-0 scale-100'}`}
     >
+      {/* Left accent bar */}
+      {/* <div className={`absolute left-0 top-0 bottom-0 w-1 ${cfg.accent}`} /> */}
+
       {/* Icon */}
-      <div className={`flex-shrink-0 mt-0.5 ${config.iconClass}`}>
-        <IconComponent className="w-5 h-5" />
+      <div className={`shrink-0 mt-3.5 ml-4 ${cfg.iconClass}`}>
+        <Icon size={18} />
       </div>
 
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        {title && (
-          <p className="font-bold text-sm text-slate-900 font-headline">{title}</p>
-        )}
-        {message && (
-          <p className="text-sm text-slate-500 mt-0.5 leading-relaxed">{message}</p>
-        )}
+      {/* Body */}
+      <div className="flex-1 min-w-0 py-3 pr-2">
+        {title && <p className="text-sm font-bold text-slate-900 font-headline leading-tight">{title}</p>}
+        {message && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{message}</p>}
         {action && (
           <button
-            onClick={() => { action.onClick(); handleDismiss(); }}
-            className={`mt-2 text-xs font-bold uppercase tracking-widest font-label ${config.textClass} hover:opacity-70 transition-opacity`}
+            onClick={() => { action.onClick(); dismiss(); }}
+            className={`mt-2 text-[10px] font-bold uppercase tracking-widest font-label border rounded-full px-2.5 py-1 transition-opacity hover:opacity-70 ${cfg.pill}`}
           >
             {action.label}
           </button>
         )}
       </div>
 
-      {/* Dismiss Button */}
-      <button
-        onClick={handleDismiss}
-        className="flex-shrink-0 p-1 rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-50 transition-colors"
-        aria-label="Dismiss"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
+      {/* Close */}
+      <button onClick={dismiss} className="shrink-0 mt-2.5 mr-2.5 p-1 rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-50 transition-colors">
+        <X size={14} />
       </button>
 
-      {/* Progress Bar */}
+      {/* Progress bar */}
       {duration && type !== 'loading' && (
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-slate-100 rounded-b-2xl overflow-hidden">
-          <div
-            className={`h-full ${config.barClass}`}
-            style={{ animation: `shrink ${duration}ms linear forwards` }}
-          />
+        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-slate-100">
+          <div className={`h-full ${cfg.accent} opacity-40`} style={{ animation: `toast-shrink ${duration}ms linear forwards` }} />
         </div>
       )}
     </div>
@@ -127,7 +77,7 @@ function Toast({ id, type = 'info', title, message, duration = 5000, onDismiss, 
 function ToastContainer({ toasts, onDismiss }) {
   return (
     <div
-      className="fixed bottom-20 md:bottom-6 right-4 z-[100] flex flex-col gap-2 pointer-events-none"
+      className="fixed bottom-20 md:bottom-6 right-4 z-[200] flex flex-col gap-2 pointer-events-none"
       aria-live="polite"
     >
       {toasts.map((toast) => (
@@ -224,23 +174,8 @@ export function useToast() {
 
 // CSS for shrink animation (add to index.css)
 export const toastStyles = `
-@keyframes shrink {
+@keyframes toast-shrink {
   from { width: 100%; }
   to { width: 0%; }
-}
-
-@keyframes slide-up {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.animate-slide-up {
-  animation: slide-up 0.2s ease-out;
 }
 `;

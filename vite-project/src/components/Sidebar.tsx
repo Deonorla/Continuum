@@ -69,9 +69,9 @@ function SidebarContent({ onNavClick }) {
           )}>
           <FileText size={16} /><span>Docs</span>
         </NavLink>
-        <a href="#" className="flex items-center gap-3 text-slate-500 hover:text-blue-500 px-4 py-2 transition-all">
+        {/* <a href="#" className="flex items-center gap-3 text-slate-500 hover:text-blue-500 px-4 py-2 transition-all">
           <HelpCircle size={16} /><span className="font-headline text-xs">Support</span>
-        </a>
+        </a> */}
       </div>
     </div>
   );

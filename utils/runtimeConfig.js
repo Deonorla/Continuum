@@ -10,7 +10,7 @@ function createRuntimeConfig(overrides = {}) {
     const networkName =
         overrides.networkName
         || process.env.STELLAR_NETWORK_NAME
-        || process.env.FLOWPAY_NETWORK_NAME
+        || process.env.STELLA_NETWORK_NAME
         || "Stellar Testnet";
     const networkPassphrase =
         overrides.networkPassphrase
@@ -29,13 +29,13 @@ function createRuntimeConfig(overrides = {}) {
     const paymentTokenAddress =
         overrides.paymentTokenAddress
         || process.env.STELLAR_USDC_SAC_ADDRESS
-        || process.env.FLOWPAY_PAYMENT_TOKEN_ADDRESS
+        || process.env.STELLA_PAYMENT_TOKEN_ADDRESS
         || "stellar:usdc-sac";
 
     return {
         kind: "stellar",
         chainId: normalizeNumber(
-            overrides.chainId ?? process.env.STELLAR_CHAIN_ID ?? process.env.FLOWPAY_CHAIN_ID,
+            overrides.chainId ?? process.env.STELLAR_CHAIN_ID ?? process.env.STELLA_CHAIN_ID,
             0
         ),
         rpcUrl: sorobanRpcUrl,
@@ -45,7 +45,7 @@ function createRuntimeConfig(overrides = {}) {
         blockExplorerUrl:
             overrides.blockExplorerUrl
             || process.env.STELLAR_BLOCK_EXPLORER_URL
-            || process.env.FLOWPAY_BLOCK_EXPLORER_URL
+            || process.env.STELLA_BLOCK_EXPLORER_URL
             || "https://stellar.expert/explorer/testnet",
         networkName,
         nativeCurrency: {
@@ -58,12 +58,12 @@ function createRuntimeConfig(overrides = {}) {
         paymentTokenSymbol:
             overrides.paymentTokenSymbol
             || process.env.STELLAR_ASSET_CODE
-            || process.env.FLOWPAY_PAYMENT_TOKEN_SYMBOL
+            || process.env.STELLA_PAYMENT_TOKEN_SYMBOL
             || "USDC",
         paymentTokenDecimals: normalizeNumber(
             overrides.paymentTokenDecimals
                 ?? process.env.STELLAR_ASSET_DECIMALS
-                ?? process.env.FLOWPAY_PAYMENT_TOKEN_DECIMALS,
+                ?? process.env.STELLA_PAYMENT_TOKEN_DECIMALS,
             7
         ),
         paymentAssetCode:

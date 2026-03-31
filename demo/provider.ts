@@ -5,7 +5,7 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const flowPayMiddleware = require('../server/middleware/flowPayMiddleware');
+const stellaMiddleware = require('../server/middleware/stellaMiddleware');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { createRuntimeConfig } = require('../utils/runtimeConfig');
 
@@ -18,17 +18,17 @@ function requireEnv(name: string): string {
 }
 
 const runtime = createRuntimeConfig();
-const FLOWPAYSTREAM_ADDRESS =
-  process.env.FLOWPAY_CONTRACT_ADDRESS
-  || process.env.FLOWPAY_SESSION_METER_ADDRESS
+const STELLASTREAM_ADDRESS =
+  process.env.STELLA_CONTRACT_ADDRESS
+  || process.env.STELLA_SESSION_METER_ADDRESS
   || runtime.contractAddress
   || 'stellar:session-meter';
 const PAYMENT_TOKEN_ADDRESS =
-  process.env.FLOWPAY_PAYMENT_TOKEN_ADDRESS
+  process.env.STELLA_PAYMENT_TOKEN_ADDRESS
   || runtime.paymentTokenAddress
   || 'stellar:usdc-sac';
-const RECIPIENT_ADDRESS = requireEnv('FLOWPAY_RECIPIENT_ADDRESS');
-const SESSION_API_URL = process.env.FLOWPAY_SESSION_API_URL || 'http://127.0.0.1:3001';
+const RECIPIENT_ADDRESS = requireEnv('STELLA_RECIPIENT_ADDRESS');
+const SESSION_API_URL = process.env.STELLA_SESSION_API_URL || 'http://127.0.0.1:3001';
 const PORT = Number(process.env.DEMO_PROVIDER_PORT || 3005);
 const HOST = process.env.DEMO_PROVIDER_HOST || '127.0.0.1';
 
@@ -48,7 +48,7 @@ app.use(express.json());
 const config = {
   paymentTokenAddress: PAYMENT_TOKEN_ADDRESS,
   recipientAddress: RECIPIENT_ADDRESS,
-  flowPayContractAddress: FLOWPAYSTREAM_ADDRESS,
+  stellaContractAddress: STELLASTREAM_ADDRESS,
   runtimeKind: runtime.kind,
   sessionApiUrl: SESSION_API_URL,
   rpcUrl: runtime.rpcUrl,
@@ -69,21 +69,21 @@ const config = {
 
 console.log('Provider configuration:');
 console.log(`   Network: ${runtime.networkName}`);
-console.log(`   Session meter: ${FLOWPAYSTREAM_ADDRESS}`);
+console.log(`   Session meter: ${STELLASTREAM_ADDRESS}`);
 console.log(`   Payment token: ${PAYMENT_TOKEN_ADDRESS}`);
 console.log(`   Recipient: ${RECIPIENT_ADDRESS}`);
 console.log(`   RPC URL: ${runtime.rpcUrl}`);
 console.log(`   Token symbol: ${runtime.paymentTokenSymbol}`);
 console.log(`   Session API: ${SESSION_API_URL}`);
 
-app.use(flowPayMiddleware(config));
+app.use(stellaMiddleware(config));
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now(), network: runtime.networkName });
 });
 
 app.get('/api/premium', (req: any, res) => {
-  const streamId = req.flowPay?.streamId || 'unknown';
+  const streamId = req.stella?.streamId || 'unknown';
 
   console.log(`Serving premium content for session #${streamId}`);
 
@@ -97,8 +97,8 @@ app.get('/api/premium', (req: any, res) => {
 });
 
 app.get('/api/ai-insight', (req: any, res) => {
-  const streamId = req.flowPay?.streamId || 'unknown';
-  const txHash = req.flowPay?.txHash;
+  const streamId = req.stella?.streamId || 'unknown';
+  const txHash = req.stella?.txHash;
 
   console.log(`Serving AI insight for session #${streamId}`);
 
@@ -118,7 +118,7 @@ app.get('/api/info', (_req, res) => {
     version: '1.0.0',
     network: runtime.networkName,
     contracts: {
-      flowPayStream: FLOWPAYSTREAM_ADDRESS,
+      stellaStream: STELLASTREAM_ADDRESS,
       paymentToken: PAYMENT_TOKEN_ADDRESS,
     },
     protectedRoutes: [

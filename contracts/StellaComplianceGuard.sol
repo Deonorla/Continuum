@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./utils/Owned.sol";
 
-contract FlowPayComplianceGuard is Owned {
+contract StellaComplianceGuard is Owned {
     struct ComplianceRecord {
         bool approved;
         uint64 expiry;
@@ -68,7 +68,7 @@ contract FlowPayComplianceGuard is Owned {
     modifier onlyController() {
         require(
             msg.sender == controller || msg.sender == owner() || operators[msg.sender],
-            "FlowPayComplianceGuard: caller is not controller"
+            "StellaComplianceGuard: caller is not controller"
         );
         _;
     }

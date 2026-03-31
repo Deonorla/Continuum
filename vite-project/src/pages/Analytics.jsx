@@ -51,7 +51,7 @@ export default function Analytics() {
               onClick={() => setTimeRange(range)}
               className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
                 timeRange === range
-                  ? 'bg-flowpay-500/20 text-flowpay-300 border border-flowpay-500/30'
+                  ? 'bg-stella-500/20 text-stella-300 border border-stella-500/30'
                   : 'text-white/60 hover:text-white hover:bg-white/5'
               }`}
             >

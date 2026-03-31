@@ -488,17 +488,17 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
           headers: ["Header", "Meaning"],
           rows: [
             [
-              "X-FlowPay-Mode",
+              "X-Stella-Mode",
               "Whether the route expects streaming, direct payment, or a hybrid path",
             ],
-            ["X-FlowPay-Rate", "How much value is required"],
-            ["X-FlowPay-Token", "Which token is accepted"],
+            ["X-Stella-Rate", "How much value is required"],
+            ["X-Stella-Token", "Which token is accepted"],
             [
-              "X-FlowPay-Recipient",
+              "X-Stella-Recipient",
               "Which service wallet should receive value",
             ],
             [
-              "X-FlowPay-Contract",
+              "X-Stella-Contract",
               stellar
                 ? "Which session rail or relay surface the runtime should use"
                 : "Which stream contract the runtime should use",
@@ -523,9 +523,9 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
             "API keys identify a client. They do not solve pricing, per-route payment terms, or onchain settlement for autonomous agents.",
         },
         {
-          question: "Why do some payment headers still say FlowPay?",
+          question: "Why do some payment headers still say Stella?",
           answer:
-            "Those are legacy wire-format names kept for compatibility with the current runtime and SDK. Product-facing branding is Stella's Stream Engine, but the live HTTP header keys still use the older X-FlowPay-* prefix today.",
+            "Because the active wire protocol uses X-Stella-* headers for payment negotiation. The product name is Stella's Stream Engine, and those header names are part of the current runtime contract between client and server.",
         },
       ],
     },
@@ -1299,10 +1299,10 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
         },
         {
           question:
-            "Why do the onchain deployment ids still say FlowPay?",
+            "Why do the onchain deployment ids still say Stella?",
           answer:
             stellar
-              ? "Because the repo still carries legacy FlowPay identifiers for compatibility with older code, docs, and archived deployments. The product is now Stella's Stream Engine, but not every internal name was worth breaking for the hackathon pivot."
+              ? "Because the repo uses concise Stella-prefixed runtime names for SDK classes, headers, and contract labels while the product name stays Stella's Stream Engine."
               : "Those are the actual deployed Solidity contract identifiers. The product is now Stella's Stream Engine, but the deployed contract names were kept so the existing chain deployment, ABI references, and tooling did not have to be broken or redeployed just for naming.",
         },
         {

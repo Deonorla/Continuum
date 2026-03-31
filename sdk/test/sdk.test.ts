@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { FlowPaySDK } from '../src/FlowPaySDK';
+import { StellaSDK } from '../src/StellaSDK';
 import { Wallet, ethers } from 'ethers';
 import express, { Express } from 'express';
 import { Server } from 'http';
@@ -11,19 +11,19 @@ app.use(express.json());
 
 // Mock 402 Route
 app.get('/api/resource', (req, res) => {
-    const streamId = req.headers['x-flowpay-stream-id'];
+    const streamId = req.headers['x-stella-stream-id'];
     if (streamId === '12345') {
         res.json({ success: true, da: 'ta' });
     } else {
         res.status(402).set({
             'X-Payment-Required': 'true',
-            'X-FlowPay-Mode': 'streaming',
-            'X-FlowPay-Rate': '0.0001',
-            'X-FlowPay-Token': '0xToken',
+            'X-Stella-Mode': 'streaming',
+            'X-Stella-Rate': '0.0001',
+            'X-Stella-Token': 'stellar:usdc-sac',
             'X-Payment-Currency': 'USDC',
-            'X-FlowPay-Recipient': '0x0000000000000000000000000000000000000abc',
-            'X-FlowPay-Contract': '0xContract',
-            'X-FlowPay-Token-Decimals': '6'
+            'X-Stella-Recipient': 'GCI4OKCKDRFMYEB2J4KGC25ZH3NGNQDVCUIJFCZTTFYUKYHMANQYZ5QF',
+            'X-Stella-Contract': 'stellar:session-meter',
+            'X-Stella-Token-Decimals': '6'
         }).json({
             error: "Payment Required"
         });
@@ -38,19 +38,19 @@ app.get('/api/secure', (req, res) => {
     }
 
     // Auth success, now check payment
-    const streamId = req.headers['x-flowpay-stream-id'];
+    const streamId = req.headers['x-stella-stream-id'];
     if (streamId === '12345') {
         res.json({ success: true, secure: 'data' });
     } else {
         res.status(402).set({
             'X-Payment-Required': 'true',
-            'X-FlowPay-Mode': 'streaming',
-            'X-FlowPay-Rate': '0.0002', // Higher rate
-            'X-FlowPay-Token': '0xToken',
+            'X-Stella-Mode': 'streaming',
+            'X-Stella-Rate': '0.0002', // Higher rate
+            'X-Stella-Token': 'stellar:usdc-sac',
             'X-Payment-Currency': 'USDC',
-            'X-FlowPay-Recipient': '0x0000000000000000000000000000000000000abc',
-            'X-FlowPay-Contract': '0xContract',
-            'X-FlowPay-Token-Decimals': '6'
+            'X-Stella-Recipient': 'GCI4OKCKDRFMYEB2J4KGC25ZH3NGNQDVCUIJFCZTTFYUKYHMANQYZ5QF',
+            'X-Stella-Contract': 'stellar:session-meter',
+            'X-Stella-Token-Decimals': '6'
         }).json({
             error: "Payment Required"
         });
@@ -61,8 +61,8 @@ let server: Server;
 const PORT = 3005;
 const BASE_URL = `http://localhost:${PORT}`;
 
-describe('FlowPaySDK Integration & Property Tests', () => {
-    let sdk: FlowPaySDK;
+describe('StellaSDK Integration & Property Tests', () => {
+    let sdk: StellaSDK;
     let createStreamSpy: any;
 
     before((done) => {
@@ -75,7 +75,7 @@ describe('FlowPaySDK Integration & Property Tests', () => {
 
     beforeEach(() => {
         // Init SDK with dummy config
-        sdk = new FlowPaySDK({
+        sdk = new StellaSDK({
             privateKey: Wallet.createRandom().privateKey,
             rpcUrl: 'http://localhost:8545',
             apiKey: 'secret-key' // Default valid key
@@ -113,9 +113,9 @@ describe('FlowPaySDK Integration & Property Tests', () => {
     it('Property 4: Should fail if mode is not streaming', async () => {
         app.get('/api/badmode', (req, res) => {
             res.status(402).set({
-                'X-FlowPay-Mode': 'one-time',
-                'X-FlowPay-Contract': '0xContract',
-                'X-FlowPay-Recipient': '0x0000000000000000000000000000000000000abc'
+                'X-Stella-Mode': 'one-time',
+                'X-Stella-Contract': 'stellar:session-meter',
+                'X-Stella-Recipient': 'GCI4OKCKDRFMYEB2J4KGC25ZH3NGNQDVCUIJFCZTTFYUKYHMANQYZ5QF'
             }).end();
         });
 
@@ -154,7 +154,7 @@ describe('FlowPaySDK Integration & Property Tests', () => {
     });
 
     it('Property 14: Should fail with 401 if API key is invalid', async () => {
-        const badSdk = new FlowPaySDK({
+        const badSdk = new StellaSDK({
             privateKey: Wallet.createRandom().privateKey,
             rpcUrl: 'http://localhost:8545',
             apiKey: 'wrong-key'

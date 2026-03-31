@@ -1,9 +1,9 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-describe("FlowPayStream", function () {
-    let FlowPayStream;
-    let flowPayStream;
+describe("StellaStream", function () {
+    let StellaStream;
+    let stellaStream;
     let MockUSDC;
     let mockUSDC;
     let owner;
@@ -18,16 +18,16 @@ describe("FlowPayStream", function () {
         mockUSDC = await MockUSDC.deploy();
         await mockUSDC.waitForDeployment();
 
-        FlowPayStream = await ethers.getContractFactory("FlowPayStream");
-        flowPayStream = await FlowPayStream.deploy(await mockUSDC.getAddress());
-        await flowPayStream.waitForDeployment();
+        StellaStream = await ethers.getContractFactory("StellaStream");
+        stellaStream = await StellaStream.deploy(await mockUSDC.getAddress());
+        await stellaStream.waitForDeployment();
 
         await mockUSDC.mint(owner.address, parseUsdc("1000"));
     });
 
     describe("Deployment", function () {
         it("Should set the right payment token address", async function () {
-            expect(await flowPayStream.paymentToken()).to.equal(await mockUSDC.getAddress());
+            expect(await stellaStream.paymentToken()).to.equal(await mockUSDC.getAddress());
         });
     });
 
@@ -36,22 +36,22 @@ describe("FlowPayStream", function () {
             const amount = parseUsdc("100");
             const duration = 100;
 
-            await mockUSDC.approve(await flowPayStream.getAddress(), amount);
+            await mockUSDC.approve(await stellaStream.getAddress(), amount);
 
-            const tx = await flowPayStream.createStream(recipient.address, duration, amount, "metadata");
+            const tx = await stellaStream.createStream(recipient.address, duration, amount, "metadata");
             const receipt = await tx.wait();
 
             // Check event
             const event = receipt.logs.find(log => {
                 try {
-                    return flowPayStream.interface.parseLog(log).name === 'StreamCreated';
+                    return stellaStream.interface.parseLog(log).name === 'StreamCreated';
                 } catch (e) {
                     return false;
                 }
             });
             expect(event).to.not.be.undefined;
 
-            const args = flowPayStream.interface.parseLog(event).args;
+            const args = stellaStream.interface.parseLog(event).args;
             expect(args.recipient).to.equal(recipient.address);
             expect(args.totalAmount).to.equal(amount);
             expect(args.metadata).to.equal("metadata");
@@ -62,7 +62,7 @@ describe("FlowPayStream", function () {
             const duration = 100;
 
             await expect(
-                flowPayStream.createStream(recipient.address, duration, amount, "metadata")
+                stellaStream.createStream(recipient.address, duration, amount, "metadata")
             ).to.be.revertedWith("ERC20: transfer amount exceeds allowance");
         });
     });
@@ -72,19 +72,19 @@ describe("FlowPayStream", function () {
             const amount = parseUsdc("100");
             const duration = 100;
 
-            await mockUSDC.approve(await flowPayStream.getAddress(), amount);
-            await flowPayStream.createStream(recipient.address, duration, amount, "metadata");
+            await mockUSDC.approve(await stellaStream.getAddress(), amount);
+            await stellaStream.createStream(recipient.address, duration, amount, "metadata");
 
             await ethers.provider.send("evm_increaseTime", [50]);
             await ethers.provider.send("evm_mine");
 
             const streamId = 1;
-            const claimable = await flowPayStream.getClaimableBalance(streamId);
+            const claimable = await stellaStream.getClaimableBalance(streamId);
 
             expect(claimable).to.be.closeTo(parseUsdc("50"), parseUsdc("1"));
 
             const recipientBalanceBefore = await mockUSDC.balanceOf(recipient.address);
-            await flowPayStream.connect(recipient).withdrawFromStream(streamId);
+            await stellaStream.connect(recipient).withdrawFromStream(streamId);
             const recipientBalanceAfter = await mockUSDC.balanceOf(recipient.address);
 
             expect(recipientBalanceAfter - recipientBalanceBefore).to.be.closeTo(claimable, parseUsdc("2"));
@@ -96,8 +96,8 @@ describe("FlowPayStream", function () {
             const amount = parseUsdc("100");
             const duration = 100;
 
-            await mockUSDC.approve(await flowPayStream.getAddress(), amount);
-            await flowPayStream.createStream(recipient.address, duration, amount, "metadata");
+            await mockUSDC.approve(await stellaStream.getAddress(), amount);
+            await stellaStream.createStream(recipient.address, duration, amount, "metadata");
 
             await ethers.provider.send("evm_increaseTime", [50]);
             await ethers.provider.send("evm_mine");
@@ -105,12 +105,12 @@ describe("FlowPayStream", function () {
             const streamId = 1;
 
             const senderBalanceBefore = await mockUSDC.balanceOf(owner.address);
-            await flowPayStream.cancelStream(streamId);
+            await stellaStream.cancelStream(streamId);
             const senderBalanceAfter = await mockUSDC.balanceOf(owner.address);
 
             expect(senderBalanceAfter - senderBalanceBefore).to.be.closeTo(parseUsdc("50"), parseUsdc("1"));
 
-            expect(await flowPayStream.isStreamActive(streamId)).to.be.false;
+            expect(await stellaStream.isStreamActive(streamId)).to.be.false;
         });
     });
 
@@ -118,9 +118,9 @@ describe("FlowPayStream", function () {
         it("Should return true for active stream", async function () {
             const amount = parseUsdc("100");
             const duration = 100;
-            await mockUSDC.approve(await flowPayStream.getAddress(), amount);
-            await flowPayStream.createStream(recipient.address, duration, amount, "metadata");
-            expect(await flowPayStream.isStreamActive(1)).to.be.true;
+            await mockUSDC.approve(await stellaStream.getAddress(), amount);
+            await stellaStream.createStream(recipient.address, duration, amount, "metadata");
+            expect(await stellaStream.isStreamActive(1)).to.be.true;
         });
     });
 });

@@ -1,25 +1,25 @@
 import axios from "axios";
 import { InterfaceAbi } from "ethers";
-import { FlowPayTransactionAdapter, StreamCreationResult } from "./transactionAdapter";
+import { StellaTransactionAdapter, StreamCreationResult } from "./transactionAdapter";
 
-export interface FlowPayStellarAdapterConfig {
+export interface StellaStellarAdapterConfig {
     apiBaseUrl: string;
     senderAddress: string;
 }
 
-export class FlowPayStellarAdapter implements FlowPayTransactionAdapter {
+export class StellaStellarAdapter implements StellaTransactionAdapter {
     private apiBaseUrl: string;
     private senderAddress: string;
 
-    constructor(config: FlowPayStellarAdapterConfig) {
+    constructor(config: StellaStellarAdapterConfig) {
         this.apiBaseUrl = String(config.apiBaseUrl || "").replace(/\/$/, "");
         this.senderAddress = String(config.senderAddress || "").trim();
 
         if (!this.apiBaseUrl) {
-            throw new Error("FlowPayStellarAdapter requires apiBaseUrl");
+            throw new Error("StellaStellarAdapter requires apiBaseUrl");
         }
         if (!this.senderAddress) {
-            throw new Error("FlowPayStellarAdapter requires senderAddress");
+            throw new Error("StellaStellarAdapter requires senderAddress");
         }
     }
 
@@ -63,7 +63,7 @@ export class FlowPayStellarAdapter implements FlowPayTransactionAdapter {
         functionName: string,
         args: unknown[]
     ): Promise<unknown> {
-        throw new Error(`FlowPayStellarAdapter does not support direct contract call passthrough (${functionName}). Use the RWA client relay APIs instead.`);
+        throw new Error(`StellaStellarAdapter does not support direct contract call passthrough (${functionName}). Use the RWA client relay APIs instead.`);
     }
 
     async readContract<T = unknown>(
@@ -82,6 +82,6 @@ export class FlowPayStellarAdapter implements FlowPayTransactionAdapter {
             return response.data?.session as T;
         }
 
-        throw new Error(`FlowPayStellarAdapter does not support readContract(${functionName})`);
+        throw new Error(`StellaStellarAdapter does not support readContract(${functionName})`);
     }
 }

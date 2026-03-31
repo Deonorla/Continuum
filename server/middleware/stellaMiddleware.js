@@ -32,16 +32,16 @@ function send402Response(res, routeConfig, config, requiredAmount, tokenDecimals
         : "";
 
     res.set("X-Payment-Required", "true");
-    res.set("X-FlowPay-Mode", routeConfig.mode || "streaming");
-    res.set("X-FlowPay-Rate", ethers.formatUnits(requiredAmount, tokenDecimals));
-    res.set("X-FlowPay-Token", paymentTokenAddress);
-    res.set("X-FlowPay-Token-Decimals", String(tokenDecimals));
+    res.set("X-Stella-Mode", routeConfig.mode || "streaming");
+    res.set("X-Stella-Rate", ethers.formatUnits(requiredAmount, tokenDecimals));
+    res.set("X-Stella-Token", paymentTokenAddress);
+    res.set("X-Stella-Token-Decimals", String(tokenDecimals));
     res.set("X-Payment-Currency", tokenSymbol);
-    res.set("X-FlowPay-Settlement", String(config.settlement || "soroban-sac"));
-    res.set("X-FlowPay-Contract", config.flowPayContractAddress || "");
-    res.set("X-FlowPay-Recipient", config.recipientAddress || "");
+    res.set("X-Stella-Settlement", String(config.settlement || "soroban-sac"));
+    res.set("X-Stella-Contract", config.stellaContractAddress || "");
+    res.set("X-Stella-Recipient", config.recipientAddress || "");
     if (sessionEndpoint) {
-        res.set("X-FlowPay-Session-Endpoint", sessionEndpoint);
+        res.set("X-Stella-Session-Endpoint", sessionEndpoint);
     }
 
     res.status(402).json({
@@ -50,7 +50,7 @@ function send402Response(res, routeConfig, config, requiredAmount, tokenDecimals
             mode: routeConfig.mode || "streaming",
             price: ethers.formatUnits(requiredAmount, tokenDecimals),
             currency: tokenSymbol,
-            contract: config.flowPayContractAddress || "",
+            contract: config.stellaContractAddress || "",
             recipient: config.recipientAddress || "",
             token: paymentTokenAddress,
             decimals: tokenDecimals,
@@ -60,7 +60,7 @@ function send402Response(res, routeConfig, config, requiredAmount, tokenDecimals
     });
 }
 
-const flowPayMiddleware = (config) => {
+const stellaMiddleware = (config) => {
     const tokenDecimals = Number.isFinite(Number(config.tokenDecimals))
         ? Number(config.tokenDecimals)
         : 7;
@@ -92,16 +92,16 @@ const flowPayMiddleware = (config) => {
             || Number(routeConfig.price || "0") <= 0;
 
         if (isFreeRoute) {
-            req.flowPay = { mode: "free" };
+            req.stella = { mode: "free" };
             return next();
         }
 
         const requiredAmount = ethers.parseUnits(routeConfig.price || "0", tokenDecimals);
-        const txHashHeader = req.headers["x-flowpay-tx-hash"];
-        const streamIdHeader = req.headers["x-flowpay-stream-id"];
+        const txHashHeader = req.headers["x-stella-tx-hash"];
+        const streamIdHeader = req.headers["x-stella-stream-id"];
 
         if (txHashHeader) {
-            req.flowPay = {
+            req.stella = {
                 txHash: String(txHashHeader),
                 mode: "direct",
             };
@@ -142,17 +142,17 @@ const flowPayMiddleware = (config) => {
                 });
             }
 
-            req.flowPay = {
+            req.stella = {
                 streamId: String(streamIdHeader),
                 mode: "streaming",
                 session,
             };
             return next();
         } catch (error) {
-            console.error("[FlowPay] Session verification failed:", error);
+            console.error("[Stella] Session verification failed:", error);
             return send402Response(res, routeConfig, config, requiredAmount, tokenDecimals);
         }
     };
 };
 
-module.exports = flowPayMiddleware;
+module.exports = stellaMiddleware;

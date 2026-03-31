@@ -1,14 +1,14 @@
 import { Request, Response } from 'express';
-import { FlowPaySDK } from './FlowPaySDK';
+import { StellaSDK } from './StellaSDK';
 import axios from 'axios';
 import { formatPaymentAmount, parsePaymentAmount, resolvePaymentTokenConfig } from './tokenConfig';
 
-export class FlowPayProxy {
-    private sdk: FlowPaySDK;
+export class StellaProxy {
+    private sdk: StellaSDK;
     private marginPercent: number;
     private tokenDecimals: number;
 
-    constructor(sdk: FlowPaySDK, marginPercent: number = 10) {
+    constructor(sdk: StellaSDK, marginPercent: number = 10) {
         this.sdk = sdk;
         this.marginPercent = marginPercent;
         this.tokenDecimals = resolvePaymentTokenConfig().decimals;
@@ -26,7 +26,7 @@ export class FlowPayProxy {
             return "0"; // Free?
         } catch (error: any) {
             if (axios.isAxiosError(error) && error.response && error.response.status === 402) {
-                const downstreamRate = error.response.headers['x-flowpay-rate'];
+                const downstreamRate = error.response.headers['x-stella-rate'];
                 if (!downstreamRate) return "0.0001"; // Fallback
 
                 const rateBn = parsePaymentAmount(downstreamRate, this.tokenDecimals);
@@ -51,7 +51,7 @@ export class FlowPayProxy {
         // We assume we are already paid (Middleware passed).
         // Now we use our SDK to pay the downstream.
 
-        console.log(`[FlowPayProxy] Forwarding to ${downstreamUrl}...`);
+        console.log(`[StellaProxy] Forwarding to ${downstreamUrl}...`);
 
         return await this.sdk.makeRequest(downstreamUrl, {
             method,

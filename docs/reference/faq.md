@@ -147,6 +147,6 @@ Verification checks:
 
 ## Naming
 
-### Why do I still see "FlowPay" names in code?
+### Why do some classes use short "Stella" names?
 
-Some internal classes still use earlier implementation-era names such as `FlowPaySDK` and `FlowPayRWAClient`. The product name and runtime story are Stella's Stream Engine.
+The product name is **Stella's Stream Engine**. Some runtime classes use concise names such as `StellaSDK` and `StellaRWAClient` because they are the active SDK surfaces exposed to developers.

@@ -23,10 +23,10 @@
 ## SDK Reference
 
 * [Overview](sdk/README.md)
-* [FlowPaySDK](sdk/flowpay-sdk.md)
+* [StellaSDK](sdk/stella-sdk.md)
 * [GeminiPaymentBrain](sdk/gemini-payment-brain.md)
 * [SpendingMonitor](sdk/spending-monitor.md)
-* [FlowPayProxy](sdk/flowpay-proxy.md)
+* [StellaProxy](sdk/stella-proxy.md)
 
 ## API Reference
 

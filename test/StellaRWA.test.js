@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-describe("FlowPay RWA Module", function () {
+describe("Stella RWA Module", function () {
     let owner;
     let operator;
     let issuer;
@@ -83,28 +83,28 @@ describe("FlowPay RWA Module", function () {
         mockUSDC = await MockUSDC.deploy();
         await mockUSDC.waitForDeployment();
 
-        const FlowPayAssetNFT = await ethers.getContractFactory("FlowPayAssetNFT");
-        assetNFT = await FlowPayAssetNFT.deploy("Stream Engine Rental Asset", "SERA");
+        const StellaAssetNFT = await ethers.getContractFactory("StellaAssetNFT");
+        assetNFT = await StellaAssetNFT.deploy("Stream Engine Rental Asset", "SERA");
         await assetNFT.waitForDeployment();
 
-        const FlowPayAssetRegistry = await ethers.getContractFactory("FlowPayAssetRegistry");
-        registry = await FlowPayAssetRegistry.deploy();
+        const StellaAssetRegistry = await ethers.getContractFactory("StellaAssetRegistry");
+        registry = await StellaAssetRegistry.deploy();
         await registry.waitForDeployment();
 
-        const FlowPayComplianceGuard = await ethers.getContractFactory("FlowPayComplianceGuard");
-        guard = await FlowPayComplianceGuard.deploy();
+        const StellaComplianceGuard = await ethers.getContractFactory("StellaComplianceGuard");
+        guard = await StellaComplianceGuard.deploy();
         await guard.waitForDeployment();
 
-        const FlowPayAssetStream = await ethers.getContractFactory("FlowPayAssetStream");
-        assetStream = await FlowPayAssetStream.deploy(await mockUSDC.getAddress(), await assetNFT.getAddress());
+        const StellaAssetStream = await ethers.getContractFactory("StellaAssetStream");
+        assetStream = await StellaAssetStream.deploy(await mockUSDC.getAddress(), await assetNFT.getAddress());
         await assetStream.waitForDeployment();
 
-        const FlowPayAssetAttestationRegistry = await ethers.getContractFactory("FlowPayAssetAttestationRegistry");
-        attestationRegistry = await FlowPayAssetAttestationRegistry.deploy();
+        const StellaAssetAttestationRegistry = await ethers.getContractFactory("StellaAssetAttestationRegistry");
+        attestationRegistry = await StellaAssetAttestationRegistry.deploy();
         await attestationRegistry.waitForDeployment();
 
-        const FlowPayRWAHub = await ethers.getContractFactory("FlowPayRWAHub");
-        hub = await FlowPayRWAHub.deploy(
+        const StellaRWAHub = await ethers.getContractFactory("StellaRWAHub");
+        hub = await StellaRWAHub.deploy(
             await assetNFT.getAddress(),
             await registry.getAddress(),
             await guard.getAddress(),
@@ -148,7 +148,7 @@ describe("FlowPay RWA Module", function () {
     it("rejects minting when the issuer is not approved", async function () {
         await hub.connect(operator).setIssuerApproval(issuer.address, false, "offboarded issuer");
 
-        await expect(mintAsset()).to.be.revertedWith("FlowPayRWAHub: issuer not approved");
+        await expect(mintAsset()).to.be.revertedWith("StellaRWAHub: issuer not approved");
     });
 
     it("mints a verified rental twin with evidence and property identity fields", async function () {
@@ -230,17 +230,17 @@ describe("FlowPay RWA Module", function () {
 
         await hub.setAssetPolicy(minted.tokenId, true, false, false, "rent dispute hold");
         await expect(hub.connect(issuer).claimYield(minted.tokenId)).to.be.revertedWith(
-            "FlowPayAssetStream: asset frozen"
+            "StellaAssetStream: asset frozen"
         );
 
         await hub.setAssetPolicy(minted.tokenId, false, true, false, "tenant dispute");
         await expect(hub.connect(issuer).flashAdvance(minted.tokenId, parseUsdc("10"))).to.be.revertedWith(
-            "FlowPayAssetStream: asset disputed"
+            "StellaAssetStream: asset disputed"
         );
 
         await hub.setAssetPolicy(minted.tokenId, false, false, true, "asset revoked");
         await expect(hub.connect(issuer).flashAdvance(minted.tokenId, parseUsdc("10"))).to.be.revertedWith(
-            "FlowPayAssetStream: asset revoked"
+            "StellaAssetStream: asset revoked"
         );
     });
 

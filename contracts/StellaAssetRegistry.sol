@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./utils/Owned.sol";
 
-contract FlowPayAssetRegistry is Owned {
+contract StellaAssetRegistry is Owned {
     uint8 public constant STATUS_DRAFT = 0;
     uint8 public constant STATUS_PENDING_ATTESTATION = 1;
     uint8 public constant STATUS_VERIFIED = 2;
@@ -72,7 +72,7 @@ contract FlowPayAssetRegistry is Owned {
     );
 
     modifier onlyController() {
-        require(msg.sender == controller, "FlowPayAssetRegistry: caller is not controller");
+        require(msg.sender == controller, "StellaAssetRegistry: caller is not controller");
         _;
     }
 
@@ -97,7 +97,7 @@ contract FlowPayAssetRegistry is Owned {
         uint8 verificationStatus,
         string calldata statusReason
     ) external onlyController {
-        require(!assets[tokenId].exists, "FlowPayAssetRegistry: asset already exists");
+        require(!assets[tokenId].exists, "StellaAssetRegistry: asset already exists");
 
         assets[tokenId] = AssetRecord({
             assetType: assetType,
@@ -215,6 +215,6 @@ contract FlowPayAssetRegistry is Owned {
 
     function _getAsset(uint256 tokenId) internal view returns (AssetRecord storage asset) {
         asset = assets[tokenId];
-        require(asset.exists, "FlowPayAssetRegistry: asset not found");
+        require(asset.exists, "StellaAssetRegistry: asset not found");
     }
 }

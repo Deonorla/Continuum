@@ -1,5 +1,5 @@
-import { FlowPaySDK } from '../sdk/src/FlowPaySDK';
-import { FlowPayStellarAdapter } from '../sdk/src/FlowPayStellarAdapter';
+import { StellaSDK } from '../sdk/src/StellaSDK';
+import { StellaStellarAdapter } from '../sdk/src/StellaStellarAdapter';
 import { ethers } from 'ethers';
 import * as dotenv from 'dotenv';
 
@@ -20,7 +20,7 @@ async function runDemo() {
   const runtime = createRuntimeConfig();
   const targetUrl = process.env.DEMO_TARGET_URL || 'http://127.0.0.1:3005/api/premium';
   const senderAddress = requireEnv('DEMO_STELLAR_SENDER');
-  const sessionApiUrl = process.env.FLOWPAY_SESSION_API_URL || 'http://127.0.0.1:3001';
+  const sessionApiUrl = process.env.STELLA_SESSION_API_URL || 'http://127.0.0.1:3001';
 
   console.log('Starting Stella\'s Stream Engine demo consumer...\n');
   console.log(`Target URL: ${targetUrl}`);
@@ -33,12 +33,12 @@ async function runDemo() {
     console.warn('GEMINI_API_KEY not found. The SDK will use fallback heuristics for payment strategy.');
   }
 
-  const adapter = new FlowPayStellarAdapter({
+  const adapter = new StellaStellarAdapter({
     apiBaseUrl: sessionApiUrl,
     senderAddress,
   });
 
-  const sdk = new FlowPaySDK({
+  const sdk = new StellaSDK({
     rpcUrl: runtime.rpcUrl,
     agentId: 'stream-engine-demo-agent',
     adapter,

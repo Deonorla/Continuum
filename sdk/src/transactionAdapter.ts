@@ -5,7 +5,7 @@ export interface StreamCreationResult {
     startTime: bigint;
 }
 
-export interface FlowPayTransactionAdapter {
+export interface StellaTransactionAdapter {
     approveToken(tokenAddress: string, spender: string, amount: bigint): Promise<unknown>;
     transferToken(tokenAddress: string, recipient: string, amount: bigint): Promise<{ hash?: string } | unknown>;
     createStream(

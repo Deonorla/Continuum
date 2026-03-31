@@ -2,13 +2,13 @@
 pragma solidity ^0.8.20;
 
 import "./utils/Owned.sol";
-import "./FlowPayAssetNFT.sol";
-import "./FlowPayAssetRegistry.sol";
-import "./FlowPayComplianceGuard.sol";
-import "./FlowPayAssetStream.sol";
-import "./FlowPayAssetAttestationRegistry.sol";
+import "./StellaAssetNFT.sol";
+import "./StellaAssetRegistry.sol";
+import "./StellaComplianceGuard.sol";
+import "./StellaAssetStream.sol";
+import "./StellaAssetAttestationRegistry.sol";
 
-contract FlowPayRWAHub is Owned {
+contract StellaRWAHub is Owned {
     uint8 private constant MIN_ATTESTATION_ROLE = 1;
     uint8 private constant MAX_ATTESTATION_ROLE = 7;
     uint8 public constant STATUS_PENDING_ATTESTATION = 1;
@@ -39,11 +39,11 @@ contract FlowPayRWAHub is Owned {
         address currentOwner;
     }
 
-    FlowPayAssetNFT public immutable assetNFT;
-    FlowPayAssetRegistry public immutable assetRegistry;
-    FlowPayComplianceGuard public immutable complianceGuard;
-    FlowPayAssetStream public immutable assetStream;
-    FlowPayAssetAttestationRegistry public immutable attestationRegistry;
+    StellaAssetNFT public immutable assetNFT;
+    StellaAssetRegistry public immutable assetRegistry;
+    StellaComplianceGuard public immutable complianceGuard;
+    StellaAssetStream public immutable assetStream;
+    StellaAssetAttestationRegistry public immutable attestationRegistry;
 
     event AssetMinted(
         uint256 indexed tokenId,
@@ -75,17 +75,17 @@ contract FlowPayRWAHub is Owned {
         address assetStream_,
         address attestationRegistry_
     ) {
-        require(assetNFT_ != address(0), "FlowPayRWAHub: nft is zero");
-        require(assetRegistry_ != address(0), "FlowPayRWAHub: registry is zero");
-        require(complianceGuard_ != address(0), "FlowPayRWAHub: guard is zero");
-        require(assetStream_ != address(0), "FlowPayRWAHub: stream is zero");
-        require(attestationRegistry_ != address(0), "FlowPayRWAHub: attestation registry is zero");
+        require(assetNFT_ != address(0), "StellaRWAHub: nft is zero");
+        require(assetRegistry_ != address(0), "StellaRWAHub: registry is zero");
+        require(complianceGuard_ != address(0), "StellaRWAHub: guard is zero");
+        require(assetStream_ != address(0), "StellaRWAHub: stream is zero");
+        require(attestationRegistry_ != address(0), "StellaRWAHub: attestation registry is zero");
 
-        assetNFT = FlowPayAssetNFT(assetNFT_);
-        assetRegistry = FlowPayAssetRegistry(assetRegistry_);
-        complianceGuard = FlowPayComplianceGuard(complianceGuard_);
-        assetStream = FlowPayAssetStream(assetStream_);
-        attestationRegistry = FlowPayAssetAttestationRegistry(attestationRegistry_);
+        assetNFT = StellaAssetNFT(assetNFT_);
+        assetRegistry = StellaAssetRegistry(assetRegistry_);
+        complianceGuard = StellaComplianceGuard(complianceGuard_);
+        assetStream = StellaAssetStream(assetStream_);
+        attestationRegistry = StellaAssetAttestationRegistry(attestationRegistry_);
     }
 
     function mintAsset(
@@ -102,11 +102,11 @@ contract FlowPayRWAHub is Owned {
         address issuer,
         string calldata statusReason
     ) external onlyOperator returns (uint256 tokenId) {
-        require(issuer != address(0), "FlowPayRWAHub: issuer is zero");
-        require(bytes(publicMetadataURI).length > 0, "FlowPayRWAHub: metadata URI is required");
-        require(publicMetadataHash != bytes32(0), "FlowPayRWAHub: metadata hash is required");
-        require(evidenceRoot != bytes32(0), "FlowPayRWAHub: evidence root is required");
-        require(complianceGuard.isIssuerApproved(issuer), "FlowPayRWAHub: issuer not approved");
+        require(issuer != address(0), "StellaRWAHub: issuer is zero");
+        require(bytes(publicMetadataURI).length > 0, "StellaRWAHub: metadata URI is required");
+        require(publicMetadataHash != bytes32(0), "StellaRWAHub: metadata hash is required");
+        require(evidenceRoot != bytes32(0), "StellaRWAHub: evidence root is required");
+        require(complianceGuard.isIssuerApproved(issuer), "StellaRWAHub: issuer not approved");
 
         uint8 initialStatus = _requiresAttestation(assetType)
             ? STATUS_PENDING_ATTESTATION
@@ -147,14 +147,14 @@ contract FlowPayRWAHub is Owned {
         external
         returns (uint256 streamId)
     {
-        FlowPayAssetRegistry.AssetRecord memory asset = assetRegistry.getAsset(tokenId);
+        StellaAssetRegistry.AssetRecord memory asset = assetRegistry.getAsset(tokenId);
 
-        require(asset.exists, "FlowPayRWAHub: asset not found");
-        require(!complianceGuard.isAssetActionBlocked(tokenId), "FlowPayRWAHub: asset blocked");
+        require(asset.exists, "StellaRWAHub: asset not found");
+        require(!complianceGuard.isAssetActionBlocked(tokenId), "StellaRWAHub: asset blocked");
         address currentOwner = assetNFT.ownerOf(tokenId);
         require(
             msg.sender == currentOwner || msg.sender == asset.issuer,
-            "FlowPayRWAHub: caller is not asset manager"
+            "StellaRWAHub: caller is not asset manager"
         );
 
         streamId = assetStream.createAssetYieldStreamFor(msg.sender, tokenId, totalAmount, duration, asset.assetType);
@@ -238,7 +238,7 @@ contract FlowPayRWAHub is Owned {
 
     function revokeAttestation(uint256 attestationId, string calldata reason) external onlyOperator {
         (uint256 tokenId,,,,,,,,) = attestationRegistry.getAttestation(attestationId);
-        require(tokenId != 0, "FlowPayRWAHub: attestation not found");
+        require(tokenId != 0, "StellaRWAHub: attestation not found");
         attestationRegistry.revokeAttestation(attestationId, reason);
         emit AttestationRevoked(tokenId, attestationId, reason);
     }
@@ -277,7 +277,7 @@ contract FlowPayRWAHub is Owned {
     }
 
     function getAsset(uint256 tokenId) external view returns (AssetView memory assetView) {
-        FlowPayAssetRegistry.AssetRecord memory asset = assetRegistry.getAsset(tokenId);
+        StellaAssetRegistry.AssetRecord memory asset = assetRegistry.getAsset(tokenId);
         assetView = AssetView({
             assetType: asset.assetType,
             rightsModel: asset.rightsModel,
@@ -355,19 +355,19 @@ contract FlowPayRWAHub is Owned {
     }
 
     function _requireAssetManager(uint256 tokenId) internal view {
-        FlowPayAssetRegistry.AssetRecord memory asset = assetRegistry.getAsset(tokenId);
-        require(asset.exists, "FlowPayRWAHub: asset not found");
+        StellaAssetRegistry.AssetRecord memory asset = assetRegistry.getAsset(tokenId);
+        require(asset.exists, "StellaRWAHub: asset not found");
 
         address currentOwner = assetNFT.ownerOf(tokenId);
         require(
             msg.sender == currentOwner || msg.sender == asset.issuer || msg.sender == owner() || operators[msg.sender],
-            "FlowPayRWAHub: caller is not asset manager"
+            "StellaRWAHub: caller is not asset manager"
         );
     }
 
     function _requireAssetExists(uint256 tokenId) internal view {
-        FlowPayAssetRegistry.AssetRecord memory asset = assetRegistry.getAsset(tokenId);
-        require(asset.exists, "FlowPayRWAHub: asset not found");
+        StellaAssetRegistry.AssetRecord memory asset = assetRegistry.getAsset(tokenId);
+        require(asset.exists, "StellaRWAHub: asset not found");
     }
 
     function _requiresAttestation(uint8 assetType) internal view returns (bool) {

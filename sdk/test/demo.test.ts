@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { FlowPaySDK } from '../src/FlowPaySDK';
+import { StellaSDK } from '../src/StellaSDK';
 import { Wallet, ethers } from 'ethers';
 import axios from 'axios';
 import { parsePaymentAmount } from '../src/tokenConfig';
@@ -14,10 +14,10 @@ import { parsePaymentAmount } from '../src/tokenConfig';
 describe('Demo Logic Validation (Mocked)', function () {
     this.timeout(5000);
 
-    let sdk: FlowPaySDK;
+    let sdk: StellaSDK;
 
     beforeEach(() => {
-        sdk = new FlowPaySDK({
+        sdk = new StellaSDK({
             privateKey: Wallet.createRandom().privateKey,
             rpcUrl: 'http://localhost:8545',
             agentId: 'Test-Consumer'

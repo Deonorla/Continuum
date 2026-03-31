@@ -28,9 +28,9 @@ const toastConfig = {
   },
   info: {
     Icon: Info,
-    bgClass: 'bg-flowpay-500/10 border-flowpay-500/30',
-    iconClass: 'text-flowpay-500',
-    textClass: 'text-flowpay-400',
+    bgClass: 'bg-stella-500/10 border-stella-500/30',
+    iconClass: 'text-stella-500',
+    textClass: 'text-stella-400',
   },
   loading: {
     Icon: Loader2,
@@ -90,7 +90,7 @@ function Toast({ id, type = 'info', title, message, duration = 5000, onDismiss, 
               action.onClick();
               handleDismiss();
             }}
-            className="mt-2 text-sm font-medium text-flowpay-400 hover:text-flowpay-300 transition-colors"
+            className="mt-2 text-sm font-medium text-stella-400 hover:text-stella-300 transition-colors"
           >
             {action.label}
           </button>

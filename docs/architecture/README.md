@@ -37,12 +37,12 @@ agent / user / renter
 
 | Component | Role |
 |----------|------|
-| `FlowPayAssetNFT` | the onchain rental twin / digital twin NFT |
-| `FlowPayAssetRegistry` | stores identity, metadata hash, evidence root, and verification state |
-| `FlowPayAssetAttestationRegistry` | stores role-based attestations and revocations |
-| `FlowPayComplianceGuard` | issuer approval, compliance checks, asset policy, attestation policy |
-| `FlowPayAssetStream` | binds rental yield to NFT ownership |
-| `FlowPayRWAHub` | orchestration layer for minting, operator-driven issuer onboarding, attestation, policy, and yield actions |
+| `StellaAssetNFT` | the onchain rental twin / digital twin NFT |
+| `StellaAssetRegistry` | stores identity, metadata hash, evidence root, and verification state |
+| `StellaAssetAttestationRegistry` | stores role-based attestations and revocations |
+| `StellaComplianceGuard` | issuer approval, compliance checks, asset policy, attestation policy |
+| `StellaAssetStream` | binds rental yield to NFT ownership |
+| `StellaRWAHub` | orchestration layer for minting, operator-driven issuer onboarding, attestation, policy, and yield actions |
 | Private evidence vault | stores deed/tax/inspection/insurance evidence offchain |
 | IPFS | stores sanitized public metadata only |
 | Indexer | exposes activity history and hydrated asset snapshots |

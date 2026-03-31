@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./utils/Owned.sol";
 
-contract FlowPayAssetAttestationRegistry is Owned {
+contract StellaAssetAttestationRegistry is Owned {
     struct AttestationRecord {
         uint256 tokenId;
         uint8 role;
@@ -36,7 +36,7 @@ contract FlowPayAssetAttestationRegistry is Owned {
     event AttestationRevoked(uint256 indexed attestationId, uint256 indexed tokenId, string reason);
 
     modifier onlyController() {
-        require(msg.sender == controller, "FlowPayAssetAttestationRegistry: caller is not controller");
+        require(msg.sender == controller, "StellaAssetAttestationRegistry: caller is not controller");
         _;
     }
 
@@ -53,8 +53,8 @@ contract FlowPayAssetAttestationRegistry is Owned {
         string calldata statementType,
         uint64 expiry
     ) external onlyController returns (uint256 attestationId) {
-        require(tokenId != 0, "FlowPayAssetAttestationRegistry: tokenId is zero");
-        require(attestor != address(0), "FlowPayAssetAttestationRegistry: attestor is zero");
+        require(tokenId != 0, "StellaAssetAttestationRegistry: tokenId is zero");
+        require(attestor != address(0), "StellaAssetAttestationRegistry: attestor is zero");
 
         attestationId = nextAttestationId++;
         attestations[attestationId] = AttestationRecord({
@@ -84,8 +84,8 @@ contract FlowPayAssetAttestationRegistry is Owned {
 
     function revokeAttestation(uint256 attestationId, string calldata reason) external onlyController {
         AttestationRecord storage attestation = attestations[attestationId];
-        require(attestation.tokenId != 0, "FlowPayAssetAttestationRegistry: attestation not found");
-        require(!attestation.revoked, "FlowPayAssetAttestationRegistry: attestation already revoked");
+        require(attestation.tokenId != 0, "StellaAssetAttestationRegistry: attestation not found");
+        require(!attestation.revoked, "StellaAssetAttestationRegistry: attestation already revoked");
 
         attestation.revoked = true;
         attestation.revocationReason = reason;

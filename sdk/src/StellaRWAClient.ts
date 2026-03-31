@@ -1,5 +1,5 @@
 import { ethers, Contract, Signer, Provider } from "ethers";
-import { FlowPayTransactionAdapter } from "./transactionAdapter";
+import { StellaTransactionAdapter } from "./transactionAdapter";
 
 export interface RWAClientConfig {
     apiBaseUrl: string;
@@ -8,7 +8,7 @@ export interface RWAClientConfig {
     tokenAddress?: string;
     tokenDecimals?: number;
     tokenSymbol?: string;
-    adapter?: FlowPayTransactionAdapter;
+    adapter?: StellaTransactionAdapter;
 }
 
 export interface MintAssetParams {
@@ -50,7 +50,7 @@ export interface SubmitAttestationParams {
     attestationAuthorization?: Record<string, unknown>;
 }
 
-export class FlowPayRWAClient {
+export class StellaRWAClient {
     private TOKEN_APPROVAL_GAS_LIMIT = 500000n;
     private ASSET_STREAM_CREATION_GAS_LIMIT = 1500000n;
     private apiBaseUrl: string;
@@ -59,7 +59,7 @@ export class FlowPayRWAClient {
     private tokenAddress?: string;
     private tokenDecimals: number;
     private tokenSymbol: string;
-    private adapter?: FlowPayTransactionAdapter;
+    private adapter?: StellaTransactionAdapter;
 
     private HUB_ABI = [
         "function createAssetYieldStream(uint256 tokenId, uint256 totalAmount, uint256 duration) external returns (uint256)",
@@ -163,7 +163,7 @@ export class FlowPayRWAClient {
         }
 
         if (!this.hubAddress || !this.streamAddress || !this.tokenAddress) {
-            throw new Error("FlowPayRWAClient is missing contract addresses");
+            throw new Error("StellaRWAClient is missing contract addresses");
         }
 
         if (this.adapter) {
@@ -183,8 +183,8 @@ export class FlowPayRWAClient {
             const allowance: bigint = await token.allowance(ownerAddress, this.streamAddress);
             shouldApprove = allowance < totalAmount;
         } catch (error: any) {
-            console.warn("[FlowPayRWAClient] Unable to read token allowance. Falling back to direct approval.");
-            console.warn(`[FlowPayRWAClient] Allowance read error: ${error?.shortMessage || error?.message || error}`);
+            console.warn("[StellaRWAClient] Unable to read token allowance. Falling back to direct approval.");
+            console.warn(`[StellaRWAClient] Allowance read error: ${error?.shortMessage || error?.message || error}`);
         }
 
         if (shouldApprove) {
@@ -210,7 +210,7 @@ export class FlowPayRWAClient {
         }
 
         if (!this.hubAddress) {
-            throw new Error("FlowPayRWAClient is missing hub address");
+            throw new Error("StellaRWAClient is missing hub address");
         }
 
         if (this.adapter) {
@@ -235,7 +235,7 @@ export class FlowPayRWAClient {
         }
 
         if (!this.hubAddress) {
-            throw new Error("FlowPayRWAClient is missing hub address");
+            throw new Error("StellaRWAClient is missing hub address");
         }
 
         if (this.adapter) {
@@ -270,7 +270,7 @@ export class FlowPayRWAClient {
         }
 
         if (!this.hubAddress) {
-            throw new Error("FlowPayRWAClient is missing hub address");
+            throw new Error("StellaRWAClient is missing hub address");
         }
 
         if (this.adapter) {
@@ -301,7 +301,7 @@ export class FlowPayRWAClient {
         }
 
         if (!this.hubAddress) {
-            throw new Error("FlowPayRWAClient is missing hub address");
+            throw new Error("StellaRWAClient is missing hub address");
         }
 
         if (this.adapter) {
@@ -331,10 +331,10 @@ export class FlowPayRWAClient {
         }
 
         if (!this.hubAddress) {
-            throw new Error("FlowPayRWAClient is missing hub address");
+            throw new Error("StellaRWAClient is missing hub address");
         }
 
-        const cidHash = FlowPayRWAClient.hashText(metadataURI);
+        const cidHash = StellaRWAClient.hashText(metadataURI);
         if (this.adapter) {
             return this.adapter.callContract(
                 this.hubAddress,
@@ -362,10 +362,10 @@ export class FlowPayRWAClient {
         }
 
         if (!this.hubAddress) {
-            throw new Error("FlowPayRWAClient is missing hub address");
+            throw new Error("StellaRWAClient is missing hub address");
         }
 
-        const tagHash = FlowPayRWAClient.hashText(tag);
+        const tagHash = StellaRWAClient.hashText(tag);
         if (this.adapter) {
             return this.adapter.callContract(
                 this.hubAddress,
@@ -409,7 +409,7 @@ export class FlowPayRWAClient {
 
         const data = await response.json();
         if (!response.ok) {
-            throw new Error(data.error || "FlowPayRWAClient request failed");
+            throw new Error(data.error || "StellaRWAClient request failed");
         }
         return data;
     }

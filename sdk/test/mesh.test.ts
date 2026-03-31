@@ -1,20 +1,20 @@
 import { expect } from 'chai';
-import { FlowPaySDK } from '../src/FlowPaySDK';
-import { FlowPayProxy } from '../src/FlowPayProxy';
+import { StellaSDK } from '../src/StellaSDK';
+import { StellaProxy } from '../src/StellaProxy';
 import { Wallet, ethers } from 'ethers';
 import axios from 'axios';
 import { formatPaymentAmount, parsePaymentAmount } from '../src/tokenConfig';
 
 describe('Multi-Agent Service Mesh', () => {
-    let proxy: FlowPayProxy;
-    let sdk: FlowPaySDK;
+    let proxy: StellaProxy;
+    let sdk: StellaSDK;
 
     beforeEach(() => {
-        sdk = new FlowPaySDK({
+        sdk = new StellaSDK({
             privateKey: Wallet.createRandom().privateKey,
             rpcUrl: 'http://localhost:8545'
         });
-        proxy = new FlowPayProxy(sdk, 10); // 10% Margin
+        proxy = new StellaProxy(sdk, 10); // 10% Margin
     });
 
     it('Should calculate price with margin correctly', async () => {
@@ -42,7 +42,7 @@ describe('Multi-Agent Service Mesh', () => {
         // and test the MATH logic if we extract it, OR we just trust the implementation for this hackathon step.
         // Let's try to verify via a "MockableProxy" approach.
 
-        class MockableProxy extends FlowPayProxy {
+        class MockableProxy extends StellaProxy {
             public async probe(url: string) {
                 return parsePaymentAmount(downstreamRate, 6);
             }

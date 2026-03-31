@@ -2,8 +2,8 @@
 
 function resolveBackendBaseUrl() {
     return (
-        process.env.FLOWPAY_NETLIFY_BACKEND_URL
-        || process.env.FLOWPAY_SESSION_API_URL
+        process.env.STELLA_NETLIFY_BACKEND_URL
+        || process.env.STELLA_SESSION_API_URL
         || process.env.VITE_RWA_API_URL
         || ""
     ).replace(/\/$/, "");

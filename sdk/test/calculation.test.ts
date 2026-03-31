@@ -1,14 +1,14 @@
 import { expect } from 'chai';
-import { FlowPaySDK, StreamMetadata } from '../src/FlowPaySDK';
+import { StellaSDK, StreamMetadata } from '../src/StellaSDK';
 import { Wallet, ethers } from 'ethers';
 import { parsePaymentAmount } from '../src/tokenConfig';
 
-describe('FlowPaySDK Real-time Calculations', () => {
-    let sdk: FlowPaySDK;
+describe('StellaSDK Real-time Calculations', () => {
+    let sdk: StellaSDK;
     let originalDateNow: any;
 
     beforeEach(() => {
-        sdk = new FlowPaySDK({
+        sdk = new StellaSDK({
             privateKey: Wallet.createRandom().privateKey,
             rpcUrl: 'http://localhost:8545'
         });

@@ -171,7 +171,7 @@ describe("RWA API Integration", function () {
             tokenSymbol: "USDC",
             tokenDecimals: 7,
             chainId: 0,
-            flowPayContractAddress: "stellar:session-meter",
+            stellaContractAddress: "stellar:session-meter",
             routes: {},
             services: {
                 ipfsService: {

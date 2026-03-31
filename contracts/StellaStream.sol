@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
- * @title FlowPayStream
+ * @title StellaStream
  * @dev Real-time per-second payment streaming for AI agent x402 settlements.
  * Uses OpenZeppelin SafeERC20 for safe token transfers and ReentrancyGuard
  * to protect withdrawal and cancellation flows.
@@ -14,7 +14,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  * Agents authorize once via USDC approval; the stream settles continuously
  * without requiring per-request transaction signing.
  */
-contract FlowPayStream is ReentrancyGuard {
+contract StellaStream is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable paymentToken;
@@ -53,7 +53,7 @@ contract FlowPayStream is ReentrancyGuard {
     );
 
     constructor(address _paymentToken) {
-        require(_paymentToken != address(0), "FlowPayStream: token is zero");
+        require(_paymentToken != address(0), "StellaStream: token is zero");
         paymentToken = IERC20(_paymentToken);
     }
 
@@ -62,7 +62,7 @@ contract FlowPayStream is ReentrancyGuard {
      */
     function getClaimableBalance(uint256 streamId) public view returns (uint256) {
         Stream storage stream = streams[streamId];
-        require(stream.isActive, "FlowPayStream: stream not active");
+        require(stream.isActive, "StellaStream: stream not active");
 
         if (block.timestamp < stream.startTime) return 0;
 
@@ -85,12 +85,12 @@ contract FlowPayStream is ReentrancyGuard {
         uint256 amount,
         string calldata metadata
     ) external nonReentrant {
-        require(amount > 0, "FlowPayStream: amount is zero");
-        require(recipient != address(0), "FlowPayStream: recipient is zero");
-        require(duration > 0, "FlowPayStream: duration is zero");
+        require(amount > 0, "StellaStream: amount is zero");
+        require(recipient != address(0), "StellaStream: recipient is zero");
+        require(duration > 0, "StellaStream: duration is zero");
 
         uint256 flowRate = amount / duration;
-        require(flowRate > 0, "FlowPayStream: flowRate would be zero");
+        require(flowRate > 0, "StellaStream: flowRate would be zero");
 
         // SafeERC20 handles non-standard ERC20 return values
         paymentToken.safeTransferFrom(msg.sender, address(this), amount);
@@ -119,11 +119,11 @@ contract FlowPayStream is ReentrancyGuard {
      */
     function withdrawFromStream(uint256 streamId) external nonReentrant {
         Stream storage stream = streams[streamId];
-        require(stream.isActive, "FlowPayStream: stream not active");
-        require(msg.sender == stream.recipient, "FlowPayStream: caller is not recipient");
+        require(stream.isActive, "StellaStream: stream not active");
+        require(msg.sender == stream.recipient, "StellaStream: caller is not recipient");
 
         uint256 claimable = getClaimableBalance(streamId);
-        require(claimable > 0, "FlowPayStream: nothing to withdraw");
+        require(claimable > 0, "StellaStream: nothing to withdraw");
 
         stream.amountWithdrawn += claimable;
         paymentToken.safeTransfer(stream.recipient, claimable);
@@ -136,10 +136,10 @@ contract FlowPayStream is ReentrancyGuard {
      */
     function cancelStream(uint256 streamId) external nonReentrant {
         Stream storage stream = streams[streamId];
-        require(stream.isActive, "FlowPayStream: already cancelled");
+        require(stream.isActive, "StellaStream: already cancelled");
         require(
             msg.sender == stream.sender || msg.sender == stream.recipient,
-            "FlowPayStream: caller cannot cancel"
+            "StellaStream: caller cannot cancel"
         );
 
         uint256 recipientBalance = getClaimableBalance(streamId);

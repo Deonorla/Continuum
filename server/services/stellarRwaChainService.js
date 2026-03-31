@@ -117,7 +117,7 @@ class StellarRWAChainService {
                 this.anchorService.operatorPublicKey
                 || process.env.STELLAR_OPERATOR_PUBLIC_KEY
                 || process.env.STELLAR_PLATFORM_ADDRESS
-                || "GSTREAMENGINEOPERATOR",
+                || "",
         };
         this.provider = {
             getNetwork: async () => ({
@@ -126,12 +126,12 @@ class StellarRWAChainService {
             }),
         };
         this.kind = "stellar";
-        this.hubAddress = config.hubAddress || process.env.FLOWPAY_RWA_HUB_ADDRESS || "stellar:rwa-registry";
-        this.assetNFTAddress = config.assetNFTAddress || process.env.FLOWPAY_RWA_ASSET_NFT_ADDRESS || "stellar:rwa-nft";
-        this.assetRegistryAddress = config.assetRegistryAddress || process.env.FLOWPAY_RWA_ASSET_REGISTRY_ADDRESS || "stellar:rwa-registry";
-        this.attestationRegistryAddress = config.attestationRegistryAddress || process.env.FLOWPAY_RWA_ATTESTATION_REGISTRY_ADDRESS || "stellar:rwa-attestation";
-        this.assetStreamAddress = config.assetStreamAddress || process.env.FLOWPAY_RWA_ASSET_STREAM_ADDRESS || "stellar:yield-vault";
-        this.complianceGuardAddress = config.complianceGuardAddress || process.env.FLOWPAY_RWA_COMPLIANCE_GUARD_ADDRESS || "stellar:policy";
+        this.hubAddress = config.hubAddress || process.env.STELLA_RWA_HUB_ADDRESS || "stellar:rwa-registry";
+        this.assetNFTAddress = config.assetNFTAddress || process.env.STELLA_RWA_ASSET_NFT_ADDRESS || "stellar:rwa-nft";
+        this.assetRegistryAddress = config.assetRegistryAddress || process.env.STELLA_RWA_ASSET_REGISTRY_ADDRESS || "stellar:rwa-registry";
+        this.attestationRegistryAddress = config.attestationRegistryAddress || process.env.STELLA_RWA_ATTESTATION_REGISTRY_ADDRESS || "stellar:rwa-attestation";
+        this.assetStreamAddress = config.assetStreamAddress || process.env.STELLA_RWA_ASSET_STREAM_ADDRESS || "stellar:yield-vault";
+        this.complianceGuardAddress = config.complianceGuardAddress || process.env.STELLA_RWA_COMPLIANCE_GUARD_ADDRESS || "stellar:policy";
     }
 
     isConfigured() {

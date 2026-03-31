@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import { GeminiPaymentBrain } from '../src/GeminiPaymentBrain';
-import { FlowPaySDK } from '../src/FlowPaySDK';
+import { StellaSDK } from '../src/StellaSDK';
 import { Wallet } from 'ethers';
 
 // Mock GoogleGenerativeAI
@@ -85,11 +85,11 @@ describe('Gemini AI Integration', () => {
     });
 });
 
-describe('FlowPaySDK with AI', () => {
-    let sdk: FlowPaySDK;
+describe('StellaSDK with AI', () => {
+    let sdk: StellaSDK;
 
     beforeEach(() => {
-        sdk = new FlowPaySDK({
+        sdk = new StellaSDK({
             privateKey: Wallet.createRandom().privateKey,
             rpcUrl: 'http://localhost:8545',
             apiKey: 'test-key'

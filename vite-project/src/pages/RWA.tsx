@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Building2, Car, Cpu, UploadCloud, Info, ShieldCheck, FileText } from 'lucide-react';
 import { PORTFOLIO_ASSETS } from './rwa/rwaData';
 import { AssetCard, AssetDetailPortal } from '../components/AssetCard';
+import { useWallet } from '../context/WalletContext';
 
 const ASSET_CATEGORIES = [
   { key: 'real_estate', label: 'Real Estate', Icon: Building2 },
@@ -166,26 +167,28 @@ const TABS = ['Minting', 'My Portfolio'];
 
 export default function RWA() {
   const [tab, setTab] = useState('Minting');
+  const fmt = (val) => parseFloat(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const {xlmBalance, paymentBalance} = useWallet()
 
   return (
     <div className="p-4 sm:p-8 lg:p-12 max-w-[1600px] mx-auto">
-      <header className="flex justify-between items-center mb-12">
+      <header className="flex flex-col md:flex-row justify-between items-center mb-12">
         <div>
           <h2 className="text-4xl font-headline font-bold tracking-tight text-on-surface">RWA Studio</h2>
           <p className="text-on-surface-variant mt-2 font-body max-w-md">Tokenize physical utility and stream global yields on the Stellar network.</p>
         </div>
-        <div className="glass-card px-4 py-2 rounded-full flex items-center gap-3">
+        <div className="glass-card px-4 py-2 rounded-full flex items-center gap-3 mt-3 md:mt-0">
           <span className="w-2 h-2 rounded-full bg-secondary" />
-          <span className="font-label text-xs font-bold text-primary">0.00 USDC</span>
+          <span className="font-label text-xs font-bold text-primary">{fmt(xlmBalance)} XLM</span>
           <div className="h-4 w-[1px] bg-slate-200" />
-          <span className="font-label text-xs text-on-surface-variant uppercase tracking-wider">Stellar Testnet</span>
+           <span className="font-label text-xs font-bold text-primary">{fmt(paymentBalance)} USDC</span>
         </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Stats Panel */}
         <div className="col-span-1 lg:col-span-3 space-y-6">
-          <div className="bg-slate-50 p-6 rounded-3xl space-y-8 border border-slate-100">
+          <div className="flex items-center md:flex-col bg-slate-50 p-6 rounded-3xl space-x-4 md:space-x-0 md:space-y-8 border border-slate-100">
             {[
               { label: 'Indexed Assets', value: PORTFOLIO_ASSETS.length.toLocaleString(), sub: '+14% this month',    subColor: 'text-secondary',           color: 'text-primary'      },
               { label: 'Total Minted',   value: '842',                                    sub: 'Verified on Ledger', subColor: 'text-on-surface-variant',   color: 'text-on-surface'   },

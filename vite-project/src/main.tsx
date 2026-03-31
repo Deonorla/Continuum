@@ -11,6 +11,8 @@ import Streams from './pages/Streams'
 import AgentConsolePage from './pages/AgentConsolePage'
 import Docs from './pages/Docs'
 import RWA from './pages/RWA'
+import VerifyPage from './pages/VerifyPage'
+import RentPage from './pages/RentPage'
 
 function AppRoutes() {
   return (
@@ -20,8 +22,10 @@ function AppRoutes() {
       <Route path="/app/streams" element={<Layout><Streams /></Layout>} />
       <Route path="/app/rwa" element={<Layout><RWA /></Layout>} />
       <Route path="/app/agent" element={<Layout><AgentConsolePage /></Layout>} />
-      <Route path="/app/docs" element={<Docs />} />
-      <Route path="/app/docs/:section" element={<Docs />} />
+      <Route path="/app/verify" element={<Layout><VerifyPage /></Layout>} />
+      <Route path="/app/rent" element={<Layout><RentPage /></Layout>} />
+      <Route path="/app/docs" element={<Layout><Docs /></Layout>} />
+      <Route path="/app/docs/:section" element={<Layout><Docs /></Layout>} />
       {/* Legacy redirects */}
       <Route path="/streams" element={<Navigate to="/app/streams" replace />} />
       <Route path="/agent" element={<Navigate to="/app/agent" replace />} />

@@ -460,6 +460,7 @@ function enrichAsset(asset, index) {
 }
 
 export const PORTFOLIO_ASSETS = RAW_ASSETS.map(enrichAsset);
+export const MOCK_ASSETS = PORTFOLIO_ASSETS;
 
 export function formatAssetTypeLabel(type) {
   return TYPE_META[type]?.label || 'Rental Asset';

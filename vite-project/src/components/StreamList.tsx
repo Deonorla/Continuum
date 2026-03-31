@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import StreamCard from './StreamCard.jsx';
+import StreamCard from './StreamCard.tsx';
 import { Calendar, Coins, Zap, Search, Inbox, Pause, CheckCircle, Ban, Plus, Loader2 } from 'lucide-react';
 
 // Filter Tab Component

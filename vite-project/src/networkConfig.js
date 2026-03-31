@@ -17,7 +17,7 @@ export const ACTIVE_NETWORK = {
     env.VITE_STREAM_ENGINE_PAYMENT_TOKEN_ADDRESS
     || 'stellar:usdc-sac',
   paymentAssetCode: env.VITE_STELLAR_PAYMENT_ASSET_CODE || 'USDC',
-  paymentAssetIssuer: env.VITE_STELLAR_PAYMENT_ASSET_ISSUER || '',
+  paymentAssetIssuer: env.VITE_STELLAR_PAYMENT_ASSET_ISSUER || 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
 };
 
 export const IS_READY = Boolean(ACTIVE_NETWORK.contractAddress);

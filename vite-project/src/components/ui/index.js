@@ -6,7 +6,7 @@ export {
   TouchInput,
   ResponsiveGrid,
   PullToRefreshIndicator 
-} from './MobileNav.jsx';
+} from './MobileNav.tsx';
 
 // Skeleton Loaders
 export {
@@ -20,10 +20,10 @@ export {
   SkeletonAgentConsole,
   SkeletonDecisionLog,
   SkeletonTable,
-} from './Skeleton.jsx';
+} from './Skeleton.tsx';
 
 // Toast Notifications
-export { ToastProvider, useToast } from './Toast.jsx';
+export { ToastProvider, useToast } from './Toast.tsx';
 
 // Error Handling & States
 export {
@@ -34,4 +34,4 @@ export {
   ConnectionError,
   WalletNotConnected,
   NetworkMismatch,
-} from './ErrorBoundary.jsx';
+} from './ErrorBoundary.tsx';

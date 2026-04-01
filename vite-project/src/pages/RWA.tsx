@@ -19,6 +19,7 @@ import {
   TYPE_TO_CHAIN_ASSET_TYPE,
 } from './rwa/rwaData';
 import { AssetCard, AssetDetailPortal } from '../components/AssetCard';
+import RentalSessionComposer from '../components/RentalSessionComposer.tsx';
 import { useWallet } from '../context/WalletContext';
 import { supportedPaymentAssets } from '../contactInfo.js';
 import {
@@ -1214,6 +1215,12 @@ function PortfolioTab({ assets, isLoading, onAssetChanged }) {
           <AssetWorkspacePanel
             asset={asset}
             onAssetChanged={onAssetChanged}
+          />
+        )}
+        renderFooter={(asset) => (
+          <RentalSessionComposer
+            asset={asset}
+            onStarted={() => setSelected(null)}
           />
         )}
       />

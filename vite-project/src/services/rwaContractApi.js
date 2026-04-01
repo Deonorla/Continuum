@@ -9,6 +9,21 @@ import {
   rwaAdminAction,
   rwaRelayAction,
 } from './rwaApi.js';
+import {
+  flashAdvanceStellarYield,
+  hashJson as hashStellarJson,
+  hashText as hashStellarText,
+  mintStellarRwaAsset,
+  openStellarYieldStream,
+  claimStellarYield,
+  registerStellarAttestation,
+  resolveIpfsGatewayUrl,
+  resolveStellarPaymentToken,
+  revokeStellarAttestation,
+  updateStellarAssetEvidence,
+  updateStellarAssetMetadata,
+  updateStellarVerificationTag,
+} from '../lib/stellarRwaContracts.ts';
 
 const TOKEN_APPROVAL_GAS_LIMIT = 500000n;
 const ASSET_STREAM_CREATION_GAS_LIMIT = 1500000n;
@@ -59,7 +74,7 @@ function requireWriteWallet({ signer, substrateSession }) {
 }
 
 export function hashText(value) {
-  return ethers.keccak256(ethers.toUtf8Bytes(value || ''));
+  return hashStellarText(value || '');
 }
 
 export function parseTokenAmount(value, decimals = 6) {
@@ -77,11 +92,14 @@ export async function approveAndCreateAssetYieldStream({
   duration,
 }) {
   if (isStellarRuntime()) {
-    return rwaRelayAction({
-      action: 'createAssetYieldStream',
-      tokenId,
-      totalAmount: String(totalAmount),
-      duration,
+    requireWriteWallet({ signer, substrateSession });
+    const sender = await signer.getAddress();
+    return openStellarYieldStream({
+      sender,
+      tokenId: Number(tokenId),
+      token: tokenAddress || resolveStellarPaymentToken(),
+      totalAmount: BigInt(totalAmount),
+      durationSeconds: Number(duration),
     });
   }
 
@@ -148,9 +166,11 @@ export async function approveAndCreateAssetYieldStream({
 
 export async function claimAssetYield({ signer, substrateSession, hubAddress, tokenId }) {
   if (isStellarRuntime()) {
-    return rwaRelayAction({
-      action: 'claimYield',
-      tokenId,
+    requireWriteWallet({ signer, substrateSession });
+    const owner = await signer.getAddress();
+    return claimStellarYield({
+      owner,
+      tokenId: Number(tokenId),
     });
   }
 
@@ -173,10 +193,12 @@ export async function claimAssetYield({ signer, substrateSession, hubAddress, to
 
 export async function flashAdvanceAssetYield({ signer, substrateSession, hubAddress, tokenId, amount }) {
   if (isStellarRuntime()) {
-    return rwaRelayAction({
-      action: 'flashAdvance',
-      tokenId,
-      amount: String(amount),
+    requireWriteWallet({ signer, substrateSession });
+    const owner = await signer.getAddress();
+    return flashAdvanceStellarYield({
+      owner,
+      tokenId: Number(tokenId),
+      amount: BigInt(amount),
     });
   }
 
@@ -248,9 +270,11 @@ export async function setAssetVerificationStatus({
 
 export async function updateAssetMetadataOnChain({ signer, substrateSession, hubAddress, tokenId, metadataURI }) {
   if (isStellarRuntime()) {
-    return rwaRelayAction({
-      action: 'updateAssetMetadata',
-      tokenId,
+    requireWriteWallet({ signer, substrateSession });
+    const owner = await signer.getAddress();
+    return updateStellarAssetMetadata({
+      owner,
+      tokenId: Number(tokenId),
       metadataURI,
     });
   }
@@ -281,9 +305,11 @@ export async function updateAssetEvidenceOnChain({
   evidenceManifestHash,
 }) {
   if (isStellarRuntime()) {
-    return rwaRelayAction({
-      action: 'updateAssetEvidence',
-      tokenId,
+    requireWriteWallet({ signer, substrateSession });
+    const owner = await signer.getAddress();
+    return updateStellarAssetEvidence({
+      owner,
+      tokenId: Number(tokenId),
       evidenceRoot,
       evidenceManifestHash,
     });
@@ -308,10 +334,12 @@ export async function updateAssetEvidenceOnChain({
 
 export async function updateAssetVerificationTag({ signer, substrateSession, hubAddress, tokenId, tag }) {
   if (isStellarRuntime()) {
-    return rwaRelayAction({
-      action: 'updateVerificationTag',
-      tokenId,
-      tag,
+    requireWriteWallet({ signer, substrateSession });
+    const owner = await signer.getAddress();
+    return updateStellarVerificationTag({
+      owner,
+      tokenId: Number(tokenId),
+      tagHash: hashText(tag),
     });
   }
 
@@ -351,4 +379,89 @@ export async function readClaimableYield({ provider, substrateSession, hubAddres
 
   const hub = new Contract(hubAddress, HUB_ABI, provider);
   return hub.claimableYield(tokenId);
+}
+
+export async function mintAssetTwinWithFreighter({
+  signer,
+  issuer,
+  assetType,
+  rightsModel,
+  publicMetadataURI,
+  publicMetadataHash,
+  evidenceRoot,
+  evidenceManifestHash,
+  propertyRefHash,
+  jurisdiction = '',
+  cidHash,
+  tagHash,
+  statusReason = '',
+}) {
+  if (!isStellarRuntime()) {
+    throw new Error('Direct Stellar asset minting is only available on the Stellar runtime.');
+  }
+  requireWriteWallet({ signer, substrateSession: null });
+  const resolvedIssuer = issuer || await signer.getAddress();
+  return mintStellarRwaAsset({
+    issuer: resolvedIssuer,
+    assetType: Number(assetType),
+    rightsModel: Number(rightsModel),
+    publicMetadataURI,
+    publicMetadataHash,
+    evidenceRoot,
+    evidenceManifestHash,
+    propertyRefHash,
+    jurisdiction,
+    cidHash,
+    tagHash,
+    statusReason,
+  });
+}
+
+export async function registerAssetAttestationWithFreighter({
+  signer,
+  tokenId,
+  role,
+  evidenceHash,
+  statementType,
+  expiry = 0,
+}) {
+  if (!isStellarRuntime()) {
+    throw new Error('Direct Stellar attestation is only available on the Stellar runtime.');
+  }
+  requireWriteWallet({ signer, substrateSession: null });
+  const attestor = await signer.getAddress();
+  return registerStellarAttestation({
+    attestor,
+    tokenId: Number(tokenId),
+    role: Number(role),
+    evidenceHash,
+    statementType,
+    expiry: Number(expiry || 0),
+  });
+}
+
+export async function revokeAssetAttestationWithFreighter({
+  signer,
+  attestationId,
+  reason = '',
+}) {
+  if (!isStellarRuntime()) {
+    throw new Error('Direct Stellar attestation revocation is only available on the Stellar runtime.');
+  }
+  requireWriteWallet({ signer, substrateSession: null });
+  const attestor = await signer.getAddress();
+  return revokeStellarAttestation({
+    attestor,
+    attestationId: Number(attestationId),
+    reason,
+  });
+}
+
+export async function hashMetadataUri(metadataURI) {
+  const response = await fetch(resolveIpfsGatewayUrl(metadataURI));
+  if (!response.ok) {
+    throw new Error(`Unable to load metadata from ${metadataURI}`);
+  }
+  const metadata = await response.json();
+  return hashStellarJson(metadata);
 }

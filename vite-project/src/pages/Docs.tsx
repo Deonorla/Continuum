@@ -124,7 +124,7 @@ const STELLAR_RUNTIME_COMPONENT_DEFAULTS = {
     onchainName: "PolicyOrchestrator",
     group: "RWA Rail",
     address: "stellar:policy-orchestrator",
-    role: "Admin/operator relay surface for issuer onboarding, verification status, compliance, and asset policy actions.",
+    role: "Admin/operator policy surface for issuer onboarding, verification status, compliance, and asset policy actions.",
   },
 };
 
@@ -230,7 +230,7 @@ function getDeployedContractDescriptors(catalog) {
           catalog?.rwa?.hubAddress
           || STELLAR_RUNTIME_COMPONENT_DEFAULTS.policyService.address,
         note:
-          "This is the platform-facing relay and policy surface for issuer onboarding, verification status changes, and asset freezes.",
+          "This is the platform-facing policy surface for issuer onboarding, verification status changes, and asset freezes.",
       },
     ];
   }
@@ -328,7 +328,7 @@ function buildContractLinks(catalog) {
 
 function buildSections(catalog) {
   const stellar = isStellarRuntime(catalog);
-  const networkName = catalog?.network?.name || (stellar ? "Stellar Testnet" : "Westend Asset Hub");
+  const networkName = catalog?.network?.name || "Stellar Testnet";
   const chainId = catalog?.network?.chainId ?? (stellar ? 0 : 420420421);
   const tokenSymbol = catalog?.payments?.tokenSymbol || "USDC";
   const paymentAssetId = catalog?.payments?.paymentAssetId ?? (stellar ? 0 : 31337);
@@ -390,7 +390,7 @@ function buildSections(catalog) {
           headers: ["Item", "Value"],
           rows: [
             ["Network", networkName],
-            ["Runtime", stellar ? "Stellar-backed session runtime" : "Polkadot contract runtime"],
+            ["Runtime", "Stellar-native Soroban runtime"],
             ["Chain ID", String(chainId)],
             ["Gas token", gasToken],
             ["Payment token", paymentTokenLabel],
@@ -607,19 +607,19 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
           headers: ["Header", "Meaning"],
           rows: [
             [
-              "X-FlowPay-Mode",
+              "X-Stream-Mode",
               "Whether the route expects streaming, direct payment, or a hybrid path",
             ],
-            ["X-FlowPay-Rate", "How much value is required"],
-            ["X-FlowPay-Token", "Which token is accepted"],
+            ["X-Stream-Rate", "How much value is required"],
+            ["X-Stream-Token", "Which token is accepted"],
             [
-              "X-FlowPay-Recipient",
+              "X-Stream-Recipient",
               "Which service wallet should receive value",
             ],
             [
-              "X-FlowPay-Contract",
+              "X-Stream-Contract",
               stellar
-                ? "Which session rail or relay surface the runtime should use"
+                ? "Which session meter contract the runtime should use"
                 : "Which stream contract the runtime should use",
             ],
           ],
@@ -642,9 +642,9 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
             "API keys identify a client. They do not solve pricing, per-route payment terms, or onchain settlement for autonomous agents.",
         },
         {
-          question: "Why do some payment headers still say FlowPay?",
+          question: "Which payment headers are active now?",
           answer:
-            "Those are legacy wire-format names kept for compatibility with the current runtime and SDK. Product-facing branding is Stella's Stream Engine, but the live HTTP header keys still use the older X-FlowPay-* prefix today.",
+            "The active runtime uses `X-Stream-*` headers on the wire. Those headers carry the session meter id, token, rate, and session proof needed for x402 payment negotiation.",
         },
       ],
     },
@@ -1128,12 +1128,12 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
           : "How the frontend, backend, Solidity contracts, indexer, and verification stack fit together, plus the live deployed addresses so readers can inspect the contracts themselves.",
       plainEnglish:
         stellar
-          ? "Think of the system like a small company. The frontend talks to users. The backend handles coordination, evidence storage, and relays. The Stellar-backed runtime services meter payments and enforce asset policy. The catalog tells you which pieces are wired."
+          ? "Think of the system like a small company. The frontend talks to users. The backend handles coordination, evidence storage, and indexing. The Stellar runtime services meter payments and enforce asset policy. The catalog tells you which pieces are wired."
           : "Think of the system like a small company. The frontend talks to users. The backend handles coordination, metadata pinning, and indexing. The Solidity contracts are the accountants and rule enforcers. The explorer links let anyone inspect the live deployed workers directly.",
       takeaways: [
         `Each ${stellar ? "runtime component" : "contract"} should have a narrow, understandable job.`,
         stellar
-          ? "The backend relay makes the current hackathon runtime usable, but payment and verification state still have to line up with the identifiers exposed in the catalog."
+          ? "The backend exposes indexing, evidence, and policy services, but payment and verification state still have to line up with the runtime identifiers exposed in the catalog."
           : "The backend makes the system usable, but contracts remain the source of truth.",
         `If you do not know where a fact lives, look for which ${stellar ? "component" : "contract"} owns that responsibility.`,
       ],
@@ -1141,8 +1141,8 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
         {
           title: stellar ? "Built for Stellar testnet" : "Built with Solidity",
           body: stellar
-            ? "The active hackathon path uses a Stellar-backed runtime with backend relays, reusable payment sessions, and direct-chain fallbacks. The older Westend Solidity suite remains in the repo as legacy reference material."
-            : "The live stream rail and RWA contract suite are Solidity contracts deployed to the Polkadot environment. The point is not only to talk about architecture abstractly, but to let readers verify the deployed code and addresses themselves.",
+            ? "The active hackathon path uses a Stellar-native runtime with deployed Soroban contracts, reusable payment sessions, and backend read services around them."
+            : "The live stream rail and RWA contract suite are Solidity contracts deployed onchain. The point is not only to talk about architecture abstractly, but to let readers verify the deployed code and addresses themselves.",
         },
         {
           title: stellar ? "Payment session runtime" : "Payment contract",
@@ -1153,7 +1153,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
         {
           title: stellar ? "RWA runtime services" : "RWA contracts",
           body: stellar
-            ? "The RWA side is deliberately split into multiple runtime services because productive assets need more than ownership. The twin records durable ownership, the registry stores asset identity anchors, the attestation registry stores verifier claims, the yield vault handles revenue flow, the policy orchestrator controls regulated actions, and the backend relay ties those pieces together."
+            ? "The RWA side is deliberately split into multiple runtime services because productive assets need more than ownership. The twin records durable ownership, the registry stores asset identity anchors, the attestation registry stores verifier claims, the yield vault handles revenue flow, the policy orchestrator controls regulated actions, and the backend ties those pieces together with evidence storage and indexed views."
             : "The RWA side is deliberately split into multiple Solidity contracts because productive assets need more than ownership. The NFT records the digital twin, the registry stores asset identity anchors, the attestation registry stores verifier claims, the asset stream contract handles revenue flow, the compliance guard controls regulated actions, and the hub ties those pieces together.",
         },
         {
@@ -1170,7 +1170,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
         },
         {
           title: "Middleware and APIs",
-          body: "The backend exposes route catalogs, verification endpoints, metadata pinning, asset activity views, and relay/admin actions. Middleware is what turns runtime state into actual web access.",
+          body: "The backend exposes route catalogs, verification endpoints, metadata pinning, asset activity views, session metadata sync, and admin/operator actions. Middleware is what turns runtime state into actual web access.",
         },
         {
           title: "Why productive RWAs need this architecture",
@@ -1179,7 +1179,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
         {
           title: "Trust boundary",
           body: stellar
-            ? "The UI is a client. The backend handles relays, indexing, and evidence storage. The runtime identifiers, payment state, and verification anchors are the final source of truth for what the app is allowed to do."
+            ? "The UI is a client. The backend handles indexing, evidence storage, and admin services. The runtime identifiers, payment state, and verification anchors are the final source of truth for what the app is allowed to do."
             : "The UI is a client. The backend helps with indexing and metadata. The contract layer is the final source of truth for streams, ownership, and verification hashes.",
         },
       ],
@@ -1192,7 +1192,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
           : "The Solidity contracts enforce the payment, ownership, compliance, and yield rules.",
         "The indexer rebuilds the public activity trail so the UI can show understandable history.",
         stellar
-          ? "Where explorer-friendly identifiers exist, the catalog surfaces them. Legacy Westend contract references remain available in the repo for audit context."
+          ? "Where explorer-friendly identifiers exist, the catalog surfaces them so readers can inspect the active Stellar runtime directly."
           : "The explorer links let anyone verify the live deployment state independently of the app UI.",
       ],
       tables: [
@@ -1212,7 +1212,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
             ],
             [
               stellar ? "Payment runtime" : "Stream contracts",
-              stellar ? "Stellar session meter + backend relay" : "Solidity",
+              stellar ? "Soroban session meter + backend services" : "Solidity",
               stellar ? "Session funding, cancellation, refunds, and paid-route settlement" : "Payment streaming, withdrawal, and cancellation",
             ],
             [
@@ -1264,7 +1264,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
                 : "Without it there is no contract-level stop switch for regulated or disputed actions",
             ],
             [
-              stellar ? "Backend relay + operator surface" : "Stella's Stream Engine RWA Hub",
+              stellar ? "Policy orchestrator + backend admin surface" : "Stella's Stream Engine RWA Hub",
               "High-level orchestration across minting, funding, claims, and admin actions",
               "Without it the app would need to coordinate too many raw calls manually",
             ],
@@ -1305,7 +1305,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
               "Admins cannot block claims or withdrawals when policy or regulation requires intervention",
             ],
             [
-              stellar ? "Backend relay + operator surface" : "Stella's Stream Engine RWA Hub",
+              stellar ? "Policy orchestrator + backend admin surface" : "Stella's Stream Engine RWA Hub",
               "Coordinate minting, funding, claims, and admin actions",
               "Frontend and backend would need to orchestrate too many raw contract calls directly",
             ],
@@ -1413,7 +1413,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
             "Why does the frontend still need the backend if contracts exist?",
           answer:
             stellar
-              ? "Because verification, indexing, metadata pinning, route catalogs, and relays are easier to expose through a service layer. The runtime identifiers and anchored state remain the final source of truth for settlement and ownership state."
+              ? "Because verification, indexing, metadata pinning, route catalogs, and admin services are easier to expose through a service layer. The runtime identifiers and anchored state remain the final source of truth for settlement and ownership state."
               : "Because verification, indexing, metadata pinning, and route catalogs are easier to expose through a service layer. The contracts remain the final source of truth for settlement and ownership state.",
         },
         {
@@ -1429,7 +1429,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
             "Why do the onchain deployment ids still say FlowPay?",
           answer:
             stellar
-              ? "Because the repo still carries legacy FlowPay identifiers for compatibility with older code, docs, and archived deployments. The product is now Stella's Stream Engine, but not every internal name was worth breaking for the hackathon pivot."
+              ? "Because a few historical deployment ids and payload formats still carry older names. The product is now Stella's Stream Engine, and the active runtime/docs have been updated to reflect that."
               : "Those are the actual deployed Solidity contract identifiers. The product is now Stella's Stream Engine, but the deployed contract names were kept so the existing chain deployment, ABI references, and tooling did not have to be broken or redeployed just for naming.",
         },
         {
@@ -2268,7 +2268,7 @@ export default function Docs() {
             <div className="grid grid-cols-3 gap-6">
               <div>
                 <p className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400 mb-2">Network</p>
-                <p className="text-sm font-bold text-primary">{catalog?.network?.name || (stellar ? "Stellar Testnet" : "Westend Asset Hub")}</p>
+                <p className="text-sm font-bold text-primary">{catalog?.network?.name || "Stellar Testnet"}</p>
               </div>
               <div>
                 <p className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400 mb-2">Token</p>

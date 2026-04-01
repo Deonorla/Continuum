@@ -11,6 +11,7 @@
 | `GET` | `/api/sessions` | list payment sessions for an owner |
 | `POST` | `/api/sessions` | open a new payment session |
 | `GET` | `/api/sessions/:sessionId` | inspect one payment session |
+| `POST` | `/api/sessions/:sessionId/metadata` | sync linked asset metadata back onto a live session |
 | `POST` | `/api/sessions/:sessionId/cancel` | cancel a session and surface refund state |
 | `POST` | `/api/sessions/:sessionId/claim` | claim accrued session balance |
 
@@ -26,7 +27,7 @@
 | `GET` | `/api/rwa/assets/:tokenId/activity` | fetch indexed activity |
 | `POST` | `/api/rwa/attestations` | register or revoke attestation |
 | `POST` | `/api/rwa/verify` | return structured verification result |
-| `POST` | `/api/rwa/relay` | relay user-initiated Stellar actions without changing UI workflows |
+| `POST` | `/api/rwa/relay` | backend-managed Stellar write surface for yield, metadata, and operator-assisted actions |
 | `POST` | `/api/rwa/admin` | backend/operator actions such as issuer approval and policy updates |
 
 ## Verification Response Shape

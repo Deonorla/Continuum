@@ -11,7 +11,7 @@ The middleware uses `X-Stream-*` headers on the wire as the active payment negot
 | `X-Stream-Token` | accepted token or settlement asset address |
 | `X-Stream-Token-Decimals` | token decimals |
 | `X-Stream-Recipient` | recipient for the route |
-| `X-Stream-Contract` | session rail or relay identifier |
+| `X-Stream-Contract` | session meter contract id |
 | `X-Stream-Stream-ID` | session proof used on retry |
 | `X-Stream-Tx-Hash` | direct-payment proof used on retry |
 

@@ -7,7 +7,7 @@ In Stella's Stream Engine, `x402` is the **payment negotiation layer**, not the 
 | Layer | Responsibility |
 |------|-----------------|
 | x402 | “payment is required, here are the terms” |
-| Stella's Stream Engine | satisfy those terms through direct settlement or reusable payment state |
+| Stella's Stream Engine | satisfy those terms through direct Stellar settlement or reusable payment sessions |
 | Middleware | verify the proof and unlock the resource |
 
 ## Typical Flow
@@ -28,10 +28,10 @@ In Stella's Stream Engine, `x402` is the **payment negotiation layer**, not the 
 | `X-Payment-Required` | signals payment requirement |
 | `X-Stream-Mode` | `streaming`, `direct`, or `free` |
 | `X-Stream-Rate` | price quoted in token units |
-| `X-Stream-Token` | payment token/precompile address |
+| `X-Stream-Token` | payment asset contract id |
 | `X-Stream-Token-Decimals` | token decimals |
 | `X-Payment-Currency` | display symbol, currently `USDC` |
-| `X-Stream-Contract` | session rail or relay identifier |
+| `X-Stream-Contract` | session meter contract id |
 | `X-Stream-Recipient` | recipient for the paid route |
 | `X-Stream-Stream-ID` | session proof on retry |
 | `X-Stream-Tx-Hash` | direct-payment proof on retry |

@@ -15,14 +15,15 @@ The Stellar backend integration exposes these logical contracts/components:
 | Yield vault | `stellar:yield-vault` |
 | Policy orchestrator | `stellar:policy-orchestrator` |
 
-These are surfaced through `GET /api/engine/catalog` and the backend env vars.
+These are surfaced through `GET /api/engine/catalog`, the deployment manifest, and the backend env vars.
 
 ## Deployment notes
 
-- the frontend uses backend relay/session endpoints for the active runtime
-- browser and CLI integrations go through the same Stellar session model
+- the frontend, SDK, and CLI all point at the same Soroban session meter and Stellar runtime ids
+- browser user actions use Freighter-backed Soroban signing where available
+- the backend still handles admin/operator actions and indexed read views
 - issuer approval is explicit and should be completed before mint demos
-- session cancel/refund is a first-class backend path
+- session cancel/refund is a first-class backend path, and session metadata is synced back after live opens
 
 ## Demo checklist
 

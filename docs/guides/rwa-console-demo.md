@@ -1,6 +1,6 @@
 # RWA Studio Demo Runbook
 
-This is the current **Stellar-backed** RWA Studio walkthrough. It keeps the same UI flow while using the backend session and relay runtime described in this repo.
+This is the current **Stellar-native** RWA Studio walkthrough. It keeps the same UI flow while using the live Soroban session meter, RWA contracts, and backend evidence/indexing services described in this repo.
 
 ## Before the demo
 
@@ -23,8 +23,8 @@ What to say:
 
 - the UI stayed the same
 - the runtime behind it is now Stellar
-- Freighter is used only for user signatures
-- the backend relays the runtime-specific actions
+- Freighter signs the active user actions
+- the backend handles evidence storage, indexing, admin/policy actions, and API views
 
 ## Step 2 — Prepare metadata
 
@@ -65,6 +65,7 @@ What the backend does:
 2. verifies the issuer signature freshness
 3. verifies evidence presence
 4. mints the asset through the Stellar-backed chain service
+5. returns explicit rental-readiness and verification state in the asset snapshot
 
 Important talking point:
 
@@ -114,7 +115,8 @@ What changed under the hood:
 
 - the frontend now opens a **payment session** through `/api/sessions`
 - it uses the existing `createStream` UI flow and passes the live `X-Stream-Stream-ID` session header
-- the backend tracks active, frozen, cancelled, claimable, and refundable session state
+- the backend tracks active, frozen, cancelled, claimable, refundable, and consumed session state
+- the frontend syncs the linked asset metadata back to `/api/sessions/:sessionId/metadata`
 
 ## Step 8 — Cancel or end early
 
@@ -124,6 +126,7 @@ What to show:
 
 - the session is cancelled through a first-class backend endpoint
 - the response includes deterministic session state
+- the drawer now shows `sessionStatus`, `refundableAmount`, and `consumedAmount`
 - unused budget stays refundable instead of disappearing into UI state ambiguity
 
 ## Step 9 — Yield flow
@@ -137,7 +140,7 @@ From the workspace:
 What to emphasize:
 
 - the UI still looks the same
-- those actions now go through backend relay endpoints in the Stellar path
+- active user flows now use the live Stellar runtime, while admin/operator actions still use backend-managed endpoints where appropriate
 
 ## Step 10 — CLI/provider smoke
 

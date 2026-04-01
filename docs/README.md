@@ -10,7 +10,7 @@ Stella's Stream Engine is an x402-compatible payment and settlement stack for AI
 | Chain ID | `0` |
 | Gas token | `XLM` |
 | Payment asset | `USDC via SAC` |
-| Session model | `backend session meter` |
+| Session model | `Soroban session meter` |
 | Payment model | `x402` negotiation + reusable session settlement |
 
 ## What This Docs Set Covers
@@ -18,7 +18,7 @@ Stella's Stream Engine is an x402-compatible payment and settlement stack for AI
 - how x402 signaling works in Stella's Stream Engine
 - how reusable payment sessions reduce agent payment overhead
 - how the Stellar deployment is configured
-- how the SDK, middleware, relay layer, and runtime services fit together
+- how the SDK, middleware, Soroban contracts, and runtime services fit together
 - how rental RWA minting, evidence anchoring, attestation, verification, and yield behavior work
 
 ## Recommended Reading Order

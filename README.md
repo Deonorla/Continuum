@@ -36,6 +36,7 @@
 - `GET /api/sessions`
 - `POST /api/sessions`
 - `GET /api/sessions/:sessionId`
+- `POST /api/sessions/:sessionId/metadata`
 - `POST /api/sessions/:sessionId/cancel`
 - `POST /api/sessions/:sessionId/claim`
 
@@ -88,6 +89,7 @@ Open [http://localhost:5173](http://localhost:5173).
 8. Start a rental session
 9. End or cancel the session and inspect the refund state
 10. Fund yield and claim it
+11. Confirm the session snapshot shows `sessionStatus`, `refundableAmount`, and `consumedAmount`
 
 ### CLI/provider smoke
 

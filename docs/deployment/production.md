@@ -6,12 +6,12 @@ This repo currently targets **Stellar testnet** for active testing. Before any p
 
 - x402 middleware routes are configured
 - Stellar USDC SAC address, asset code, issuer, and decimals are correct
-- session rail identifier and recipient addresses are set
+- session meter contract id and recipient addresses are set
 
 ## RWA v2
 
 - attestation registry/runtime surface is configured
-- backend operator key is configured for relay/admin actions
+- backend operator key is configured for admin/policy actions
 - issuer onboarding policy is active and explicit before minting
 - attestation policy is defined per asset type
 - private evidence vault storage is configured

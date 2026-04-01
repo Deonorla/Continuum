@@ -4,11 +4,7 @@
   "author": "Stella's Stream Engine Team",
   "language": "en",
   "gitbook": ">=3.0.0",
-  "links": {
-    "sidebar": {
-      "GitHub": "https://github.com/Deonorla/Polkadot_stream_engine"
-    }
-  },
+  "links": {},
   "plugins": [
     "theme-default",
     "search",

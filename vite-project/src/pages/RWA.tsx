@@ -2,26 +2,43 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Building2,
   Car,
+  CheckCircle2,
+  CircleAlert,
   Cpu,
+  FilePenLine,
   FileText,
   Info,
   ShieldCheck,
   UploadCloud,
+  WalletCards,
 } from 'lucide-react';
 import {
+  ATTESTATION_ROLE_LABELS,
   mapApiAssetToUiAsset,
   PORTFOLIO_ASSETS,
   TYPE_TO_CHAIN_ASSET_TYPE,
 } from './rwa/rwaData';
 import { AssetCard, AssetDetailPortal } from '../components/AssetCard';
 import { useWallet } from '../context/WalletContext';
+import { supportedPaymentAssets } from '../contactInfo.js';
 import {
   fetchRwaAsset,
   fetchRwaAssets,
   pinRwaMetadata,
   storeRwaEvidence,
 } from '../services/rwaApi.js';
-import { mintAssetTwinWithFreighter } from '../services/rwaContractApi.js';
+import {
+  approveAndCreateAssetYieldStream,
+  claimAssetYield,
+  flashAdvanceAssetYield,
+  mintAssetTwinWithFreighter,
+  parseTokenAmount,
+  registerAssetAttestationWithFreighter,
+  revokeAssetAttestationWithFreighter,
+  updateAssetEvidenceOnChain,
+  updateAssetMetadataOnChain,
+  updateAssetVerificationTag,
+} from '../services/rwaContractApi.js';
 import {
   getStellarIssuerApproval,
   hashJson,
@@ -69,6 +86,22 @@ const DOCUMENT_KEYWORDS = {
   tenancy: ['tenancy', 'lease', 'rental'],
   encumbrance: ['encumbrance', 'lien', 'charge'],
 };
+const DEFAULT_PAYMENT_ASSET = supportedPaymentAssets.find((asset) => !asset.isNative) || supportedPaymentAssets[0];
+const OWNER_ACTION_HINT = 'Connect the current owner wallet in Freighter to use these controls.';
+const ATTESTATION_ROLE_CODES = {
+  issuer: 1,
+  lawyer: 2,
+  registrar: 3,
+  inspector: 4,
+  valuer: 5,
+  insurer: 6,
+  compliance: 7,
+};
+const ATTESTATION_ROLE_OPTIONS = Object.entries(ATTESTATION_ROLE_LABELS).map(([key, label], index) => ({
+  key,
+  label,
+  code: ATTESTATION_ROLE_CODES[key] || index + 1,
+}));
 
 function formatCompactNumber(value) {
   const numeric = Number(value || 0);
@@ -90,6 +123,25 @@ function formatCurrency(value) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+function formatTimestamp(value) {
+  const numeric = Number(value || 0);
+  if (!numeric) {
+    return 'Not set';
+  }
+  return new Date(numeric * 1000).toLocaleDateString('en-US', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function formatShortAddress(value) {
+  if (!value) {
+    return 'Unassigned';
+  }
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
 function slugify(value) {
@@ -236,6 +288,511 @@ function buildOptimisticAsset({
       reason: '',
     },
   });
+}
+
+function buildUpdatedPublicMetadata(asset, { description, location, tagSeed }) {
+  const current = asset.publicMetadata || asset.metadata || {};
+  const nextDescription = description.trim() || current.description || asset.description;
+  const nextLocation = location.trim() || current.location || asset.location;
+  return {
+    ...current,
+    name: current.name || asset.name,
+    description: nextDescription,
+    location: nextLocation,
+    tagSeed: tagSeed.trim() || current.tagSeed || `${current.propertyRef || asset.id}-VERIFY`,
+  };
+}
+
+function AssetWorkspacePanel({ asset, onAssetChanged }) {
+  const { fetchPaymentBalance, signer, toast, walletAddress } = useWallet();
+  const [attestationRole, setAttestationRole] = useState(() => {
+    const suggestedRole = asset?.attestationPolicies?.find((policy) => policy.required)?.role;
+    return Number(suggestedRole || 2);
+  });
+  const [attestationStatement, setAttestationStatement] = useState('evidence_review_complete');
+  const [yieldAmount, setYieldAmount] = useState('');
+  const [yieldDuration, setYieldDuration] = useState('2592000');
+  const [flashAmount, setFlashAmount] = useState('');
+  const [paymentToken, setPaymentToken] = useState(DEFAULT_PAYMENT_ASSET?.symbol || 'USDC');
+  const [metadataDescription, setMetadataDescription] = useState(asset?.publicMetadata?.description || asset?.description || '');
+  const [metadataLocation, setMetadataLocation] = useState(asset?.publicMetadata?.location || asset?.location || '');
+  const [tagSeed, setTagSeed] = useState(asset?.publicMetadata?.tagSeed || asset?.tagSeed || '');
+  const [evidenceFiles, setEvidenceFiles] = useState([]);
+  const [isBusy, setIsBusy] = useState(false);
+  const evidenceInputRef = useRef(null);
+
+  useEffect(() => {
+    setMetadataDescription(asset?.publicMetadata?.description || asset?.description || '');
+    setMetadataLocation(asset?.publicMetadata?.location || asset?.location || '');
+    setTagSeed(asset?.publicMetadata?.tagSeed || asset?.tagSeed || '');
+    setEvidenceFiles([]);
+    if (evidenceInputRef.current) {
+      evidenceInputRef.current.value = '';
+    }
+    const suggestedRole = asset?.attestationPolicies?.find((policy) => policy.required)?.role;
+    setAttestationRole(Number(suggestedRole || 2));
+  }, [asset]);
+
+  const isOwner = Boolean(walletAddress && (walletAddress === asset.currentOwner || walletAddress === asset.ownerAddress));
+  const missingDocuments = asset.evidenceSummary?.missingRequiredDocuments || [];
+  const missingRoles = (asset.attestationPolicies || [])
+    .filter((policy) => policy.required)
+    .map((policy) => policy.roleLabel)
+    .filter((roleLabel) => !(asset.attestations || []).some((attestation) => !attestation.revoked && attestation.roleLabel === roleLabel));
+
+  const syncAsset = async (tokenId) => {
+    const refreshed = await fetchRwaAsset(tokenId);
+    const mapped = refreshed ? mapApiAssetToUiAsset(refreshed) : null;
+    if (mapped) {
+      onAssetChanged?.(mapped);
+    }
+    return mapped;
+  };
+
+  const runAction = async (message, action) => {
+    let loadingToast = null;
+    try {
+      setIsBusy(true);
+      loadingToast = toast.transaction.pending(message);
+      const result = await action();
+      if (typeof fetchPaymentBalance === 'function') {
+        await fetchPaymentBalance();
+      }
+      const refreshed = await syncAsset(asset.tokenId);
+      toast.dismiss(loadingToast);
+      return { result, refreshed };
+    } catch (error) {
+      toast.dismiss(loadingToast);
+      toast.error(error?.message || 'The action could not be completed.', {
+        title: 'Action Failed',
+      });
+      throw error;
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleRegisterAttestation = async () => {
+    const evidenceHash = asset.evidenceRoot || asset.evidenceManifestHash || '';
+    if (!evidenceHash) {
+      toast.warning('This asset does not have an anchored evidence root yet.', {
+        title: 'Evidence Missing',
+      });
+      return;
+    }
+
+    const { result } = await runAction('Recording attestation on Soroban...', () =>
+      registerAssetAttestationWithFreighter({
+        signer,
+        tokenId: asset.tokenId,
+        role: attestationRole,
+        evidenceHash,
+        statementType: attestationStatement.trim() || 'evidence_review_complete',
+        expiry: 0,
+      })
+    );
+
+    toast.transaction.success('Attestation recorded on the Stellar registry.', result?.txHash);
+  };
+
+  const handleRevokeAttestation = async (attestationId) => {
+    const { result } = await runAction('Revoking attestation...', () =>
+      revokeAssetAttestationWithFreighter({
+        signer,
+        attestationId,
+        reason: 'Revoked from the RWA Studio workspace',
+      })
+    );
+    toast.transaction.success('Attestation revoked.', result?.txHash);
+  };
+
+  const handleOpenYield = async () => {
+    if (!yieldAmount || Number(yieldAmount) <= 0 || !yieldDuration || Number(yieldDuration) <= 0) {
+      toast.warning('Enter a yield amount and duration first.', {
+        title: 'Yield Details Required',
+      });
+      return;
+    }
+
+    const assetConfig = supportedPaymentAssets.find((item) => item.symbol === paymentToken) || DEFAULT_PAYMENT_ASSET;
+    const parsedAmount = parseTokenAmount(yieldAmount, assetConfig?.decimals || 7);
+
+    const { result } = await runAction('Opening asset yield stream on Soroban...', () =>
+      approveAndCreateAssetYieldStream({
+        signer,
+        tokenAddress: assetConfig?.tokenAddress,
+        tokenId: asset.tokenId,
+        totalAmount: parsedAmount,
+        duration: Number(yieldDuration),
+      })
+    );
+
+    toast.transaction.success('Yield stream funded successfully.', result?.txHash);
+  };
+
+  const handleClaimYield = async () => {
+    const { result } = await runAction('Claiming accrued yield...', () =>
+      claimAssetYield({
+        signer,
+        tokenId: asset.tokenId,
+      })
+    );
+    toast.transaction.success('Yield claim submitted.', result?.txHash);
+  };
+
+  const handleFlashAdvance = async () => {
+    if (!flashAmount || Number(flashAmount) <= 0) {
+      toast.warning('Enter a flash advance amount first.', {
+        title: 'Amount Required',
+      });
+      return;
+    }
+    const parsedAmount = parseTokenAmount(flashAmount, DEFAULT_PAYMENT_ASSET?.decimals || 7);
+    const { result } = await runAction('Requesting flash advance...', () =>
+      flashAdvanceAssetYield({
+        signer,
+        tokenId: asset.tokenId,
+        amount: parsedAmount,
+      })
+    );
+    toast.transaction.success('Flash advance submitted.', result?.txHash);
+  };
+
+  const handleMetadataUpdate = async () => {
+    let pinResult;
+    try {
+      const updatedMetadata = buildUpdatedPublicMetadata(asset, {
+        description: metadataDescription,
+        location: metadataLocation,
+        tagSeed,
+      });
+      pinResult = await pinRwaMetadata(updatedMetadata);
+    } catch (error) {
+      toast.error(error?.message || 'Metadata refresh failed before the onchain update.', {
+        title: 'Action Failed',
+      });
+      return;
+    }
+
+    const { result } = await runAction('Republishing public metadata...', () =>
+      updateAssetMetadataOnChain({
+        signer,
+        tokenId: asset.tokenId,
+        metadataURI: pinResult.uri,
+      })
+    );
+    toast.transaction.success('Metadata anchor refreshed.', result?.txHash);
+  };
+
+  const handleEvidenceUpdate = async () => {
+    if (!evidenceFiles.length) {
+      toast.warning('Select updated private evidence documents first.', {
+        title: 'Evidence Required',
+      });
+      return;
+    }
+
+    let storedEvidence;
+    try {
+      const propertyRef = asset.publicMetadata?.propertyRef || asset.tokenId;
+      const evidenceBundle = await buildEvidenceBundle(evidenceFiles, {
+        propertyRef,
+        jurisdiction: '',
+        rightsModel: RIGHTS_MODEL,
+      });
+      storedEvidence = await storeRwaEvidence({
+        evidenceBundle,
+        rightsModel: RIGHTS_MODEL,
+        propertyRef,
+        jurisdiction: '',
+      });
+    } catch (error) {
+      toast.error(error?.message || 'Evidence refresh failed before the onchain update.', {
+        title: 'Action Failed',
+      });
+      return;
+    }
+
+    const { result } = await runAction('Refreshing evidence anchors...', () =>
+      updateAssetEvidenceOnChain({
+        signer,
+        tokenId: asset.tokenId,
+        evidenceRoot: storedEvidence.evidenceRoot,
+        evidenceManifestHash: storedEvidence.evidenceManifestHash,
+      })
+    );
+    if (evidenceInputRef.current) {
+      evidenceInputRef.current.value = '';
+    }
+    setEvidenceFiles([]);
+    toast.transaction.success('Evidence anchors refreshed.', result?.txHash);
+  };
+
+  const handleTagUpdate = async () => {
+    if (!tagSeed.trim()) {
+      toast.warning('Enter a verification tag first.', {
+        title: 'Tag Required',
+      });
+      return;
+    }
+    const { result } = await runAction('Updating verification tag...', () =>
+      updateAssetVerificationTag({
+        signer,
+        tokenId: asset.tokenId,
+        tag: tagSeed.trim(),
+      })
+    );
+    toast.transaction.success('Verification tag updated.', result?.txHash);
+  };
+
+  return (
+    <div className="space-y-6 border-t border-slate-100 pt-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400">Asset Workspace</p>
+          <h3 className="text-lg font-headline font-bold text-slate-900">Live owner controls</h3>
+        </div>
+        <span className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${
+          isOwner ? 'border border-emerald-100 bg-emerald-50 text-emerald-600' : 'border border-amber-100 bg-amber-50 text-amber-600'
+        }`}>
+          {isOwner ? <CheckCircle2 size={12} /> : <CircleAlert size={12} />}
+          {isOwner ? 'Owner controls ready' : 'Read-only until owner connects'}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+          <p className="mb-1 text-[10px] font-label font-bold uppercase tracking-widest text-slate-400">Verification</p>
+          <p className="text-sm font-semibold text-slate-900">{asset.verificationStatusLabel || asset.status}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Updated {formatTimestamp(asset.verificationUpdatedAt)}. Missing docs: {missingDocuments.length || 0}. Missing roles: {missingRoles.length || 0}.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+          <p className="mb-1 text-[10px] font-label font-bold uppercase tracking-widest text-slate-400">Owner</p>
+          <p className="text-sm font-semibold text-slate-900">{formatShortAddress(asset.currentOwner || asset.ownerAddress)}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Active stream: {asset.activeStreamId || 'None'} • Claimable yield: {asset.yieldBalance?.toFixed?.(4) || '0.0000'}
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-3 rounded-3xl border border-slate-100 bg-slate-50 p-5">
+        <div className="flex items-center gap-2">
+          <ShieldCheck size={16} className="text-primary" />
+          <h4 className="text-sm font-bold uppercase tracking-widest text-primary">Attestations</h4>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1.2fr_auto]">
+          <select
+            value={attestationRole}
+            onChange={(event) => setAttestationRole(Number(event.target.value))}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+            disabled={!isOwner || isBusy}
+          >
+            {ATTESTATION_ROLE_OPTIONS.map((option) => (
+              <option key={option.key} value={option.code}>{option.label}</option>
+            ))}
+          </select>
+          <input
+            type="text"
+            value={attestationStatement}
+            onChange={(event) => setAttestationStatement(event.target.value)}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+            placeholder="evidence_review_complete"
+            disabled={!isOwner || isBusy}
+          />
+          <button
+            type="button"
+            onClick={() => void handleRegisterAttestation()}
+            disabled={!isOwner || isBusy}
+            className="rounded-xl bg-primary px-4 py-2 text-xs font-bold uppercase tracking-widest text-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Record
+          </button>
+        </div>
+        <div className="space-y-2">
+          {(asset.attestations || []).length === 0 ? (
+            <p className="text-xs text-slate-500">No attestations recorded yet.</p>
+          ) : (
+            (asset.attestations || []).map((attestation) => {
+              const canRevoke = isOwner && walletAddress === attestation.attestor && !attestation.revoked;
+              return (
+                <div key={attestation.attestationId} className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{attestation.roleLabel}</p>
+                    <p className="text-xs text-slate-500">
+                      {formatShortAddress(attestation.attestor)} • {attestation.revoked ? 'Revoked' : 'Active'} • Issued {formatTimestamp(attestation.issuedAt)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleRevokeAttestation(attestation.attestationId)}
+                    disabled={!canRevoke || isBusy}
+                    className="rounded-xl border border-slate-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Revoke
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-3 rounded-3xl border border-slate-100 bg-slate-50 p-5">
+        <div className="flex items-center gap-2">
+          <WalletCards size={16} className="text-primary" />
+          <h4 className="text-sm font-bold uppercase tracking-widest text-primary">Yield Vault</h4>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[0.9fr_1fr_1fr_auto]">
+          <select
+            value={paymentToken}
+            onChange={(event) => setPaymentToken(event.target.value)}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+            disabled={!isOwner || isBusy}
+          >
+            {supportedPaymentAssets.map((option) => (
+              <option key={option.symbol} value={option.symbol}>{option.symbol}</option>
+            ))}
+          </select>
+          <input
+            type="number"
+            min="0"
+            step="0.0001"
+            value={yieldAmount}
+            onChange={(event) => setYieldAmount(event.target.value)}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+            placeholder="Yield amount"
+            disabled={!isOwner || isBusy}
+          />
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={yieldDuration}
+            onChange={(event) => setYieldDuration(event.target.value)}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+            placeholder="Duration (seconds)"
+            disabled={!isOwner || isBusy}
+          />
+          <button
+            type="button"
+            onClick={() => void handleOpenYield()}
+            disabled={!isOwner || isBusy}
+            className="rounded-xl bg-primary px-4 py-2 text-xs font-bold uppercase tracking-widest text-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Fund
+          </button>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto_auto]">
+          <input
+            type="number"
+            min="0"
+            step="0.0001"
+            value={flashAmount}
+            onChange={(event) => setFlashAmount(event.target.value)}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+            placeholder="Flash advance amount"
+            disabled={!isOwner || isBusy}
+          />
+          <button
+            type="button"
+            onClick={() => void handleClaimYield()}
+            disabled={!isOwner || isBusy}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Claim
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleFlashAdvance()}
+            disabled={!isOwner || isBusy}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Flash Advance
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-3 rounded-3xl border border-slate-100 bg-slate-50 p-5">
+        <div className="flex items-center gap-2">
+          <FilePenLine size={16} className="text-primary" />
+          <h4 className="text-sm font-bold uppercase tracking-widest text-primary">Refresh Anchors</h4>
+        </div>
+        <div className="space-y-3">
+          <input
+            type="text"
+            value={metadataLocation}
+            onChange={(event) => setMetadataLocation(event.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+            placeholder="Public location"
+            disabled={!isOwner || isBusy}
+          />
+          <textarea
+            value={metadataDescription}
+            onChange={(event) => setMetadataDescription(event.target.value)}
+            className="min-h-[92px] w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+            placeholder="Public description"
+            disabled={!isOwner || isBusy}
+          />
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto]">
+            <input
+              type="text"
+              value={tagSeed}
+              onChange={(event) => setTagSeed(event.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+              placeholder="Verification tag seed"
+              disabled={!isOwner || isBusy}
+            />
+            <button
+              type="button"
+              onClick={() => void handleTagUpdate()}
+              disabled={!isOwner || isBusy}
+              className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Update Tag
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto_auto]">
+            <label className="block">
+              <input
+                ref={evidenceInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.jpg,.jpeg,.png"
+                className="hidden"
+                onChange={(event) => setEvidenceFiles(Array.from(event.target.files || []))}
+              />
+              <span className={`flex min-h-[44px] cursor-pointer items-center rounded-xl border border-dashed border-slate-300 bg-white px-3 py-2 text-sm text-slate-500 ${(!isOwner || isBusy) ? 'cursor-not-allowed opacity-60' : ''}`}>
+                {evidenceFiles.length
+                  ? `${evidenceFiles.length} evidence document${evidenceFiles.length > 1 ? 's' : ''} selected`
+                  : 'Select updated private evidence'}
+              </span>
+            </label>
+            <button
+              type="button"
+              onClick={() => void handleEvidenceUpdate()}
+              disabled={!isOwner || isBusy}
+              className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Refresh Evidence
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleMetadataUpdate()}
+              disabled={!isOwner || isBusy}
+              className="rounded-xl bg-primary px-4 py-2 text-xs font-bold uppercase tracking-widest text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Republish Metadata
+            </button>
+          </div>
+          {!isOwner && (
+            <p className="text-xs text-amber-600">{OWNER_ACTION_HINT}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function MintingTab({ onMinted, portfolioCount }) {
@@ -612,8 +1169,18 @@ function MintingTab({ onMinted, portfolioCount }) {
   );
 }
 
-function PortfolioTab({ assets, isLoading }) {
+function PortfolioTab({ assets, isLoading, onAssetChanged }) {
   const [selected, setSelected] = useState(null);
+
+  useEffect(() => {
+    if (!selected) {
+      return;
+    }
+    const nextSelected = assets.find((item) => item.tokenId === selected.tokenId);
+    if (nextSelected) {
+      setSelected(nextSelected);
+    }
+  }, [assets, selected]);
 
   return (
     <div className="space-y-6">
@@ -640,7 +1207,16 @@ function PortfolioTab({ assets, isLoading }) {
           ))}
         </div>
       )}
-      <AssetDetailPortal selected={selected} onClose={() => setSelected(null)} />
+      <AssetDetailPortal
+        selected={selected}
+        onClose={() => setSelected(null)}
+        renderBody={(asset) => (
+          <AssetWorkspacePanel
+            asset={asset}
+            onAssetChanged={onAssetChanged}
+          />
+        )}
+      />
     </div>
   );
 }
@@ -680,16 +1256,23 @@ export default function RWA() {
     void refreshPortfolio();
   }, [refreshPortfolio]);
 
+  const handleAssetChanged = useCallback((asset) => {
+    if (!asset) {
+      return;
+    }
+    setPortfolioAssets((current) => {
+      const withoutDuplicate = current.filter((item) => item.tokenId !== asset.tokenId);
+      return [asset, ...withoutDuplicate];
+    });
+  }, []);
+
   const handleMinted = useCallback((asset) => {
     if (asset) {
-      setPortfolioAssets((current) => {
-        const withoutDuplicate = current.filter((item) => item.tokenId !== asset.tokenId);
-        return [asset, ...withoutDuplicate];
-      });
+      handleAssetChanged(asset);
     }
     setTab('My Portfolio');
     void refreshPortfolio();
-  }, [refreshPortfolio]);
+  }, [handleAssetChanged, refreshPortfolio]);
 
   const fmt = (value) => parseFloat(value || 0).toLocaleString('en-US', {
     minimumFractionDigits: 2,
@@ -801,6 +1384,7 @@ export default function RWA() {
               <PortfolioTab
                 assets={portfolioAssets}
                 isLoading={isPortfolioLoading}
+                onAssetChanged={handleAssetChanged}
               />
             )}
           </div>

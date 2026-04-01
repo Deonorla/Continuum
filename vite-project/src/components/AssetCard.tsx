@@ -63,7 +63,7 @@ export function AssetCard({ asset, onDetails }) {
   );
 }
 
-export function DetailDrawer({ asset, onClose }) {
+export function DetailDrawer({ asset, onClose, renderBody, renderFooter }) {
   const meta = TYPE_META[asset.type] || TYPE_META.real_estate;
   const Icon = TYPE_ICON[asset.type] || Building2;
   const seed = IMAGE_SEEDS[asset.type] || 'villa';
@@ -144,22 +144,35 @@ export function DetailDrawer({ asset, onClose }) {
               Live yield streaming at {(asset.yieldRatePerSecond * 3600).toFixed(6)} USDC/hr
             </div>
           )}
+
+          {typeof renderBody === 'function' && renderBody(asset)}
         </div>
 
         <div className="p-6 border-t border-slate-100 shrink-0">
-          <button className="w-full py-4 rounded-2xl ethereal-gradient text-white font-label font-bold uppercase tracking-widest text-sm shadow-lg shadow-blue-500/20 hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
-            <Clock size={16} /> Start Rental Session
-          </button>
+          {typeof renderFooter === 'function' ? (
+            renderFooter(asset)
+          ) : (
+            <button className="w-full py-4 rounded-2xl ethereal-gradient text-white font-label font-bold uppercase tracking-widest text-sm shadow-lg shadow-blue-500/20 hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+              <Clock size={16} /> Start Rental Session
+            </button>
+          )}
         </div>
       </motion.div>
     </motion.div>
   );
 }
 
-export function AssetDetailPortal({ selected, onClose }) {
+export function AssetDetailPortal({ selected, onClose, renderBody, renderFooter }) {
   return (
     <AnimatePresence>
-      {selected && <DetailDrawer asset={selected} onClose={onClose} />}
+      {selected && (
+        <DetailDrawer
+          asset={selected}
+          onClose={onClose}
+          renderBody={renderBody}
+          renderFooter={renderFooter}
+        />
+      )}
     </AnimatePresence>
   );
 }

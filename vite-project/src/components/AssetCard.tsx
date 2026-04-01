@@ -1,5 +1,6 @@
 import { ArrowUpRight, Globe, X, MapPin, Clock, Shield, Zap, Building2, Car, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { StrKey } from '@stellar/stellar-sdk';
 import { TYPE_META } from '../pages/rwa/rwaData';
 
 export const TYPE_ICON = { real_estate: Building2, vehicle: Car, commodity: Package };
@@ -14,6 +15,8 @@ export function AssetCard({ asset, onDetails }) {
   const meta = TYPE_META[asset.type] || TYPE_META.real_estate;
   const Icon = TYPE_ICON[asset.type] || Building2;
   const seed = IMAGE_SEEDS[asset.type] || 'villa';
+  const ownerAddress = asset.currentOwner || asset.ownerAddress || asset.assetAddress || '';
+  const isRentalReady = StrKey.isValidEd25519PublicKey(String(ownerAddress || '').trim());
 
   return (
     <motion.div
@@ -35,6 +38,13 @@ export function AssetCard({ asset, onDetails }) {
           <span className="text-[10px] font-headline font-bold text-primary uppercase tracking-widest">
             ${asset.pricePerHour.toFixed(4)}/hr
           </span>
+        </div>
+        <div className={`absolute bottom-4 left-4 rounded-full border px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest shadow-lg ${
+          isRentalReady
+            ? 'border-emerald-200 bg-emerald-50/95 text-emerald-600'
+            : 'border-amber-200 bg-amber-50/95 text-amber-700'
+        }`}>
+          {isRentalReady ? 'Stellar Rental Ready' : 'Needs Owner Sync'}
         </div>
       </div>
       <div className="p-8">
@@ -67,6 +77,8 @@ export function DetailDrawer({ asset, onClose, renderBody, renderFooter }) {
   const meta = TYPE_META[asset.type] || TYPE_META.real_estate;
   const Icon = TYPE_ICON[asset.type] || Building2;
   const seed = IMAGE_SEEDS[asset.type] || 'villa';
+  const ownerAddress = asset.currentOwner || asset.ownerAddress || asset.assetAddress || '';
+  const isRentalReady = StrKey.isValidEd25519PublicKey(String(ownerAddress || '').trim());
 
   return (
     <motion.div
@@ -108,8 +120,12 @@ export function DetailDrawer({ asset, onClose, renderBody, renderFooter }) {
               <MapPin size={14} />
               <span className="text-sm">{asset.location}</span>
             </div>
-            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-600 text-xs font-bold">
-              <Shield size={11} /> Verified
+            <span className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${
+              isRentalReady
+                ? 'border-emerald-100 bg-emerald-50 text-emerald-600'
+                : 'border-amber-100 bg-amber-50 text-amber-700'
+            }`}>
+              <Shield size={11} /> {isRentalReady ? 'Stellar Rental Ready' : 'Needs Owner Sync'}
             </span>
           </div>
 

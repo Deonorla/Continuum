@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Clock, WalletCards } from 'lucide-react';
+import { Ban, Clock, RefreshCcw, WalletCards } from 'lucide-react';
 import { StrKey } from '@stellar/stellar-sdk';
 import { supportedPaymentAssets } from '../contactInfo.js';
 import { useWallet } from '../context/WalletContext';
@@ -20,8 +20,26 @@ function formatBudget(value, symbol) {
   return `${numeric.toFixed(4)} ${symbol}`;
 }
 
+function formatSessionAmount(stream, rawValue) {
+  const symbol = stream?.paymentTokenSymbol || stream?.assetCode || 'USDC';
+  const decimals = supportedPaymentAssets.find((asset) => asset.symbol === symbol)?.decimals || 7;
+  const numeric = Number(BigInt(String(rawValue || 0))) / 10 ** decimals;
+  return `${numeric.toFixed(4)} ${symbol}`;
+}
+
 export default function RentalSessionComposer({ asset, onStarted }) {
-  const { createStream, isProcessing, paymentBalance, paymentTokenSymbol, toast, walletAddress, xlmBalance } = useWallet();
+  const {
+    cancel,
+    createStream,
+    isProcessing,
+    outgoingStreams,
+    paymentBalance,
+    paymentTokenSymbol,
+    refreshStreams,
+    toast,
+    walletAddress,
+    xlmBalance,
+  } = useWallet();
   const [durationSeconds, setDurationSeconds] = useState(DURATION_OPTIONS[0].seconds);
   const [assetSymbol, setAssetSymbol] = useState(
     supportedPaymentAssets[0]?.symbol || 'USDC',
@@ -41,10 +59,25 @@ export default function RentalSessionComposer({ asset, onStarted }) {
   const ownerAddress = asset?.currentOwner || asset?.ownerAddress || asset?.assetAddress || '';
   const hasValidRecipient = StrKey.isValidEd25519PublicKey(String(ownerAddress || '').trim());
   const isOwner = Boolean(walletAddress && walletAddress === ownerAddress);
+  const linkedSession = useMemo(() => {
+    const currentTokenId = String(asset?.tokenId || asset?.id || '');
+    return (outgoingStreams || []).find((stream) => {
+      const metadata = (() => {
+        try {
+          return JSON.parse(String(stream?.metadata || '{}'));
+        } catch {
+          return {};
+        }
+      })();
+      return String(metadata?.assetTokenId || '') === currentTokenId;
+    }) || null;
+  }, [asset?.id, asset?.tokenId, outgoingStreams]);
+  const linkedSessionActive = Boolean(linkedSession?.isActive);
   const canStart = Boolean(
     walletAddress
     && hasValidRecipient
     && !isOwner
+    && !linkedSessionActive
     && budgetAmount > 0,
   );
 
@@ -83,8 +116,17 @@ export default function RentalSessionComposer({ asset, onStarted }) {
     );
 
     if (streamId !== null && streamId !== undefined) {
+      await refreshStreams?.();
       onStarted?.(streamId);
     }
+  };
+
+  const handleEndSession = async () => {
+    if (!linkedSession?.id) {
+      return;
+    }
+    await cancel(linkedSession.id);
+    await refreshStreams?.();
   };
 
   const availableBalance = selectedAsset?.symbol === 'XLM'
@@ -143,6 +185,59 @@ export default function RentalSessionComposer({ asset, onStarted }) {
         </div>
       </div>
 
+      {linkedSession && (
+        <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-label font-bold uppercase tracking-widest text-blue-500">Active Rental Session</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">Session #{linkedSession.id}</p>
+              <p className="mt-1 text-xs text-slate-600">
+                {linkedSessionActive ? 'This renter wallet already has a live session for this asset.' : 'Latest renter session for this asset.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void refreshStreams?.()}
+              className="rounded-xl border border-blue-200 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-blue-600"
+            >
+              <RefreshCcw size={12} className="inline-block mr-1" />
+              Refresh
+            </button>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-white/70 bg-white px-3 py-3">
+              <p className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400">Refund If Ended Now</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">
+                {formatSessionAmount(linkedSession, linkedSession.refundableAmount)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-white/70 bg-white px-3 py-3">
+              <p className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400">Consumed So Far</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">
+                {formatSessionAmount(
+                  linkedSession,
+                  Math.max(
+                    0,
+                    Number(linkedSession.totalAmount || 0) - Number(linkedSession.refundableAmount || 0),
+                  ),
+                )}
+              </p>
+            </div>
+          </div>
+          {linkedSessionActive && (
+            <button
+              type="button"
+              onClick={() => void handleEndSession()}
+              disabled={isProcessing}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-white py-3 text-xs font-bold uppercase tracking-widest text-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Ban size={14} />
+              {isProcessing ? 'Ending Session...' : 'End Session Early'}
+            </button>
+          )}
+        </div>
+      )}
+
       {!walletAddress && (
         <p className="text-xs text-amber-600">Connect Freighter to open a live Stellar rental session.</p>
       )}
@@ -151,6 +246,9 @@ export default function RentalSessionComposer({ asset, onStarted }) {
       )}
       {!hasValidRecipient && (
         <p className="text-xs text-amber-600">This asset still points to a legacy non-Stellar owner address, so live rental sessions are disabled until it is reindexed.</p>
+      )}
+      {linkedSessionActive && (
+        <p className="text-xs text-blue-600">End the current session first if you want to reopen this asset with a different duration or payment asset.</p>
       )}
 
       <button

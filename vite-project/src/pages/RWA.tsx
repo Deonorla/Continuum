@@ -1220,7 +1220,6 @@ function PortfolioTab({ assets, isLoading, onAssetChanged }) {
         renderFooter={(asset) => (
           <RentalSessionComposer
             asset={asset}
-            onStarted={() => setSelected(null)}
           />
         )}
       />

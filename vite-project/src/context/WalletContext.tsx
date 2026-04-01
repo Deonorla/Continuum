@@ -57,6 +57,7 @@ const TOKEN_APPROVAL_GAS_LIMIT = 500000n;
 const STREAM_CREATION_GAS_LIMIT = 1200000n;
 const STREAM_SCAN_LIMIT = 256;
 const IS_STELLAR_RUNTIME = ACTIVE_NETWORK.kind === 'stellar';
+const SESSION_METADATA_CACHE_KEY = 'stream_engine_stellar_session_metadata';
 
 function formatAddress(address) {
   if (!address) {
@@ -80,6 +81,52 @@ function parseSessionMetadata(metadata) {
   } catch {
     return {};
   }
+}
+
+function loadCachedSessionMetadata() {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+  try {
+    return JSON.parse(window.localStorage.getItem(SESSION_METADATA_CACHE_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function writeCachedSessionMetadata(cache) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage.setItem(SESSION_METADATA_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // Ignore local cache persistence failures.
+  }
+}
+
+function cacheSessionMetadata(sessionId, metadata) {
+  if (!sessionId || !metadata) {
+    return;
+  }
+  const cache = loadCachedSessionMetadata();
+  cache[String(sessionId)] = metadata;
+  writeCachedSessionMetadata(cache);
+}
+
+function hydrateSessionMetadata(session) {
+  if (!session?.id) {
+    return session;
+  }
+  const cache = loadCachedSessionMetadata();
+  const cachedMetadata = cache[String(session.id)];
+  if (!cachedMetadata) {
+    return session;
+  }
+  return {
+    ...session,
+    metadata: cachedMetadata,
+  };
 }
 
 function computeSessionClaimable(session) {
@@ -628,7 +675,7 @@ export function WalletProvider({ children }) {
         const normalizedAddress = me?.toLowerCase();
 
         if (IS_STELLAR_RUNTIME) {
-          const streamCards = await listStellarSessionsForAddress(me);
+          const streamCards = (await listStellarSessionsForAddress(me)).map(hydrateSessionMetadata);
           return {
             incoming: streamCards.filter(
               (stream) => String(stream.recipient || '').toLowerCase() === normalizedAddress,
@@ -996,6 +1043,13 @@ export function WalletProvider({ children }) {
 
       if (IS_STELLAR_RUNTIME) {
         const selectedAsset = options?.asset || supportedPaymentAssets[0];
+        const sessionMetadata = JSON.stringify({
+          ...parseSessionMetadata(metadataString),
+          paymentTokenSymbol: selectedAsset?.symbol || paymentTokenSymbol,
+          paymentAssetCode: selectedAsset?.assetCode || paymentAssetCode || paymentTokenSymbol,
+          paymentAssetIssuer: selectedAsset?.assetIssuer || '',
+          paymentTokenAddress: selectedAsset?.tokenAddress || paymentTokenAddress,
+        });
         const response = await openStellarSession({
           payer: walletAddress,
           recipient: normalizedRecipient,
@@ -1004,15 +1058,12 @@ export function WalletProvider({ children }) {
           assetIssuer: String(selectedAsset?.assetIssuer || ''),
           durationSeconds: parsedDuration,
           totalAmount: totalAmountWei,
-          metadata: JSON.stringify({
-            ...parseSessionMetadata(metadataString),
-            paymentTokenSymbol: selectedAsset?.symbol || paymentTokenSymbol,
-            paymentAssetCode: selectedAsset?.assetCode || paymentAssetCode || paymentTokenSymbol,
-            paymentAssetIssuer: selectedAsset?.assetIssuer || '',
-            paymentTokenAddress: selectedAsset?.tokenAddress || paymentTokenAddress,
-          }),
+          metadata: sessionMetadata,
         });
         createdId = Number(response?.streamId);
+        if (createdId) {
+          cacheSessionMetadata(createdId, sessionMetadata);
+        }
       } else if (activeWallet?.type === 'substrate') {
         await substrateCallContract(substrateSession, {
           contractAddress,

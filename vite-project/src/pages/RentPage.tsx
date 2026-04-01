@@ -117,7 +117,6 @@ export default function RentPage() {
         renderFooter={(asset) => (
           <RentalSessionComposer
             asset={asset}
-            onStarted={() => setSelected(null)}
           />
         )}
       />

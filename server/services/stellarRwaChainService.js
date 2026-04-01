@@ -11,6 +11,7 @@ const {
     normalizeVerificationStatus,
 } = require("./rwaModel");
 const { StellarAnchorService, formatStellarAmount } = require("./stellarAnchorService");
+const { StellarSorobanContractService } = require("./stellarSorobanContractService");
 
 const DEFAULT_ATTESTATION_POLICIES = {
     1: [
@@ -94,6 +95,157 @@ function computeSessionRefundable(session, at = nowSeconds()) {
     return totalAmount > streamed ? totalAmount - streamed : 0n;
 }
 
+function computeYieldStreamed(stream, at = nowSeconds()) {
+    const totalAmount = normalizeSessionAmount(stream.totalAmount);
+    const durationSeconds = Math.max(
+        1,
+        Number(stream.durationSeconds || (Number(stream.stopTime) - Number(stream.startTime)) || 1)
+    );
+    const elapsed = Math.max(0, Math.min(Number(stream.stopTime), at) - Number(stream.startTime));
+    const streamed = (totalAmount * BigInt(elapsed)) / BigInt(durationSeconds);
+    return streamed > totalAmount ? totalAmount : streamed;
+}
+
+function computeYieldClaimable(stream, at = nowSeconds()) {
+    const streamed = computeYieldStreamed(stream, at);
+    const withdrawnAmount = normalizeSessionAmount(stream.withdrawnAmount);
+    const flashAdvanceOutstanding = normalizeSessionAmount(stream.flashAdvanceOutstanding);
+    const reserved = withdrawnAmount + flashAdvanceOutstanding;
+    return streamed > reserved ? streamed - reserved : 0n;
+}
+
+function normalizeChainSession(session, fallbackMetadata = "") {
+    const startTime = Number(session?.start_time || 0);
+    const stopTime = Number(session?.stop_time || 0);
+    const durationSeconds = Math.max(1, stopTime - startTime);
+    const totalAmount = normalizeSessionAmount(session?.total_amount);
+    const amountWithdrawn = normalizeSessionAmount(session?.claimed_amount);
+    const flowRate = totalAmount / BigInt(durationSeconds);
+    return {
+        id: Number(session?.session_id || 0),
+        sender: session?.payer || "",
+        recipient: session?.recipient || "",
+        totalAmount: totalAmount.toString(),
+        flowRate: flowRate.toString(),
+        durationSeconds,
+        startTime,
+        stopTime,
+        amountWithdrawn: amountWithdrawn.toString(),
+        isActive: Number(session?.status || 0) === 1,
+        isFrozen: Boolean(session?.frozen),
+        metadata: fallbackMetadata || "",
+        txHash: "",
+        fundingTxHash: "",
+        fundedOnchain: true,
+        assetCode: session?.asset_code || "",
+        assetIssuer: session?.asset_issuer || "",
+        escrowAddress: "",
+    };
+}
+
+function normalizeChainAttestation(record) {
+    if (!record) {
+        return null;
+    }
+
+    const role = Number(record.role || 0);
+    return {
+        attestationId: Number(record.attestation_id || record.attestationId || 0),
+        tokenId: Number(record.token_id || record.tokenId || 0),
+        role,
+        roleLabel: codeToAttestationRole(role),
+        attestor: record.attestor || "",
+        evidenceHash: record.evidence_hash || record.evidenceHash || "",
+        statementType: record.statement_type || record.statementType || "",
+        issuedAt: Number(record.issued_at || record.issuedAt || 0),
+        expiry: Number(record.expiry || 0),
+        revoked: Boolean(record.revoked),
+        revocationReason: record.revocation_reason || record.revocationReason || "",
+    };
+}
+
+function normalizeYieldStream(stream) {
+    if (!stream) {
+        return null;
+    }
+
+    const startTime = Number(stream.start_time || stream.startTime || 0);
+    const stopTime = Number(stream.stop_time || stream.stopTime || 0);
+    return {
+        streamId: Number(stream.stream_id || stream.streamId || 0),
+        tokenId: Number(stream.token_id || stream.tokenId || 0),
+        sender: stream.sender || "",
+        token: stream.token || "",
+        totalAmount: String(stream.total_amount || stream.totalAmount || "0"),
+        withdrawnAmount: String(stream.withdrawn_amount || stream.withdrawnAmount || "0"),
+        flashAdvanceOutstanding: String(
+            stream.flash_advance_outstanding || stream.flashAdvanceOutstanding || "0"
+        ),
+        startTime,
+        stopTime,
+        durationSeconds: Math.max(1, stopTime - startTime),
+        status: Number(stream.status || 0),
+        isActive: Number(stream.status || 0) === 1,
+    };
+}
+
+function deriveAssetPolicy(verificationStatus, statusReason = "") {
+    const status = Number(verificationStatus || 0);
+    return {
+        frozen: status === VERIFICATION_STATUS_CODES.frozen,
+        disputed: status === VERIFICATION_STATUS_CODES.disputed,
+        revoked: status === VERIFICATION_STATUS_CODES.revoked,
+        updatedAt: nowSeconds(),
+        updatedBy: "",
+        reason: statusReason || "",
+    };
+}
+
+function normalizeChainAsset(asset, extras = {}) {
+    if (!asset) {
+        return null;
+    }
+
+    const verificationStatus = Number(asset.verification_status || asset.verificationStatus || 0);
+    const statusReason = asset.status_reason || asset.statusReason || "";
+    return {
+        tokenId: Number(asset.token_id || asset.tokenId || 0),
+        schemaVersion: Number(asset.schema_version || asset.schemaVersion || 2),
+        assetType: Number(asset.asset_type || asset.assetType || 0),
+        rightsModel: Number(asset.rights_model || asset.rightsModel || 0),
+        rightsModelLabel: codeToRightsModel(Number(asset.rights_model || asset.rightsModel || 0)),
+        verificationStatus,
+        verificationStatusLabel: codeToVerificationStatus(verificationStatus),
+        cidHash: asset.cid_hash || asset.cidHash || "",
+        tagHash: asset.tag_hash || asset.tagHash || "",
+        issuer: asset.issuer || "",
+        activeStreamId: Number(asset.active_stream_id || asset.activeStreamId || 0),
+        propertyRefHash: asset.property_ref_hash || asset.propertyRefHash || "",
+        publicMetadataHash: asset.public_metadata_hash || asset.publicMetadataHash || "",
+        evidenceRoot: asset.evidence_root || asset.evidenceRoot || "",
+        evidenceManifestHash: asset.evidence_manifest_hash || asset.evidenceManifestHash || "",
+        publicMetadataURI: asset.public_metadata_uri || asset.publicMetadataURI || "",
+        metadataURI: asset.public_metadata_uri || asset.publicMetadataURI || "",
+        tokenURI: asset.public_metadata_uri || asset.publicMetadataURI || "",
+        jurisdiction: asset.jurisdiction || "",
+        statusReason,
+        createdAt: Number(asset.created_at || asset.createdAt || nowSeconds()),
+        updatedAt: Number(asset.updated_at || asset.updatedAt || nowSeconds()),
+        verificationUpdatedAt: Number(asset.verification_updated_at || asset.verificationUpdatedAt || nowSeconds()),
+        exists: true,
+        currentOwner: asset.current_owner || asset.currentOwner || "",
+        claimableYield: String(extras.claimableYield || "0"),
+        totalYieldDeposited: String(extras.totalYieldDeposited || "0"),
+        flashAdvanceOutstanding: String(extras.flashAdvanceOutstanding || "0"),
+        stream: extras.stream || null,
+        compliance: extras.compliance || null,
+        assetPolicy: deriveAssetPolicy(verificationStatus, statusReason),
+        attestationPolicies: extras.attestationPolicies || [],
+        attestations: extras.attestations || [],
+        txHash: "",
+    };
+}
+
 class StellarRWAChainService {
     constructor(config = {}) {
         this.runtime = config.runtime || {};
@@ -138,10 +290,34 @@ class StellarRWAChainService {
             || process.env.STELLAR_OPERATOR_PUBLIC_KEY
             || process.env.STREAM_ENGINE_RECIPIENT_ADDRESS
             || "";
+        this.sessionMeterAddress =
+            config.sessionMeterAddress
+            || this.runtime.contracts?.sessionMeter?.contractId
+            || process.env.STREAM_ENGINE_CONTRACT_ADDRESS
+            || "";
+        this.nativeTokenAddress =
+            this.runtime.sac?.nativeXlm
+            || process.env.STELLAR_NATIVE_XLM_SAC_ADDRESS
+            || "";
+        this.contractService = new StellarSorobanContractService({
+            rpcUrl: this.runtime.sorobanRpcUrl || this.runtime.rpcUrl,
+            horizonUrl: this.runtime.horizonUrl,
+            networkPassphrase: this.runtime.networkPassphrase,
+            operatorSecret:
+                config.operatorSecret
+                || process.env.STELLAR_OPERATOR_SECRET
+                || process.env.PRIVATE_KEY
+                || "",
+            operatorPublicKey:
+                config.operatorPublicKey
+                || process.env.STELLAR_OPERATOR_PUBLIC_KEY
+                || process.env.STELLAR_PLATFORM_ADDRESS
+                || "",
+        });
     }
 
     isConfigured() {
-        return Boolean(this.store);
+        return Boolean(this.store && this.contractService.isConfigured());
     }
 
     async init() {
@@ -161,7 +337,7 @@ class StellarRWAChainService {
     }
 
     async ensureIssuerApproved(issuer) {
-        const approval = await this.store.getIssuerApproval(issuer);
+        const approval = await this.getIssuerApproval(issuer);
         if (!approval?.approved) {
             throw createError(
                 "issuer_not_onboarded",
@@ -180,14 +356,37 @@ class StellarRWAChainService {
     }
 
     async getIssuerApproval(issuer) {
-        return this.store.getIssuerApproval(issuer);
+        try {
+            const approval = await this.contractService.invokeView({
+                contractId: this.assetRegistryAddress,
+                method: "get_issuer_approval",
+                args: [
+                    { type: "address", value: issuer },
+                ],
+            });
+            const record = {
+                issuer,
+                approved: Boolean(approval?.approved),
+                note: approval?.note || "",
+                updatedAt: Number(approval?.updated_at || 0),
+            };
+            await this.store.upsertIssuerApproval(record);
+            return record;
+        } catch (error) {
+            return this.store.getIssuerApproval(issuer);
+        }
     }
 
     async setIssuerApproval({ issuer, approved, note = "" }) {
-        const anchor = await this.anchorService.submitAnchor("issuer_approval", {
-            issuer,
-            approved,
-            note,
+        const chainWrite = await this.contractService.invokeWrite({
+            contractId: this.assetRegistryAddress,
+            method: "set_issuer_approval",
+            args: [
+                { type: "address", value: this.signer.address },
+                { type: "address", value: issuer },
+                { type: "bool", value: approved },
+                { type: "string", value: note },
+            ],
         });
         const record = {
             issuer,
@@ -195,17 +394,39 @@ class StellarRWAChainService {
             note,
             updatedAt: nowSeconds(),
             updatedBy: this.signer.address,
-            txHash: anchor.txHash,
+            txHash: chainWrite.txHash,
         };
         await this.store.upsertIssuerApproval(record);
         await this.store.recordActivity(
-            toActivity("policy", "IssuerApprovalUpdated", anchor.txHash, null, record)
+            toActivity("policy", "IssuerApprovalUpdated", chainWrite.txHash, null, record)
         );
-        return { txHash: anchor.txHash, issuer, approved: Boolean(approved) };
+        return { txHash: chainWrite.txHash, issuer, approved: Boolean(approved) };
     }
 
     async getCompliance(user, assetType) {
-        return this.store.getRecord(`compliance:${String(user).toLowerCase()}:${Number(assetType)}`);
+        try {
+            const record = await this.contractService.invokeView({
+                contractId: this.assetRegistryAddress,
+                method: "get_compliance",
+                args: [
+                    { type: "address", value: user },
+                    { type: "u32", value: Number(assetType) },
+                ],
+            });
+            const payload = {
+                approved: Boolean(record?.approved),
+                expiry: Number(record?.expiry || 0),
+                jurisdiction: record?.jurisdiction || "",
+                updatedAt: Number(record?.updated_at || 0),
+                currentlyValid:
+                    Boolean(record?.approved)
+                    && (!Number(record?.expiry || 0) || Number(record?.expiry || 0) >= nowSeconds()),
+            };
+            await this.store.upsertRecord(`compliance:${String(user).toLowerCase()}:${Number(assetType)}`, payload);
+            return payload;
+        } catch (error) {
+            return this.store.getRecord(`compliance:${String(user).toLowerCase()}:${Number(assetType)}`);
+        }
     }
 
     async setCompliance({ user, assetType, approved, expiry, jurisdiction }) {
@@ -218,19 +439,57 @@ class StellarRWAChainService {
             updatedAt: nowSeconds(),
             updatedBy: this.signer.address,
         };
-        const anchor = await this.anchorService.submitAnchor("compliance", payload);
-        payload.txHash = anchor.txHash;
+        const chainWrite = await this.contractService.invokeWrite({
+            contractId: this.assetRegistryAddress,
+            method: "set_compliance",
+            args: [
+                { type: "address", value: this.signer.address },
+                { type: "address", value: user },
+                { type: "u32", value: Number(assetType) },
+                { type: "bool", value: Boolean(approved) },
+                { type: "u64", value: BigInt(Number(expiry || 0)) },
+                { type: "string", value: jurisdiction || "" },
+            ],
+        });
+        payload.txHash = chainWrite.txHash;
         await this.store.upsertRecord(`compliance:${String(user).toLowerCase()}:${Number(assetType)}`, payload);
         await this.store.recordActivity(
-            toActivity("policy", "ComplianceUpdated", anchor.txHash, null, payload)
+            toActivity("policy", "ComplianceUpdated", chainWrite.txHash, null, payload)
         );
-        return { txHash: anchor.txHash };
+        return { txHash: chainWrite.txHash };
     }
 
     async getAttestationPolicies(assetType) {
         const resolvedAssetType = Number(assetType || 1);
         const policies = [];
         const defaults = DEFAULT_ATTESTATION_POLICIES[resolvedAssetType] || [];
+        const defaultByRole = new Map(defaults.map((entry) => [Number(entry.role), entry]));
+
+        try {
+            const chainPolicies = await this.contractService.invokeView({
+                contractId: this.attestationRegistryAddress,
+                method: "get_policies",
+                args: [
+                    { type: "u32", value: resolvedAssetType },
+                ],
+            });
+
+            for (const entry of Array.isArray(chainPolicies) ? chainPolicies : []) {
+                const role = Number(entry?.role || 0);
+                const payload = {
+                    role,
+                    roleLabel: codeToAttestationRole(role),
+                    required: Boolean(entry?.required),
+                    maxAge: Number(entry?.max_age || 0),
+                };
+                policies.push(payload);
+                await this.store.upsertRecord(`policy:attestation:${resolvedAssetType}:${role}`, payload);
+                defaultByRole.delete(role);
+            }
+        } catch {
+            // Fall back to cached defaults below.
+        }
+
         for (const entry of defaults) {
             const override = await this.store.getRecord(`policy:attestation:${resolvedAssetType}:${entry.role}`);
             policies.push({
@@ -245,23 +504,10 @@ class StellarRWAChainService {
             });
         }
 
-        const extraRoles = Object.keys(ATTESTATION_ROLE_LABELS).map(Number);
-        for (const role of extraRoles) {
-            if (policies.find((policy) => Number(policy.role) === role)) {
-                continue;
-            }
-            const override = await this.store.getRecord(`policy:attestation:${resolvedAssetType}:${role}`);
-            if (override) {
-                policies.push({
-                    role,
-                    roleLabel: codeToAttestationRole(role),
-                    required: Boolean(override.required),
-                    maxAge: Number(override.maxAge || 0),
-                });
-            }
-        }
-
-        return policies.sort((left, right) => Number(left.role) - Number(right.role));
+        const deduped = Array.from(
+            new Map(policies.map((entry) => [Number(entry.role), entry])).values()
+        );
+        return deduped.sort((left, right) => Number(left.role) - Number(right.role));
     }
 
     async setAttestationPolicy({ assetType, role, required, maxAge }) {
@@ -275,13 +521,23 @@ class StellarRWAChainService {
             updatedAt: nowSeconds(),
             updatedBy: this.signer.address,
         };
-        const anchor = await this.anchorService.submitAnchor("attestation_policy", payload);
-        payload.txHash = anchor.txHash;
+        const chainWrite = await this.contractService.invokeWrite({
+            contractId: this.attestationRegistryAddress,
+            method: "set_policy",
+            args: [
+                { type: "address", value: this.signer.address },
+                { type: "u32", value: Number(assetType) },
+                { type: "u32", value: normalizedRole.code },
+                { type: "bool", value: Boolean(required) },
+                { type: "u64", value: BigInt(Number(maxAge || 0)) },
+            ],
+        });
+        payload.txHash = chainWrite.txHash;
         await this.store.upsertRecord(`policy:attestation:${payload.assetType}:${payload.role}`, payload);
         await this.store.recordActivity(
-            toActivity("policy", "AttestationPolicyUpdated", anchor.txHash, null, payload)
+            toActivity("policy", "AttestationPolicyUpdated", chainWrite.txHash, null, payload)
         );
-        return { txHash: anchor.txHash };
+        return { txHash: chainWrite.txHash };
     }
 
     async mintAsset({
@@ -298,17 +554,7 @@ class StellarRWAChainService {
         issuer,
         statusReason = "",
     }) {
-        const approval = await this.store.getIssuerApproval(issuer);
-        if (!approval?.approved) {
-            throw createError(
-                "issuer_not_onboarded",
-                `Issuer ${issuer} is not onboarded for Stellar RWA minting.`,
-                {
-                    issuer,
-                    operator: this.signer.address,
-                }
-            );
-        }
+        await this.ensureIssuerApproved(issuer);
 
         const tokenId = await this.store.nextCounter("assetTokenId");
         const attestationPolicies = await this.getAttestationPolicies(assetType);
@@ -410,12 +656,46 @@ class StellarRWAChainService {
     }
 
     async getAttestationRecord(attestationId) {
-        return this.store.getRecord(`attestation:${Number(attestationId)}`);
+        try {
+            const record = await this.contractService.invokeView({
+                contractId: this.attestationRegistryAddress,
+                method: "get_attestation",
+                args: [
+                    { type: "u64", value: BigInt(Number(attestationId)) },
+                ],
+            });
+            const normalized = normalizeChainAttestation(record);
+            if (!normalized) {
+                return null;
+            }
+            await this.store.upsertRecord(`attestation:${normalized.attestationId}`, normalized);
+            return normalized;
+        } catch (error) {
+            return this.store.getRecord(`attestation:${Number(attestationId)}`);
+        }
     }
 
     async getAttestations(tokenId) {
-        const asset = await this.getAssetSnapshot(tokenId);
-        return asset?.attestations || [];
+        try {
+            const records = await this.contractService.invokeView({
+                contractId: this.attestationRegistryAddress,
+                method: "list_for_token",
+                args: [
+                    { type: "u64", value: BigInt(Number(tokenId)) },
+                ],
+            });
+            const normalized = (Array.isArray(records) ? records : [])
+                .map((record) => normalizeChainAttestation(record))
+                .filter(Boolean)
+                .sort((left, right) => Number(left.attestationId) - Number(right.attestationId));
+            for (const entry of normalized) {
+                await this.store.upsertRecord(`attestation:${entry.attestationId}`, entry);
+            }
+            return normalized;
+        } catch (error) {
+            const asset = await this.store.getAsset(tokenId);
+            return asset?.attestations || [];
+        }
     }
 
     async registerAttestation({ tokenId, role, attestor, evidenceHash, statementType, expiry }) {
@@ -500,24 +780,50 @@ class StellarRWAChainService {
             throw createError("asset_not_found", `Asset ${tokenId} was not found.`);
         }
         const normalizedStatus = normalizeVerificationStatus(status);
-        const anchor = await this.anchorService.submitAnchor("verification_status", {
-            tokenId: Number(tokenId),
-            status: normalizedStatus.code,
-            reason,
-        });
-        asset.verificationStatus = normalizedStatus.code;
-        asset.verificationStatusLabel = normalizedStatus.label;
-        asset.statusReason = reason || asset.statusReason;
-        asset.verificationUpdatedAt = nowSeconds();
-        asset.updatedAt = nowSeconds();
-        await this.store.upsertAsset(asset);
-        await this.store.recordActivity(
-            toActivity("policy", "VerificationStatusUpdated", anchor.txHash, tokenId, {
-                status: normalizedStatus.label,
+        try {
+            const chainWrite = await this.contractService.invokeWrite({
+                contractId: this.assetRegistryAddress,
+                method: "set_verification_status",
+                args: [
+                    { type: "address", value: this.signer.address },
+                    { type: "u64", value: BigInt(Number(tokenId)) },
+                    { type: "u32", value: normalizedStatus.code },
+                    { type: "string", value: reason || "" },
+                ],
+            });
+            asset.verificationStatus = normalizedStatus.code;
+            asset.verificationStatusLabel = normalizedStatus.label;
+            asset.statusReason = reason || asset.statusReason;
+            asset.verificationUpdatedAt = nowSeconds();
+            asset.updatedAt = nowSeconds();
+            await this.store.upsertAsset(asset);
+            await this.store.recordActivity(
+                toActivity("policy", "VerificationStatusUpdated", chainWrite.txHash, tokenId, {
+                    status: normalizedStatus.label,
+                    reason,
+                })
+            );
+            return { txHash: chainWrite.txHash };
+        } catch (error) {
+            const anchor = await this.anchorService.submitAnchor("verification_status", {
+                tokenId: Number(tokenId),
+                status: normalizedStatus.code,
                 reason,
-            })
-        );
-        return { txHash: anchor.txHash };
+            });
+            asset.verificationStatus = normalizedStatus.code;
+            asset.verificationStatusLabel = normalizedStatus.label;
+            asset.statusReason = reason || asset.statusReason;
+            asset.verificationUpdatedAt = nowSeconds();
+            asset.updatedAt = nowSeconds();
+            await this.store.upsertAsset(asset);
+            await this.store.recordActivity(
+                toActivity("policy", "VerificationStatusUpdated", anchor.txHash, tokenId, {
+                    status: normalizedStatus.label,
+                    reason,
+                })
+            );
+            return { txHash: anchor.txHash };
+        }
     }
 
     async setAssetPolicy({ tokenId, frozen, disputed, revoked, reason = "" }) {
@@ -525,27 +831,56 @@ class StellarRWAChainService {
         if (!asset) {
             throw createError("asset_not_found", `Asset ${tokenId} was not found.`);
         }
-        const anchor = await this.anchorService.submitAnchor("asset_policy", {
-            tokenId: Number(tokenId),
-            frozen: Boolean(frozen),
-            disputed: Boolean(disputed),
-            revoked: Boolean(revoked),
-            reason,
-        });
-        asset.assetPolicy = {
-            frozen: Boolean(frozen),
-            disputed: Boolean(disputed),
-            revoked: Boolean(revoked),
-            updatedAt: nowSeconds(),
-            updatedBy: this.signer.address,
-            reason,
-        };
-        this.recomputeAssetStatus(asset);
-        await this.store.upsertAsset(asset);
-        await this.store.recordActivity(
-            toActivity("policy", "AssetPolicyUpdated", anchor.txHash, tokenId, asset.assetPolicy)
-        );
-        return { txHash: anchor.txHash };
+        try {
+            const chainWrite = await this.contractService.invokeWrite({
+                contractId: this.assetRegistryAddress,
+                method: "set_asset_policy",
+                args: [
+                    { type: "address", value: this.signer.address },
+                    { type: "u64", value: BigInt(Number(tokenId)) },
+                    { type: "bool", value: Boolean(frozen) },
+                    { type: "bool", value: Boolean(disputed) },
+                    { type: "bool", value: Boolean(revoked) },
+                    { type: "string", value: reason || "" },
+                ],
+            });
+            asset.assetPolicy = {
+                frozen: Boolean(frozen),
+                disputed: Boolean(disputed),
+                revoked: Boolean(revoked),
+                updatedAt: nowSeconds(),
+                updatedBy: this.signer.address,
+                reason,
+            };
+            this.recomputeAssetStatus(asset);
+            await this.store.upsertAsset(asset);
+            await this.store.recordActivity(
+                toActivity("policy", "AssetPolicyUpdated", chainWrite.txHash, tokenId, asset.assetPolicy)
+            );
+            return { txHash: chainWrite.txHash };
+        } catch (error) {
+            const anchor = await this.anchorService.submitAnchor("asset_policy", {
+                tokenId: Number(tokenId),
+                frozen: Boolean(frozen),
+                disputed: Boolean(disputed),
+                revoked: Boolean(revoked),
+                reason,
+            });
+            asset.assetPolicy = {
+                frozen: Boolean(frozen),
+                disputed: Boolean(disputed),
+                revoked: Boolean(revoked),
+                updatedAt: nowSeconds(),
+                updatedBy: this.signer.address,
+                reason,
+            };
+            this.recomputeAssetStatus(asset);
+            await this.store.upsertAsset(asset);
+            await this.store.recordActivity(
+                toActivity("policy", "AssetPolicyUpdated", anchor.txHash, tokenId, asset.assetPolicy)
+            );
+            return { txHash: anchor.txHash };
+        }
     }
 
     async updateAssetMetadata({ tokenId, metadataURI, cidHash }) {
@@ -621,25 +956,70 @@ class StellarRWAChainService {
         if (!asset) {
             throw createError("asset_not_found", `Asset ${tokenId} was not found.`);
         }
-        const session = await this.createSession({
-            sender: sender || asset.currentOwner,
-            recipient: asset.currentOwner,
-            totalAmount,
-            duration,
-            metadata: JSON.stringify({
-                type: "asset-yield",
-                assetTokenId: Number(tokenId),
-            }),
-        });
-        asset.activeStreamId = Number(session.streamId);
+        const startTime = nowSeconds();
+        const stopTime = startTime + Math.max(1, Number(duration || 1));
+        const fundingSender = sender || this.signer.address || asset.currentOwner;
+        const tokenAddress = this.runtime.paymentTokenAddress || this.nativeTokenAddress || "";
+
+        let txHash = "";
+        let streamId = 0;
+
+        if (
+            this.assetStreamAddress
+            && this.contractService.isConfigured()
+            && tokenAddress
+            && fundingSender
+            && String(fundingSender).toLowerCase() === String(this.signer.address || "").toLowerCase()
+        ) {
+            const chainWrite = await this.contractService.invokeWrite({
+                contractId: this.assetStreamAddress,
+                method: "open_stream",
+                args: [
+                    { type: "address", value: fundingSender },
+                    { type: "u64", value: BigInt(Number(tokenId)) },
+                    { type: "address", value: tokenAddress },
+                    { type: "i128", value: BigInt(totalAmount) },
+                    { type: "u64", value: BigInt(startTime) },
+                    { type: "u64", value: BigInt(stopTime) },
+                ],
+            });
+            streamId = Number(chainWrite.result || 0);
+            txHash = chainWrite.txHash;
+            if (streamId > 0) {
+                try {
+                    await this.contractService.invokeWrite({
+                        contractId: this.assetRegistryAddress,
+                        method: "bind_active_stream",
+                        args: [
+                            { type: "address", value: this.signer.address },
+                            { type: "u64", value: BigInt(Number(tokenId)) },
+                            { type: "u64", value: BigInt(streamId) },
+                        ],
+                    });
+                } catch {
+                    // The asset snapshot path can still recover the active stream from YieldVault.
+                }
+            }
+        } else {
+            const anchor = await this.anchorService.submitAnchor("yield_stream_open", {
+                tokenId: Number(tokenId),
+                sender: fundingSender,
+                totalAmount: String(totalAmount),
+                duration: Number(duration || 0),
+            });
+            streamId = await this.store.nextCounter("yieldStreamId");
+            txHash = anchor.txHash;
+        }
+
+        asset.activeStreamId = Number(streamId);
         asset.stream = {
-            streamId: Number(session.streamId),
-            sender: sender || asset.currentOwner,
+            streamId: Number(streamId),
+            sender: fundingSender,
             assetType: asset.assetType,
             totalAmount: String(totalAmount),
             flowRate: String(BigInt(totalAmount) / BigInt(Math.max(1, Number(duration)))),
-            startTime: session.startTime,
-            stopTime: session.stopTime,
+            startTime,
+            stopTime,
             amountWithdrawn: asset.stream?.amountWithdrawn || "0",
             isActive: true,
             isFrozen: false,
@@ -648,7 +1028,15 @@ class StellarRWAChainService {
             BigInt(asset.totalYieldDeposited || "0") + BigInt(totalAmount)
         );
         await this.store.upsertAsset(asset);
-        return { txHash: session.txHash, streamId: Number(session.streamId) };
+        await this.store.recordActivity(
+            toActivity("yield", "YieldStreamOpened", txHash, tokenId, {
+                tokenId: Number(tokenId),
+                streamId: Number(streamId),
+                sender: fundingSender,
+                totalAmount: String(totalAmount),
+            })
+        );
+        return { txHash, streamId: Number(streamId) };
     }
 
     async claimYield({ tokenId }) {
@@ -659,6 +1047,31 @@ class StellarRWAChainService {
         if (asset.assetPolicy?.frozen || asset.assetPolicy?.disputed || asset.assetPolicy?.revoked) {
             throw createError("asset_claim_blocked", "Yield claim is blocked by the current asset policy.");
         }
+        const operatorOwnsAsset =
+            asset.currentOwner
+            && this.signer.address
+            && String(asset.currentOwner).toLowerCase() === String(this.signer.address).toLowerCase();
+        if (this.assetStreamAddress && this.contractService.isConfigured() && operatorOwnsAsset) {
+            const chainWrite = await this.contractService.invokeWrite({
+                contractId: this.assetStreamAddress,
+                method: "claim",
+                args: [
+                    { type: "address", value: this.signer.address },
+                    { type: "u64", value: BigInt(Number(tokenId)) },
+                ],
+            });
+            const refreshed = await this.getAssetSnapshot(tokenId);
+            if (refreshed) {
+                await this.store.upsertAsset(refreshed);
+            }
+            await this.store.recordActivity(
+                toActivity("yield", "YieldClaimed", chainWrite.txHash, tokenId, {
+                    amount: String(chainWrite.result || "0"),
+                })
+            );
+            return { txHash: chainWrite.txHash, amount: String(chainWrite.result || "0") };
+        }
+
         const claimable = BigInt(asset.claimableYield || "0");
         const anchor = await this.anchorService.submitAnchor("claim_yield", {
             tokenId: Number(tokenId),
@@ -687,6 +1100,32 @@ class StellarRWAChainService {
         if (asset.assetPolicy?.frozen || asset.assetPolicy?.disputed || asset.assetPolicy?.revoked) {
             throw createError("asset_claim_blocked", "Flash advance is blocked by the current asset policy.");
         }
+        const operatorOwnsAsset =
+            asset.currentOwner
+            && this.signer.address
+            && String(asset.currentOwner).toLowerCase() === String(this.signer.address).toLowerCase();
+        if (this.assetStreamAddress && this.contractService.isConfigured() && operatorOwnsAsset) {
+            const chainWrite = await this.contractService.invokeWrite({
+                contractId: this.assetStreamAddress,
+                method: "flash_advance",
+                args: [
+                    { type: "address", value: this.signer.address },
+                    { type: "u64", value: BigInt(Number(tokenId)) },
+                    { type: "i128", value: BigInt(amount) },
+                ],
+            });
+            const refreshed = await this.getAssetSnapshot(tokenId);
+            if (refreshed) {
+                await this.store.upsertAsset(refreshed);
+            }
+            await this.store.recordActivity(
+                toActivity("yield", "FlashAdvanceIssued", chainWrite.txHash, tokenId, {
+                    amount: String(chainWrite.result || amount),
+                })
+            );
+            return { txHash: chainWrite.txHash };
+        }
+
         const anchor = await this.anchorService.submitAnchor("flash_advance", {
             tokenId: Number(tokenId),
             amount: String(amount),
@@ -902,40 +1341,99 @@ class StellarRWAChainService {
     }
 
     async freezeStream({ streamId, frozen, reason = "" }) {
-        const session = await this.store.getSession(streamId);
+        const session = await this.getSessionSnapshot(streamId);
         if (!session) {
             throw createError("session_not_found", `Session ${streamId} was not found.`);
         }
-        const anchor = await this.anchorService.submitAnchor("freeze_session", {
-            streamId: Number(streamId),
-            frozen: Boolean(frozen),
-            reason,
+        const chainWrite = await this.contractService.invokeWrite({
+            contractId: this.sessionMeterAddress,
+            method: "freeze_session",
+            args: [
+                { type: "address", value: this.signer.address },
+                { type: "u64", value: BigInt(Number(streamId)) },
+                { type: "bool", value: Boolean(frozen) },
+            ],
         });
         session.isFrozen = Boolean(frozen);
         session.freezeReason = reason;
-        session.txHash = anchor.txHash;
+        session.txHash = chainWrite.txHash;
         await this.store.upsertSession(session);
         await this.store.recordActivity(
-            toActivity("session", "SessionFrozen", anchor.txHash, null, {
+            toActivity("session", "SessionFrozen", chainWrite.txHash, null, {
                 streamId: Number(streamId),
                 frozen: Boolean(frozen),
                 reason,
             })
         );
-        return { txHash: anchor.txHash };
+        return { txHash: chainWrite.txHash };
     }
 
     async getSessionSnapshot(sessionId) {
-        const session = await this.store.getSession(sessionId);
-        if (!session) {
-            return null;
+        try {
+            const chainSession = await this.contractService.invokeView({
+                contractId: this.sessionMeterAddress,
+                method: "get_session",
+                args: [
+                    { type: "u64", value: BigInt(Number(sessionId)) },
+                ],
+            });
+            const cached = await this.store.getSession(sessionId);
+            const session = normalizeChainSession(chainSession, cached?.metadata || "");
+            session.escrowAddress = this.sessionMeterAddress;
+            await this.store.upsertSession(session);
+            return this.decorateSession(session);
+        } catch (error) {
+            const session = await this.store.getSession(sessionId);
+            if (!session) {
+                return null;
+            }
+            return this.decorateSession(session);
         }
-        return this.decorateSession(session);
     }
 
     async listSessions({ owner } = {}) {
-        const sessions = await this.store.listSessions({ owner });
-        return sessions.map((session) => this.decorateSession(session));
+        if (!owner) {
+            const sessions = await this.store.listSessions({ owner });
+            return sessions.map((session) => this.decorateSession(session));
+        }
+
+        try {
+            const [payerIds, recipientIds] = await Promise.all([
+                this.contractService.invokeView({
+                    contractId: this.sessionMeterAddress,
+                    method: "list_payer_sessions",
+                    args: [
+                        { type: "address", value: owner },
+                    ],
+                }),
+                this.contractService.invokeView({
+                    contractId: this.sessionMeterAddress,
+                    method: "list_recipient_sessions",
+                    args: [
+                        { type: "address", value: owner },
+                    ],
+                }),
+            ]);
+
+            const ids = Array.from(
+                new Set(
+                    [...(payerIds || []), ...(recipientIds || [])]
+                        .map((value) => Number(value))
+                        .filter((value) => Number.isFinite(value) && value > 0)
+                )
+            );
+            const sessions = [];
+            for (const id of ids) {
+                const snapshot = await this.getSessionSnapshot(id);
+                if (snapshot) {
+                    sessions.push(snapshot);
+                }
+            }
+            return sessions.sort((left, right) => Number(left.id) - Number(right.id));
+        } catch (error) {
+            const sessions = await this.store.listSessions({ owner });
+            return sessions.map((session) => this.decorateSession(session));
+        }
     }
 
     async getClaimableBalance(streamId) {
@@ -947,20 +1445,129 @@ class StellarRWAChainService {
     }
 
     async getAssetSnapshot(tokenId) {
-        const asset = await this.store.getAsset(tokenId);
-        if (!asset) {
-            return null;
-        }
+        try {
+            const rawAsset = await this.contractService.invokeView({
+                contractId: this.assetRegistryAddress,
+                method: "get_asset",
+                args: [
+                    { type: "u64", value: BigInt(Number(tokenId)) },
+                ],
+            });
+            const attestationPolicies = await this.getAttestationPolicies(Number(rawAsset?.asset_type || 0));
+            const attestations = await this.getAttestations(Number(tokenId));
+            const compliance = await this.getCompliance(rawAsset?.issuer, Number(rawAsset?.asset_type || 0));
+            let latestYieldStreamId = Number(rawAsset?.active_stream_id || 0);
+            let stream = null;
+            if (this.assetStreamAddress) {
+                try {
+                    latestYieldStreamId = Number(
+                        await this.contractService.invokeView({
+                            contractId: this.assetStreamAddress,
+                            method: "latest_stream_for_asset",
+                            args: [
+                                { type: "u64", value: BigInt(Number(tokenId)) },
+                            ],
+                        })
+                    ) || latestYieldStreamId;
+                } catch {
+                    latestYieldStreamId = Number(rawAsset?.active_stream_id || 0);
+                }
+                if (latestYieldStreamId > 0) {
+                    try {
+                        const rawStream = await this.contractService.invokeView({
+                            contractId: this.assetStreamAddress,
+                            method: "get_stream",
+                            args: [
+                                { type: "u64", value: BigInt(latestYieldStreamId) },
+                            ],
+                        });
+                        stream = normalizeYieldStream(rawStream);
+                    } catch {
+                        stream = null;
+                    }
+                }
+            }
+            const claimableYield = stream ? computeYieldClaimable(stream).toString() : "0";
+            const asset = normalizeChainAsset(rawAsset, {
+                attestationPolicies,
+                attestations,
+                compliance,
+                stream: stream
+                    ? {
+                        streamId: stream.streamId,
+                        sender: stream.sender,
+                        assetType: Number(rawAsset?.asset_type || 0),
+                        totalAmount: stream.totalAmount,
+                        flowRate: String(
+                            normalizeSessionAmount(stream.totalAmount)
+                            / BigInt(Math.max(1, Number(stream.durationSeconds || 1)))
+                        ),
+                        startTime: stream.startTime,
+                        stopTime: stream.stopTime,
+                        amountWithdrawn: stream.withdrawnAmount,
+                        isActive: stream.isActive,
+                        isFrozen: false,
+                    }
+                    : null,
+                claimableYield,
+                totalYieldDeposited: stream?.totalAmount || "0",
+                flashAdvanceOutstanding: stream?.flashAdvanceOutstanding || "0",
+            });
+            asset.activeStreamId = latestYieldStreamId;
+            this.recomputeAssetStatus(asset);
+            await this.store.upsertAsset(asset);
+            return asset;
+        } catch (error) {
+            const asset = await this.store.getAsset(tokenId);
+            if (!asset) {
+                return null;
+            }
 
-        const cloned = {
-            ...asset,
-            attestationPolicies: await this.getAttestationPolicies(asset.assetType),
-        };
-        this.recomputeAssetStatus(cloned);
-        return cloned;
+            const cloned = {
+                ...asset,
+                attestationPolicies: await this.getAttestationPolicies(asset.assetType),
+            };
+            this.recomputeAssetStatus(cloned);
+            return cloned;
+        }
     }
 
     async listAssetSnapshots({ owner, limit = 200 } = {}) {
+        try {
+            if (owner) {
+                const tokenIds = await this.contractService.invokeView({
+                    contractId: this.assetRegistryAddress,
+                    method: "list_owned_assets",
+                    args: [
+                        { type: "address", value: owner },
+                    ],
+                });
+                const hydrated = [];
+                for (const tokenId of (tokenIds || []).slice(0, limit)) {
+                    hydrated.push(await this.getAssetSnapshot(Number(tokenId)));
+                }
+                return hydrated.filter(Boolean);
+            }
+
+            const lastTokenId = Number(
+                await this.contractService.invokeView({
+                    contractId: this.assetRegistryAddress,
+                    method: "last_token_id",
+                    args: [],
+                })
+            );
+            if (lastTokenId > 0) {
+                const startTokenId = Math.max(1, lastTokenId - Number(limit) + 1);
+                const hydrated = [];
+                for (let tokenId = startTokenId; tokenId <= lastTokenId; tokenId += 1) {
+                    hydrated.push(await this.getAssetSnapshot(tokenId));
+                }
+                return hydrated.filter(Boolean);
+            }
+        } catch {
+            // Fall back to cached assets below.
+        }
+
         const assets = await this.store.listAssets({ owner });
         const hydrated = [];
         for (const asset of assets.slice(0, limit)) {

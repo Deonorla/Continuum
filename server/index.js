@@ -383,7 +383,12 @@ function createApp(config = defaultConfig) {
         const services = await app.locals.ready;
         void beginIndexerSync(app);
         void beginAssetPrime(app);
-        const rawAssets = await services.store.listAssets({ owner: req.query.owner });
+        const rawAssets = services.chainService?.isConfigured?.()
+            ? await services.chainService.listAssetSnapshots({ owner: req.query.owner, limit: 200 })
+            : await services.store.listAssets({ owner: req.query.owner });
+        for (const asset of rawAssets) {
+            await services.store.upsertAsset(asset);
+        }
         const assets = await Promise.all(rawAssets.map((asset) => hydrateAssetMetadata(services, asset)));
         res.json({
             assets,

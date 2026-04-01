@@ -68,6 +68,14 @@ function toActivity(source, eventName, txHash, tokenId, metadata = {}, logIndex 
     };
 }
 
+function normalizeAddress(value) {
+    return String(value || "").trim().toUpperCase();
+}
+
+function sameAddress(left, right) {
+    return normalizeAddress(left) && normalizeAddress(left) === normalizeAddress(right);
+}
+
 function normalizeSessionAmount(value) {
     return BigInt(String(value || "0"));
 }
@@ -324,6 +332,10 @@ class StellarRWAChainService {
         return null;
     }
 
+    canOperatorAuthorize(address) {
+        return sameAddress(address, this.signer.address);
+    }
+
     async getCurrentBlockNumber() {
         return nowSeconds();
     }
@@ -556,21 +568,48 @@ class StellarRWAChainService {
     }) {
         await this.ensureIssuerApproved(issuer);
 
-        const tokenId = await this.store.nextCounter("assetTokenId");
         const attestationPolicies = await this.getAttestationPolicies(assetType);
         const requiresAttestations = attestationPolicies.some((policy) => policy.required);
-        const verificationStatus = requiresAttestations
-            ? VERIFICATION_STATUS_CODES.pending_attestation
-            : VERIFICATION_STATUS_CODES.verified;
-        const anchor = await this.anchorService.submitAnchor("mint_asset", {
-            tokenId,
-            issuer,
-            assetType,
-            rightsModel,
-            publicMetadataHash,
-            evidenceRoot,
-            propertyRefHash,
-        });
+        const canWriteOnchain = this.assetRegistryAddress
+            && this.contractService.isConfigured()
+            && this.canOperatorAuthorize(issuer);
+
+        let tokenId;
+        let txHash;
+        if (canWriteOnchain) {
+            const chainWrite = await this.contractService.invokeWrite({
+                contractId: this.assetRegistryAddress,
+                method: "mint_asset",
+                args: [
+                    { type: "address", value: issuer },
+                    { type: "u32", value: Number(assetType) },
+                    { type: "u32", value: Number(rightsModel) },
+                    { type: "string", value: publicMetadataURI },
+                    { type: "string", value: publicMetadataHash },
+                    { type: "string", value: evidenceRoot },
+                    { type: "string", value: evidenceManifestHash },
+                    { type: "string", value: propertyRefHash },
+                    { type: "string", value: jurisdiction || "" },
+                    { type: "string", value: cidHash || "" },
+                    { type: "string", value: tagHash || "" },
+                    { type: "string", value: statusReason || "" },
+                ],
+            });
+            tokenId = Number(chainWrite.result || 0);
+            txHash = chainWrite.txHash;
+        } else {
+            tokenId = await this.store.nextCounter("assetTokenId");
+            const anchor = await this.anchorService.submitAnchor("mint_asset", {
+                tokenId,
+                issuer,
+                assetType,
+                rightsModel,
+                publicMetadataHash,
+                evidenceRoot,
+                propertyRefHash,
+            });
+            txHash = anchor.txHash;
+        }
 
         const compliance = (await this.getCompliance(issuer, assetType)) || {
             approved: true,
@@ -639,12 +678,24 @@ class StellarRWAChainService {
             },
             attestationPolicies,
             attestations: [],
-            txHash: anchor.txHash,
+            txHash,
         };
+
+        if (canWriteOnchain) {
+            const onchainSnapshot = await this.getAssetSnapshot(tokenId);
+            if (onchainSnapshot) {
+                snapshot.verificationStatus = onchainSnapshot.verificationStatus;
+                snapshot.verificationStatusLabel = onchainSnapshot.verificationStatusLabel;
+                snapshot.statusReason = onchainSnapshot.statusReason;
+                snapshot.createdAt = onchainSnapshot.createdAt;
+                snapshot.updatedAt = onchainSnapshot.updatedAt;
+                snapshot.verificationUpdatedAt = onchainSnapshot.verificationUpdatedAt;
+            }
+        }
 
         await this.store.upsertAsset(snapshot);
         await this.store.recordActivity(
-            toActivity("registry", "AssetRegistered", anchor.txHash, tokenId, {
+            toActivity("registry", "AssetRegistered", txHash, tokenId, {
                 tokenId,
                 issuer,
                 assetType: Number(assetType),
@@ -652,7 +703,7 @@ class StellarRWAChainService {
             })
         );
 
-        return { tokenId, txHash: anchor.txHash };
+        return { tokenId, txHash };
     }
 
     async getAttestationRecord(attestationId) {
@@ -705,6 +756,40 @@ class StellarRWAChainService {
         }
 
         const normalizedRole = normalizeAttestationRole(role);
+        const canWriteOnchain = this.attestationRegistryAddress
+            && this.contractService.isConfigured()
+            && this.canOperatorAuthorize(attestor);
+
+        if (canWriteOnchain) {
+            const chainWrite = await this.contractService.invokeWrite({
+                contractId: this.attestationRegistryAddress,
+                method: "register_attestation",
+                args: [
+                    { type: "address", value: attestor },
+                    { type: "u64", value: BigInt(Number(tokenId)) },
+                    { type: "u32", value: normalizedRole.code },
+                    { type: "string", value: evidenceHash },
+                    { type: "string", value: statementType },
+                    { type: "u64", value: BigInt(Number(expiry || 0)) },
+                ],
+            });
+            const attestationId = Number(chainWrite.result || 0);
+            const attestation = await this.getAttestationRecord(attestationId);
+            const refreshed = await this.getAssetSnapshot(tokenId);
+            if (refreshed) {
+                await this.store.upsertAsset(refreshed);
+            }
+            await this.store.recordActivity(
+                toActivity("attestation", "AttestationRegistered", chainWrite.txHash, tokenId, attestation || {
+                    attestationId,
+                    role: normalizedRole.code,
+                    roleLabel: normalizedRole.label,
+                    attestor,
+                })
+            );
+            return { attestationId, txHash: chainWrite.txHash };
+        }
+
         const attestationId = await this.store.nextCounter("attestationId");
         const anchor = await this.anchorService.submitAnchor("register_attestation", {
             tokenId,
@@ -750,6 +835,37 @@ class StellarRWAChainService {
         if (!attestation) {
             throw createError("attestation_not_found", `Attestation ${attestationId} was not found.`);
         }
+        const canWriteOnchain = this.attestationRegistryAddress
+            && this.contractService.isConfigured()
+            && this.canOperatorAuthorize(attestation.attestor);
+
+        if (canWriteOnchain) {
+            const chainWrite = await this.contractService.invokeWrite({
+                contractId: this.attestationRegistryAddress,
+                method: "revoke_attestation",
+                args: [
+                    { type: "address", value: attestation.attestor },
+                    { type: "u64", value: BigInt(Number(attestationId)) },
+                    { type: "string", value: reason || "" },
+                ],
+            });
+            const refreshedAttestation = await this.getAttestationRecord(attestationId);
+            const asset = await this.getAssetSnapshot(attestation.tokenId);
+            if (asset) {
+                await this.store.upsertAsset(asset);
+            }
+            await this.store.recordActivity(
+                toActivity(
+                    "attestation",
+                    "AttestationRevoked",
+                    chainWrite.txHash,
+                    attestation.tokenId,
+                    refreshedAttestation || { ...attestation, revoked: true, revocationReason: reason }
+                )
+            );
+            return { txHash: chainWrite.txHash };
+        }
+
         const anchor = await this.anchorService.submitAnchor("revoke_attestation", {
             attestationId: Number(attestationId),
             reason,
@@ -883,11 +999,40 @@ class StellarRWAChainService {
         }
     }
 
-    async updateAssetMetadata({ tokenId, metadataURI, cidHash }) {
+    async updateAssetMetadata({ tokenId, metadataURI, cidHash, publicMetadataHash = "" }) {
         const asset = await this.getAssetSnapshot(tokenId);
         if (!asset) {
             throw createError("asset_not_found", `Asset ${tokenId} was not found.`);
         }
+        const canWriteOnchain = this.assetRegistryAddress
+            && this.contractService.isConfigured()
+            && this.canOperatorAuthorize(asset.currentOwner);
+
+        if (canWriteOnchain) {
+            const chainWrite = await this.contractService.invokeWrite({
+                contractId: this.assetRegistryAddress,
+                method: "update_asset_metadata",
+                args: [
+                    { type: "address", value: asset.currentOwner },
+                    { type: "u64", value: BigInt(Number(tokenId)) },
+                    { type: "string", value: metadataURI },
+                    { type: "string", value: cidHash || hashText(metadataURI) },
+                    { type: "string", value: publicMetadataHash || asset.publicMetadataHash || hashText(metadataURI) },
+                ],
+            });
+            const refreshed = await this.getAssetSnapshot(tokenId);
+            if (refreshed) {
+                await this.store.upsertAsset(refreshed);
+            }
+            await this.store.recordActivity(
+                toActivity("registry", "MetadataUpdated", chainWrite.txHash, tokenId, {
+                    metadataURI,
+                    cidHash: cidHash || hashText(metadataURI),
+                })
+            );
+            return { txHash: chainWrite.txHash };
+        }
+
         const anchor = await this.anchorService.submitAnchor("update_metadata", {
             tokenId: Number(tokenId),
             metadataURI,
@@ -913,6 +1058,34 @@ class StellarRWAChainService {
         if (!asset) {
             throw createError("asset_not_found", `Asset ${tokenId} was not found.`);
         }
+        const canWriteOnchain = this.assetRegistryAddress
+            && this.contractService.isConfigured()
+            && this.canOperatorAuthorize(asset.currentOwner);
+
+        if (canWriteOnchain) {
+            const chainWrite = await this.contractService.invokeWrite({
+                contractId: this.assetRegistryAddress,
+                method: "update_asset_evidence",
+                args: [
+                    { type: "address", value: asset.currentOwner },
+                    { type: "u64", value: BigInt(Number(tokenId)) },
+                    { type: "string", value: evidenceRoot },
+                    { type: "string", value: evidenceManifestHash },
+                ],
+            });
+            const refreshed = await this.getAssetSnapshot(tokenId);
+            if (refreshed) {
+                await this.store.upsertAsset(refreshed);
+            }
+            await this.store.recordActivity(
+                toActivity("registry", "EvidenceUpdated", chainWrite.txHash, tokenId, {
+                    evidenceRoot,
+                    evidenceManifestHash,
+                })
+            );
+            return { txHash: chainWrite.txHash };
+        }
+
         const anchor = await this.anchorService.submitAnchor("update_evidence", {
             tokenId: Number(tokenId),
             evidenceRoot,
@@ -936,6 +1109,32 @@ class StellarRWAChainService {
         if (!asset) {
             throw createError("asset_not_found", `Asset ${tokenId} was not found.`);
         }
+        const canWriteOnchain = this.assetRegistryAddress
+            && this.contractService.isConfigured()
+            && this.canOperatorAuthorize(asset.currentOwner);
+
+        if (canWriteOnchain) {
+            const chainWrite = await this.contractService.invokeWrite({
+                contractId: this.assetRegistryAddress,
+                method: "update_verification_tag",
+                args: [
+                    { type: "address", value: asset.currentOwner },
+                    { type: "u64", value: BigInt(Number(tokenId)) },
+                    { type: "string", value: tagHash },
+                ],
+            });
+            const refreshed = await this.getAssetSnapshot(tokenId);
+            if (refreshed) {
+                await this.store.upsertAsset(refreshed);
+            }
+            await this.store.recordActivity(
+                toActivity("registry", "VerificationTagUpdated", chainWrite.txHash, tokenId, {
+                    tagHash,
+                })
+            );
+            return { txHash: chainWrite.txHash };
+        }
+
         const anchor = await this.anchorService.submitAnchor("update_tag", {
             tokenId: Number(tokenId),
             tagHash,
@@ -1152,7 +1351,6 @@ class StellarRWAChainService {
         assetIssuer = "",
         fundingTxHash = "",
     }) {
-        const sessionId = await this.store.nextCounter("sessionId");
         const parsedDuration = Math.max(1, Number(duration || 1));
         const startTime = nowSeconds();
         const stopTime = startTime + parsedDuration;
@@ -1161,10 +1359,40 @@ class StellarRWAChainService {
         const paymentAssetIssuer = paymentAssetCode === "XLM"
             ? ""
             : String(assetIssuer || this.runtime.paymentAssetIssuer || "");
+        const tokenAddress = paymentAssetCode === "XLM"
+            ? (this.nativeTokenAddress || "")
+            : (this.runtime.paymentTokenAddress || "");
 
         let txHash = "";
         let fundedOnchain = false;
-        if (fundingTxHash) {
+        let sessionId = 0;
+        if (
+            !fundingTxHash
+            && this.sessionMeterAddress
+            && this.contractService.isConfigured()
+            && this.canOperatorAuthorize(sender)
+            && tokenAddress
+        ) {
+            const metadataHash = crypto.createHash("sha256").update(String(metadata || "{}")).digest("hex");
+            const chainWrite = await this.contractService.invokeWrite({
+                contractId: this.sessionMeterAddress,
+                method: "open_session",
+                args: [
+                    { type: "address", value: sender },
+                    { type: "address", value: recipient },
+                    { type: "address", value: tokenAddress },
+                    { type: "string", value: paymentAssetCode },
+                    { type: "string", value: paymentAssetIssuer },
+                    { type: "i128", value: BigInt(totalAmount) },
+                    { type: "u64", value: BigInt(startTime) },
+                    { type: "u64", value: BigInt(stopTime) },
+                    { type: "bytes32", value: `0x${metadataHash}` },
+                ],
+            });
+            txHash = chainWrite.txHash;
+            fundedOnchain = true;
+            sessionId = Number(chainWrite.result || 0);
+        } else if (fundingTxHash) {
             if (!this.sessionEscrowAddress) {
                 throw createError(
                     "missing_session_escrow",
@@ -1182,7 +1410,9 @@ class StellarRWAChainService {
             });
             txHash = verifiedFunding.txHash;
             fundedOnchain = true;
+            sessionId = await this.store.nextCounter("sessionId");
         } else {
+            sessionId = await this.store.nextCounter("sessionId");
             const anchor = await this.anchorService.submitAnchor("open_session", {
                 sessionId,
                 sender,
@@ -1238,16 +1468,42 @@ class StellarRWAChainService {
     }
 
     async cancelSession({ sessionId, cancelledBy }) {
-        const session = await this.store.getSession(sessionId);
+        const session = await this.getSessionSnapshot(sessionId);
         if (!session) {
             throw createError("session_not_found", `Session ${sessionId} was not found.`);
         }
         const metadataObject = parseMetadata(session.metadata);
-        const cancelledAt = nowSeconds();
-        const claimable = computeSessionClaimable(session, cancelledAt);
-        const refundableAmount = computeSessionRefundable(session, cancelledAt);
         let txHash = "";
-        if (session.fundedOnchain && refundableAmount > 0n) {
+        let claimable = 0n;
+        let refundableAmount = 0n;
+        if (
+            this.sessionMeterAddress
+            && this.contractService.isConfigured()
+            && this.canOperatorAuthorize(session.sender)
+        ) {
+            const chainWrite = await this.contractService.invokeWrite({
+                contractId: this.sessionMeterAddress,
+                method: "cancel",
+                args: [
+                    { type: "address", value: session.sender },
+                    { type: "u64", value: BigInt(Number(sessionId)) },
+                ],
+            });
+            txHash = chainWrite.txHash;
+            claimable = BigInt(String(
+                chainWrite.result?.claimable_amount
+                || chainWrite.result?.claimableAmount
+                || 0
+            ));
+            refundableAmount = BigInt(String(
+                chainWrite.result?.refundable_amount
+                || chainWrite.result?.refundableAmount
+                || 0
+            ));
+        } else if (session.fundedOnchain && computeSessionRefundable(session, nowSeconds()) > 0n) {
+            const cancelledAt = nowSeconds();
+            claimable = computeSessionClaimable(session, cancelledAt);
+            refundableAmount = computeSessionRefundable(session, cancelledAt);
             const payout = await this.anchorService.submitPayment({
                 destination: session.sender,
                 amount: formatStellarAmount(refundableAmount),
@@ -1257,12 +1513,16 @@ class StellarRWAChainService {
             });
             txHash = payout.txHash;
         } else {
+            const cancelledAt = nowSeconds();
+            claimable = computeSessionClaimable(session, cancelledAt);
+            refundableAmount = computeSessionRefundable(session, cancelledAt);
             const anchor = await this.anchorService.submitAnchor("cancel_session", {
                 sessionId: Number(sessionId),
                 cancelledBy,
             });
             txHash = anchor.txHash;
         }
+        const cancelledAt = nowSeconds();
         session.isActive = false;
         session.cancelledAt = cancelledAt;
         session.cancelledBy = cancelledBy || "";
@@ -1293,7 +1553,7 @@ class StellarRWAChainService {
     }
 
     async claimSession({ sessionId, claimer = "" }) {
-        const session = await this.store.getSession(sessionId);
+        const session = await this.getSessionSnapshot(sessionId);
         if (!session) {
             throw createError("session_not_found", `Session ${sessionId} was not found.`);
         }
@@ -1305,7 +1565,21 @@ class StellarRWAChainService {
             throw createError("nothing_to_claim", `Session ${sessionId} has no accrued balance to claim.`);
         }
         let txHash = "";
-        if (session.fundedOnchain) {
+        if (
+            this.sessionMeterAddress
+            && this.contractService.isConfigured()
+            && this.canOperatorAuthorize(session.recipient)
+        ) {
+            const chainWrite = await this.contractService.invokeWrite({
+                contractId: this.sessionMeterAddress,
+                method: "claim",
+                args: [
+                    { type: "address", value: session.recipient },
+                    { type: "u64", value: BigInt(Number(sessionId)) },
+                ],
+            });
+            txHash = chainWrite.txHash;
+        } else if (session.fundedOnchain) {
             const payout = await this.anchorService.submitPayment({
                 destination: session.recipient,
                 amount: formatStellarAmount(claimable),

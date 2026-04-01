@@ -886,11 +886,21 @@ function createApp(config = defaultConfig) {
         }
 
         if (action === "updateAssetMetadata") {
-            const { tokenId, metadataURI } = req.body || {};
+            const { tokenId, metadataURI, publicMetadataHash } = req.body || {};
+            let resolvedPublicMetadataHash = publicMetadataHash || "";
+            if (!resolvedPublicMetadataHash && metadataURI) {
+                try {
+                    const metadataResult = await services.ipfsService.fetchJSON(metadataURI);
+                    resolvedPublicMetadataHash = hashJson(metadataResult.metadata);
+                } catch {
+                    resolvedPublicMetadataHash = "";
+                }
+            }
             const result = await chainService.updateAssetMetadata({
                 tokenId: Number(tokenId),
                 metadataURI,
                 cidHash: hashText(metadataURI || ""),
+                publicMetadataHash: resolvedPublicMetadataHash,
             });
             const asset = await getHydratedAsset(services, Number(tokenId));
             return res.json({

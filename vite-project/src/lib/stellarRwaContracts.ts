@@ -175,6 +175,19 @@ export async function mintStellarRwaAsset({
   };
 }
 
+export async function getStellarIssuerApproval(issuer: string) {
+  const client = createRegistryClient();
+  const assembled = await client.get_issuer_approval({
+    issuer,
+  });
+  const result = assembled.result;
+  return {
+    approved: Boolean(result?.approved),
+    note: result?.note || '',
+    updatedAt: bigintToNumber(result?.updated_at, 0),
+  };
+}
+
 export async function registerStellarAttestation({
   attestor,
   tokenId,

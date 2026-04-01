@@ -17,6 +17,7 @@ export default defineConfig({
     }),
   ],
   resolve: {
+    conditions: ['browser', 'module', 'import', 'default'],
     alias: {
       'vite-plugin-node-polyfills/shims/global': fileURLToPath(
         new URL('./node_modules/vite-plugin-node-polyfills/shims/global/dist/index.js', import.meta.url),
@@ -27,6 +28,16 @@ export default defineConfig({
       'vite-plugin-node-polyfills/shims/buffer': fileURLToPath(
         new URL('./node_modules/vite-plugin-node-polyfills/shims/buffer/dist/index.js', import.meta.url),
       ),
+    },
+  },
+  optimizeDeps: {
+    include: [
+      '@stellar/stellar-sdk',
+      '@stellar/stellar-sdk/contract',
+      '@stellar/stellar-sdk/rpc',
+    ],
+    esbuildOptions: {
+      mainFields: ['module', 'main'],
     },
   },
   base: '/',

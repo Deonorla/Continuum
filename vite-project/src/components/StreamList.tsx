@@ -23,30 +23,6 @@ const FilterTab = ({ label, count, active, onClick }) => (
   </button>
 );
 
-// Sort Dropdown
-const SortDropdown = ({ value, onChange }) => {
-  const options = [
-    { value: 'date-desc', label: 'Newest First', Icon: Calendar },
-    { value: 'date-asc', label: 'Oldest First', Icon: Calendar },
-    { value: 'amount-desc', label: 'Highest Amount', Icon: Coins },
-    { value: 'amount-asc', label: 'Lowest Amount', Icon: Coins },
-    { value: 'rate-desc', label: 'Highest Rate', Icon: Zap },
-  ];
-
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="bg-white border border-slate-200 rounded-2xl px-4 py-2 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-200"
-    >
-      {options.map(opt => (
-        <option key={opt.value} value={opt.value} className="bg-surface-800">
-          {opt.label}
-        </option>
-      ))}
-    </select>
-  );
-};
 
 // Search Input
 const SearchInput = ({ value, onChange }) => (
@@ -143,7 +119,7 @@ export default function StreamList({
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 3;
-
+console.log('Rendering StreamList with', { title, streams, filter, sortBy, searchQuery, currentPage });
   // Filter streams
   const filteredStreams = useMemo(() => {
     return streams.filter(s => {
@@ -216,9 +192,6 @@ export default function StreamList({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <SortDropdown value={sortBy} onChange={setSortBy} />
-        </div>
       </div>
 
       {/* Filter Tabs */}

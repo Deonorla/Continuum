@@ -7,6 +7,7 @@ import {
   useCallback,
   useRef,
 } from "react";
+import { useLocation } from "react-router-dom";
 import { ethers } from "ethers";
 import {
   getNetworkDetails as getFreighterNetworkDetails,
@@ -22,11 +23,17 @@ import { ACTIVE_NETWORK } from "../networkConfig.js";
 import { getAvailableWallets, resolveWalletSelection } from "../lib/wallets.js";
 import {
   claimPaymentSession,
-  openPaymentSession,
   cancelPaymentSession,
   fetchPaymentSessions,
   fetchPaymentSession,
+  syncPaymentSessionMetadata,
 } from "../services/rwaApi.js";
+import {
+  openStellarSession,
+  listStellarSessionsForAddress,
+  claimStellarSession,
+  cancelStellarSession,
+} from "../lib/stellarSessionMeter";
 
 const WalletContext = createContext(null);
 const STORED_WALLET_KEY = "se_wallet";
@@ -246,14 +253,21 @@ export function WalletProvider({ children }) {
 
     setIsLoadingStreams(true);
     try {
-      const sessions = await fetchPaymentSessions(walletAddress);
-      const cards = normalizeSessionSort(sessions.map(mapSessionToStreamCard));
+      // Try direct Soroban contract read first; fall back to REST API
+      let cards;
+      try {
+        const sessions = await listStellarSessionsForAddress(walletAddress);
+        cards = sessions.map((s) => ({ ...s, sessionKind: "stellar" }));
+      } catch {
+        const sessions = await fetchPaymentSessions(walletAddress);
+        cards = normalizeSessionSort(sessions.map(mapSessionToStreamCard));
+      }
       const normalizedWallet = String(walletAddress).trim().toUpperCase();
       setOutgoingStreams(
-        cards.filter((session) => String(session.sender || "").trim().toUpperCase() === normalizedWallet),
+        cards.filter((s) => String(s.sender || "").trim().toUpperCase() === normalizedWallet),
       );
       setIncomingStreams(
-        cards.filter((session) => String(session.recipient || "").trim().toUpperCase() === normalizedWallet),
+        cards.filter((s) => String(s.recipient || "").trim().toUpperCase() === normalizedWallet),
       );
     } catch (error) {
       console.error("Failed to refresh payment sessions", error);
@@ -352,18 +366,21 @@ export function WalletProvider({ children }) {
   const withdraw = useCallback(async (streamId) => {
     setIsProcessing(true);
     try {
-      await claimPaymentSession(streamId, { claimer: walletAddress || "" });
+      await claimStellarSession({ recipient: walletAddress, sessionId: streamId });
       await Promise.all([refreshStreams(), fetchPaymentBalance()]);
       setStatus("Session balance claimed.");
-      toast.success(`Claimed from Session #${streamId}`, {
-        title: "Session Claim Complete",
-      });
+      toast.success(`Claimed from Session #${streamId}`, { title: "Session Claim Complete" });
     } catch (error) {
       console.error("Session claim failed", error);
-      setStatus("Session claim failed.");
-      toast.error(error.message || "Session claim failed", {
-        title: "Session Claim Failed",
-      });
+      // Fall back to REST API claim
+      try {
+        await claimPaymentSession(streamId, { claimer: walletAddress || "" });
+        await Promise.all([refreshStreams(), fetchPaymentBalance()]);
+        toast.success(`Claimed from Session #${streamId}`, { title: "Session Claim Complete" });
+      } catch (fallbackError) {
+        setStatus("Session claim failed.");
+        toast.error(fallbackError.message || "Session claim failed", { title: "Session Claim Failed" });
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -372,79 +389,91 @@ export function WalletProvider({ children }) {
   const cancel = useCallback(async (streamId) => {
     setIsProcessing(true);
     try {
-      await cancelPaymentSession(streamId, { cancelledBy: walletAddress || "" });
+      await cancelStellarSession({ payer: walletAddress, sessionId: streamId });
       await Promise.all([refreshStreams(), fetchPaymentBalance()]);
       setStatus("Session ended.");
-      toast.info(`Session #${streamId} ended.`, {
-        title: "Session Ended",
-      });
+      toast.info(`Session #${streamId} ended.`, { title: "Session Ended" });
     } catch (error) {
-      console.error("Session end failed", error);
-      setStatus("Session end failed.");
-      toast.error(error.message || "Session end failed", {
-        title: "Session End Failed",
-      });
+      console.error("Session cancel failed", error);
+      // Fall back to REST API cancel
+      try {
+        await cancelPaymentSession(streamId, { cancelledBy: walletAddress || "" });
+        await Promise.all([refreshStreams(), fetchPaymentBalance()]);
+        toast.info(`Session #${streamId} ended.`, { title: "Session Ended" });
+      } catch (fallbackError) {
+        setStatus("Session end failed.");
+        toast.error(fallbackError.message || "Session end failed", { title: "Session End Failed" });
+      }
     } finally {
       setIsProcessing(false);
     }
   }, [fetchPaymentBalance, refreshStreams, toast, walletAddress]);
 
-  const createStream = useCallback(async (recipient, durationSeconds, amountValue, metadata = {}) => {
+  const createStream = useCallback(async (recipient, durationSeconds, amountValue, metadata = {}, assetOptions: { assetCode?: string; assetIssuer?: string; asset?: { assetCode?: string; assetIssuer?: string; tokenAddress?: string; isNative?: boolean } } = {}) => {
     if (!walletAddress) {
-      toast.warning("Connect Freighter before opening a payment session.", {
-        title: "Wallet required",
-      });
+      toast.warning("Connect Freighter before opening a payment session.", { title: "Wallet required" });
       return null;
     }
 
     const trimmedRecipient = String(recipient || "").trim();
     if (!StrKey.isValidEd25519PublicKey(trimmedRecipient)) {
-      toast.warning("Enter a valid Stellar recipient account.", {
-        title: "Recipient required",
-      });
+      toast.warning("Enter a valid Stellar recipient account.", { title: "Recipient required" });
       return null;
     }
 
     const duration = Number(durationSeconds || 0);
     if (!Number.isFinite(duration) || duration <= 0) {
-      toast.warning("Enter a valid session duration.", {
-        title: "Duration required",
-      });
+      toast.warning("Enter a valid session duration.", { title: "Duration required" });
       return null;
     }
 
     const normalizedAmount = String(amountValue || "0").trim();
     if (!normalizedAmount || Number(normalizedAmount) <= 0) {
-      toast.warning("Enter a valid USDC budget.", {
-        title: "Amount required",
-      });
+      toast.warning("Enter a valid budget.", { title: "Amount required" });
       return null;
     }
 
+    const assetCode = assetOptions?.assetCode || assetOptions?.asset?.assetCode || ACTIVE_NETWORK.paymentAssetCode || "USDC";
+    const assetIssuer = assetOptions?.assetIssuer || assetOptions?.asset?.assetIssuer || ACTIVE_NETWORK.paymentAssetIssuer || "";
+    const isNative = assetCode === "XLM";
+    const tokenAddress = isNative
+      ? (assetOptions?.asset?.tokenAddress || ACTIVE_NETWORK.paymentTokenAddress)
+      : (assetOptions?.asset?.tokenAddress || ACTIVE_NETWORK.paymentTokenAddress);
+    const totalAmount = BigInt(ethers.parseUnits(normalizedAmount, paymentTokenDecimals).toString());
+    const metadataStr = typeof metadata === "string" ? metadata : JSON.stringify(metadata || {});
+
     setIsProcessing(true);
     try {
-      const response = await openPaymentSession({
+      // Sign and submit directly via Freighter → Soroban contract
+      const result = await openStellarSession({
+        payer: walletAddress,
+        recipient: trimmedRecipient,
+        token: tokenAddress,
+        assetCode,
+        assetIssuer,
+        totalAmount,
+        durationSeconds: duration,
+        metadata: metadataStr,
+      });
+
+      // Sync to server store so REST API / dashboard stay consistent
+      syncPaymentSessionMetadata(result.streamId, {
+        metadata: metadataStr,
+        txHash: result.txHash,
         sender: walletAddress,
         recipient: trimmedRecipient,
-        duration,
-        amount: ethers.parseUnits(normalizedAmount, paymentTokenDecimals).toString(),
-        metadata: typeof metadata === "string" ? metadata : JSON.stringify(metadata || {}),
-      });
-      const createdId = response?.streamId ?? response?.session?.id ?? null;
+        assetCode,
+        assetIssuer,
+      }).catch(() => {/* non-critical */});
+
       await Promise.all([refreshStreams(), fetchPaymentBalance()]);
       setStatus("Session opened.");
-      if (createdId != null) {
-        toast.success(`Session #${createdId} is ready to use.`, {
-          title: "Session Opened",
-        });
-      }
-      return createdId;
+      toast.success(`Session #${result.streamId} is live on Stellar.`, { title: "Stream Started" });
+      return result.streamId;
     } catch (error) {
       console.error("Session creation failed", error);
       setStatus("Session setup failed.");
-      toast.error(error.message || "Unable to open the payment session.", {
-        title: "Session Setup Failed",
-      });
+      toast.error(error.message || "Unable to open the payment session.", { title: "Session Setup Failed" });
       return null;
     } finally {
       setIsProcessing(false);
@@ -465,20 +494,24 @@ export function WalletProvider({ children }) {
 
   const formatEth = useCallback((value) => {
     try {
-      if (typeof value === "string" && !value.startsWith("0x")) {
-        return Number(value || 0).toFixed(4);
-      }
-      return Number(ethers.formatUnits(value || 0n, paymentTokenDecimals)).toFixed(4);
+      return Number(ethers.formatUnits(BigInt(String(value || "0")), paymentTokenDecimals)).toFixed(4);
     } catch {
       return "0.0000";
     }
   }, []);
+
+  const { pathname } = useLocation();
+  const isDashboard = pathname.startsWith("/app");
 
   useEffect(() => {
     refreshAvailableWallets();
   }, [refreshAvailableWallets]);
 
   useEffect(() => {
+    if (!isDashboard) {
+      setIsInitialLoad(false);
+      return;
+    }
     if (autoConnectAttempted.current) {
       return;
     }
@@ -498,7 +531,7 @@ export function WalletProvider({ children }) {
       window.localStorage.removeItem(STORED_WALLET_KEY);
       setIsInitialLoad(false);
     });
-  }, [connectWallet]);
+  }, [isDashboard, connectWallet]);
 
   useEffect(() => {
     if (!walletAddress) {

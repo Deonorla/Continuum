@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { CheckCircle, AlertTriangle, XCircle, Coins } from 'lucide-react';
-import { paymentTokenSymbol } from '../contactInfo';
+// import { paymentTokenSymbol } from '../contactInfo';
 
 // Animated Counter for real-time balance
 const AnimatedBalance = ({ value, decimals = 6 }) => {
@@ -199,7 +199,7 @@ export default function StreamCard({ stream, variant, formatEth, onWithdraw, onC
               <div className="text-xl font-headline font-black text-emerald-600">
                 <AnimatedBalance value={liveClaimable} />
               </div>
-              <div className="text-xs text-slate-400">{paymentTokenSymbol}</div>
+              <div className="text-xs text-slate-400">{stream.paymentTokenSymbol}</div>
             </div>
           )}
         </div>
@@ -226,10 +226,10 @@ export default function StreamCard({ stream, variant, formatEth, onWithdraw, onC
           <div>
             <div className="text-2xl font-headline font-black text-slate-900">
               {formatEth(stream.totalAmount)}
-              <span className="text-base font-body font-normal text-slate-400 ml-1">{paymentTokenSymbol}</span>
+              <span className="text-base font-body font-normal text-slate-400 ml-1">{stream.paymentTokenSymbol}</span>
             </div>
             <div className="text-xs text-slate-400 font-mono mt-0.5">
-              {formatEth(stream.flowRate)} {paymentTokenSymbol}/sec
+              {formatEth(stream.flowRate)} {stream.paymentTokenSymbol}/sec
             </div>
           </div>
         </div>
@@ -279,7 +279,7 @@ export default function StreamCard({ stream, variant, formatEth, onWithdraw, onC
             {stream.amountWithdrawn > 0n && (
               <div className="col-span-2">
                 <div className="text-[10px] font-label uppercase tracking-widest text-slate-400 mb-0.5">Already Claimed</div>
-                <div className="font-mono text-slate-600 text-xs">{formatEth(stream.amountWithdrawn)} {paymentTokenSymbol}</div>
+                <div className="font-mono text-slate-600 text-xs">{formatEth(stream.amountWithdrawn)} {stream.paymentTokenSymbol}</div>
               </div>
             )}
           </div>

@@ -76,6 +76,21 @@ const defaultConfig = {
             mode: "per-request",
             description: "Premium content",
         },
+        "/api/rwa/assets/analytics": {
+            price: "0.10",
+            mode: "per-request",
+            description: "Premium asset analytics",
+        },
+        "/api/rwa/relay": {
+            price: "0.05",
+            mode: "per-request",
+            description: "RWA execution relay",
+        },
+        "/api/rwa/assets/bid": {
+            price: "0.01",
+            mode: "per-request",
+            description: "Asset bid placement",
+        },
     },
     rwa: {
         hubAddress:
@@ -865,6 +880,36 @@ function createApp(config = defaultConfig) {
         });
     }));
 
+    app.post("/api/agent/chat", asyncHandler(async (req, res) => {
+        const { message, context = {} } = req.body || {};
+        if (!message) {
+            return res.status(400).json({ error: "message is required" });
+        }
+
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey || apiKey === "your_gemini_api_key_here") {
+            return res.json({ reply: "Gemini API key is not configured. Add GEMINI_API_KEY to your .env to enable agent chat." });
+        }
+
+        const { GoogleGenerativeAI } = require("@google/generative-ai");
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+        const prompt = `You are Stream Engine Agent — an autonomous AI payment agent running on Stellar testnet.
+You can stream USDC or XLM per-second to any service, rent tokenized real-world assets, and manage payment sessions.
+
+Agent context:
+${JSON.stringify(context, null, 2)}
+
+Human instruction: ${message}
+
+Respond concisely. If the human is asking you to take an action (stream payment, rent asset, cancel session, claim earnings), describe exactly what you would do and what parameters you'd use. If it's a question, answer it directly.`;
+
+        const result = await model.generateContent(prompt);
+        const reply = (await result.response).text();
+        res.json({ reply });
+    }));
+
     app.post("/api/rwa/relay", asyncHandler(async (req, res) => {
         const services = await app.locals.ready;
         const { action } = req.body || {};
@@ -1005,7 +1050,6 @@ function createApp(config = defaultConfig) {
     }));
 
     app.get("/api/rwa/assets/:tokenId/activity", asyncHandler(async (req, res) => {
-        const tokenId = Number(req.params.tokenId);
         if (!Number.isFinite(tokenId) || tokenId <= 0) {
             return res.status(400).json({ error: "invalid tokenId" });
         }
@@ -1014,6 +1058,75 @@ function createApp(config = defaultConfig) {
         void beginIndexerSync(app);
         const activity = await services.store.getActivities(tokenId);
         res.json({ activity, syncing: Boolean(app.locals.indexerSyncPromise) });
+    }));
+
+    // ── Analytics (x402 gated) ────────────────────────────────────────────────
+    app.get("/api/rwa/assets/:tokenId/analytics", asyncHandler(async (req, res) => {
+        const tokenId = Number(req.params.tokenId);
+        if (!Number.isFinite(tokenId) || tokenId <= 0) {
+            return res.status(400).json({ error: "invalid tokenId" });
+        }
+        const services = await app.locals.ready;
+        const asset = await services.store.getAsset(tokenId);
+        if (!asset) return res.status(404).json({ error: "asset not found" });
+
+        const activity = await services.store.getActivities(tokenId);
+        const sessions = activity.filter(a => a.event === "SessionOpened" || a.event === "RentalStarted");
+        const claims = activity.filter(a => a.event === "YieldClaimed");
+        const totalClaimed = claims.reduce((s, c) => s + Number(c.amount || 0), 0);
+        const occupancyRate = sessions.length > 0
+            ? Math.min(1, sessions.length / Math.max(1, Math.ceil((Date.now() / 1000 - Number(asset.createdAt || 0)) / 86400)))
+            : 0;
+        const flowRate = Number(asset.stream?.flowRate || 0);
+        const projectedAnnualYield = flowRate * 3600 * 24 * 365;
+
+        res.json({
+            tokenId,
+            analytics: {
+                totalSessions: sessions.length,
+                totalYieldClaimed: totalClaimed,
+                occupancyRate: Number(occupancyRate.toFixed(4)),
+                projectedAnnualYield: Number(projectedAnnualYield.toFixed(6)),
+                currentFlowRate: flowRate,
+                claimableYield: Number(asset.claimableYield || 0),
+                verificationStatus: asset.verificationStatusLabel || asset.verificationStatus,
+                rentalReady: Boolean(asset.rentalReady),
+                activityCount: activity.length,
+            },
+            paidVia: req.streamEngine || null,
+        });
+    }));
+
+    // ── Bid on asset ──────────────────────────────────────────────────────────
+    app.post("/api/rwa/assets/:tokenId/bid", asyncHandler(async (req, res) => {
+        const tokenId = Number(req.params.tokenId);
+        if (!Number.isFinite(tokenId) || tokenId <= 0) {
+            return res.status(400).json({ error: "invalid tokenId" });
+        }
+        const { bidder, amount, currency = "USDC", message = "" } = req.body || {};
+        if (!bidder) return res.status(400).json({ error: "bidder is required" });
+        if (!amount || Number(amount) <= 0) return res.status(400).json({ error: "amount must be > 0" });
+
+        const services = await app.locals.ready;
+        const asset = await services.store.getAsset(tokenId);
+        if (!asset) return res.status(404).json({ error: "asset not found" });
+
+        const bid = {
+            tokenId,
+            bidder,
+            amount: String(amount),
+            currency,
+            message,
+            placedAt: Math.floor(Date.now() / 1000),
+            status: "pending",
+        };
+
+        await services.store.recordActivity(
+            { source: "marketplace", event: "BidPlaced", txHash: "", tokenId,
+              data: bid, timestamp: bid.placedAt }
+        );
+
+        res.status(201).json({ bid });
     }));
 
     app.post("/api/rwa/verify", asyncHandler(async (req, res) => {

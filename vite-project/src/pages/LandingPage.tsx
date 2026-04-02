@@ -44,16 +44,16 @@ export default function LandingPage() {
             </motion.div>
             <motion.h1 initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.2 }}
               className="font-headline text-4xl sm:text-6xl md:text-8xl font-bold tracking-tighter text-on-surface mb-8 leading-[0.9]">
-              Stream Payments <br/>for the <span className="text-primary">Agent Economy.</span>
+              The Payment Layer <br/>for <span className="text-primary">Autonomous Agents.</span>
             </motion.h1>
             <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.4 }}
               className="text-lg md:text-xl text-on-surface-variant max-w-lg font-medium leading-relaxed mb-12">
-              x402-compatible payment sessions, real-world asset tokenization, and AI agent payments — all settled in USDC or XLM on Stellar.
+              Deploy an agent. Stream USDC or XLM per-second to any service. Trade tokenized real-world assets on-chain — all settled on Stellar.
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.6 }}
               className="flex flex-col sm:flex-row items-center gap-6">
               <Link to="/app" className="ethereal-gradient text-white px-10 py-5 rounded-full font-headline text-lg font-bold shadow-2xl shadow-blue-500/20 hover:opacity-90 transition-all">
-                Launch Engine
+                Launch Agent
               </Link>
               <button className="flex items-center gap-2 group">
                 <span className="w-10 h-10 flex items-center justify-center rounded-full border border-slate-200 group-hover:bg-surface transition-colors">
@@ -76,29 +76,29 @@ export default function LandingPage() {
         {/* Features */}
         <section className="py-24 px-6 bg-surface-container-low">
           <div className="max-w-7xl mx-auto">
-            <h2 className="font-headline text-3xl font-bold text-center mb-4">Everything you need</h2>
-            <p className="text-on-surface-variant text-center mb-16 max-w-xl mx-auto">One protocol. Three powerful primitives.</p>
+            <h2 className="font-headline text-3xl font-bold text-center mb-4">Built for agents, not humans</h2>
+            <p className="text-on-surface-variant text-center mb-16 max-w-xl mx-auto">Three primitives. One autonomous payment stack.</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {[
                 {
                   icon: Cpu,
-                  title: 'AI Agent API Payments',
+                  title: 'Agent Payment Sessions',
                   color: 'text-primary', bg: 'bg-blue-50',
                   points: [
                     'Agent opens a session once with USDC or XLM',
-                    'Calls protected routes using X-FlowPay-Stream-ID',
+                    'Calls protected APIs using X-FlowPay-Stream-ID',
                     'Middleware meters usage — no human signing per call',
                     'Gemini-powered brain decides when to top up',
                   ],
                 },
                 {
                   icon: Layers,
-                  title: 'Rental Asset Yield Streaming',
+                  title: 'Agent-Traded RWA Assets',
                   color: 'text-purple-600', bg: 'bg-purple-50',
                   points: [
-                    'Mint a verified RWA NFT for any rental property',
-                    'Fund a USDC yield pool tied to the NFT',
-                    'Yield drips to the owner per-second automatically',
+                    'Humans mint verified rental asset NFTs once',
+                    'Agents autonomously trade or rent on behalf of owners',
+                    'Yield streams per-second to the NFT holder',
                     'Flash advance the full remaining balance anytime',
                   ],
                 },
@@ -287,8 +287,8 @@ export default function LandingPage() {
         {/* CTA */}
         <section className="py-24 px-6">
           <div className="max-w-7xl mx-auto rounded-[3rem] ethereal-gradient p-12 md:p-24 text-center text-white relative overflow-hidden">
-            <h2 className="font-headline text-3xl sm:text-4xl md:text-6xl font-bold mb-8 relative z-10 leading-tight">Payments that stream. Assets that earn. Agents that act.</h2>
-            <p className="text-xl mb-12 opacity-90 max-w-2xl mx-auto relative z-10">Join builders using Stream Engine to power the next generation of autonomous payments on Stellar.</p>
+            <h2 className="font-headline text-3xl sm:text-4xl md:text-6xl font-bold mb-8 relative z-10 leading-tight">Deploy agents. Stream payments. Trade assets.</h2>
+            <p className="text-xl mb-12 opacity-90 max-w-2xl mx-auto relative z-10">The autonomous payment infrastructure for the next generation of AI agents on Stellar.</p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 relative z-10">
               <Link to="/app" className="bg-white text-primary px-10 py-5 rounded-full font-headline text-lg font-bold hover:scale-105 transition-transform shadow-xl">
                 Get Started

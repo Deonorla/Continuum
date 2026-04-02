@@ -71,9 +71,9 @@ export default function Streams() {
             <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white">
               <Shield size={16} />
             </div>
-            <p className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400">Incoming</p>
+            <p className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400">Earning</p>
           </div>
-          <h4 className="text-xl font-headline font-bold text-slate-900">{incomingStreams.length} Active</h4>
+          <h4 className="text-xl font-headline font-bold text-slate-900">{incomingStreams.filter(s => !['ended','cancelled','completed'].includes(s.sessionStatus)).length} Earning</h4>
           <p className="text-xs text-slate-400 mt-1">
             {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'Not connected'}
           </p>
@@ -82,9 +82,9 @@ export default function Streams() {
         <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm flex justify-between items-center relative overflow-hidden">
           <div className="absolute -top-12 -right-12 w-48 h-48 bg-teal-50 blur-[80px] rounded-full"></div>
           <div className="relative z-10">
-            <p className="text-[10px] font-label font-bold uppercase tracking-[0.2em] text-slate-400 mb-2">Outgoing</p>
+            <p className="text-[10px] font-label font-bold uppercase tracking-[0.2em] text-slate-400 mb-2">Spending</p>
             <div className="flex items-baseline gap-2">
-              <h3 className="text-4xl font-headline font-black text-slate-900 tracking-tighter">{outgoingStreams.length}</h3>
+              <h3 className="text-4xl font-headline font-black text-slate-900 tracking-tighter">{outgoingStreams.filter(s => !['ended','cancelled','completed'].includes(s.sessionStatus)).length}</h3>
               <span className="text-lg font-headline font-bold text-secondary">streams</span>
             </div>
           </div>
@@ -107,23 +107,23 @@ export default function Streams() {
         
       </div>
 
-      {/* Create Stream + Withdraw */}
+      {/* Deploy Payment Job + Claim Earnings */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-8 bg-white p-6 sm:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
           <div className="flex justify-between items-center mb-10">
-            <h3 className="text-3xl font-headline font-black uppercase tracking-tighter">Create New Stream</h3>
+            <h3 className="text-3xl font-headline font-black uppercase tracking-tighter">Deploy Payment Job</h3>
             <div className="flex items-center gap-2 px-4 py-2 bg-teal-50 rounded-full">
               <span className={`w-2 h-2 rounded-full ${walletAddress ? 'bg-secondary animate-pulse' : 'bg-slate-300'}`}></span>
               <span className="text-[10px] font-label font-bold uppercase tracking-widest text-secondary">
-                {walletAddress ? 'Wallet Ready' : 'Not Connected'}
+                {walletAddress ? 'Agent Ready' : 'Not Connected'}
               </span>
             </div>
           </div>
           <form onSubmit={handleCreate} className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              {/* 1. Recipient */}
+              {/* 1. Service Wallet */}
               <div className="md:col-span-1 space-y-3">
-                <label className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400 ml-1">1. Recipient</label>
+                <label className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400 ml-1">1. Service Wallet</label>
                 <input
                   type="text"
                   className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 focus:outline-none focus:ring-2 focus:ring-blue-200 text-sm"
@@ -144,9 +144,9 @@ export default function Streams() {
                 />
               </div>
 
-              {/* 3. Amount */}
+              {/* 3. Budget */}
               <div className="space-y-3">
-                <label className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400 ml-1">3. Amount</label>
+                <label className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400 ml-1">3. Budget</label>
                 <div className="relative">
                   <input
                     type="number"
@@ -184,7 +184,7 @@ export default function Streams() {
               disabled={isProcessing || !walletAddress}
               className="w-full md:w-auto px-12 py-5 bg-primary text-white rounded-2xl font-headline font-black text-lg uppercase tracking-tighter hover:shadow-2xl hover:shadow-blue-500/30 hover:-translate-y-1 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
             >
-              {isProcessing ? 'Processing...' : <><Plus size={20} /> Initialize Stream <ArrowRight size={20} /></>}
+              {isProcessing ? 'Deploying...' : <><Plus size={20} /> Deploy Agent Payment <ArrowRight size={20} /></>}
             </button>
           </form>
         </div>
@@ -194,8 +194,8 @@ export default function Streams() {
             <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-primary shadow-sm mb-8">
               <Wallet size={24} />
             </div>
-            <h3 className="text-2xl font-headline font-black uppercase tracking-tighter mb-4">Withdraw Funds</h3>
-            <p className="text-slate-500 text-sm leading-relaxed mb-8">Enter a session ID to claim available stream funds.</p>
+            <h3 className="text-2xl font-headline font-black uppercase tracking-tighter mb-4">Claim Earnings</h3>
+            <p className="text-slate-500 text-sm leading-relaxed mb-8">Enter a session ID to claim streamed funds earned by your agent.</p>
             <input
               type="text"
               className="w-full bg-white border-none rounded-2xl px-6 py-4 focus:ring-2 focus:ring-blue-200 text-sm mb-4"
@@ -209,7 +209,7 @@ export default function Streams() {
             disabled={isProcessing || !sessionId || !walletAddress}
             className="w-full py-4 border-2 border-primary text-primary rounded-2xl font-label uppercase tracking-widest text-xs font-bold hover:bg-primary hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Withdraw Session
+            Claim Session
           </button>
         </div>
       </div>
@@ -217,8 +217,8 @@ export default function Streams() {
       {/* Stream Lists */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {[
-          { icon: ArrowDownLeft, label: 'Incoming Streams', color: 'text-secondary', streams: incomingStreams, variant: 'incoming' },
-          { icon: ArrowUpRight,  label: 'Outgoing Streams', color: 'text-primary',   streams: outgoingStreams, variant: 'outgoing' },
+          { icon: ArrowDownLeft, label: 'Earning Streams', color: 'text-secondary', streams: incomingStreams, variant: 'incoming' },
+          { icon: ArrowUpRight,  label: 'Spending Streams', color: 'text-primary',   streams: outgoingStreams, variant: 'outgoing' },
         ].map(({ icon: Icon, label, color, streams: list, variant }) => (
           <div key={label} className="space-y-6">
             <div className="flex justify-between items-center px-2">

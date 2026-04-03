@@ -173,13 +173,13 @@ export async function syncPaymentSessionMetadata(sessionId, payload) {
   return response.session || null;
 }
 
-export async function fetchMarketAssets() {
-  const response = await request('/api/market/assets', { method: 'GET' });
+export async function fetchMarketAssets(query = {}) {
+  const response = await request('/api/market/assets', { method: 'GET' }, query);
   return response.assets || [];
 }
 
-export async function fetchMarketCatalog() {
-  return request('/api/market/assets', { method: 'GET' });
+export async function fetchMarketCatalog(query = {}) {
+  return request('/api/market/assets', { method: 'GET' }, query);
 }
 
 export async function fetchMarketAsset(assetId) {

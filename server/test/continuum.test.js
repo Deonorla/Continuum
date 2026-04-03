@@ -69,6 +69,7 @@ describe("Continuum API Integration", function () {
             issuer: issuerKeypair.publicKey(),
             verificationStatusLabel: "verified",
             claimableYield: "12500000",
+            totalYieldDeposited: "50000000",
             rentalReady: true,
             publicMetadataURI: "ipfs://warehouse-alpha",
             stream: {
@@ -445,6 +446,34 @@ describe("Continuum API Integration", function () {
         expect(response.body.summary.typeBreakdown.real_estate).to.equal(1);
         expect(response.body.summary.highlights.topOpportunities).to.have.length(1);
         expect(response.body.summary.highlights.auctionsClosingSoon).to.have.length(1);
+    });
+
+    it("applies free market screening filters server-side", async () => {
+        const response = await request(app)
+            .get("/api/market/assets")
+            .query({
+                search: "warehouse",
+                type: "real_estate",
+                minYield: "20",
+                maxRisk: "40",
+                verifiedOnly: "true",
+                rentalReady: "true",
+                hasAuction: "true",
+            })
+            .expect(200);
+
+        expect(response.body.assets).to.have.length(1);
+        expect(response.body.assets[0].tokenId).to.equal(7);
+        expect(response.body.assets[0].screening.score).to.be.a("number");
+        expect(response.body.summary.activeFilterCount).to.equal(7);
+        expect(response.body.summary.browse.search).to.equal("warehouse");
+        expect(response.body.summary.browse.type).to.equal("real_estate");
+        expect(response.body.summary.browse.minYield).to.equal(20);
+        expect(response.body.summary.browse.maxRisk).to.equal(40);
+        expect(response.body.summary.browse.verifiedOnly).to.equal(true);
+        expect(response.body.summary.browse.rentalReady).to.equal(true);
+        expect(response.body.summary.browse.hasAuction).to.equal(true);
+        expect(response.body.summary.universeProductiveTwins).to.equal(1);
     });
 
     it("returns 402 for premium analysis without a payment session", async () => {

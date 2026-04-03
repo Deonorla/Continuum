@@ -55,6 +55,9 @@ function scoreAsset(asset, criteria) {
     const riskScore = estimateRiskScore(asset);
     let score = 0;
 
+    if (criteria.verifiedOnly && asset.verificationStatusLabel !== "verified") return -1;
+    if (criteria.rentalReadyOnly && !asset.rentalReady) return -1;
+
     // Yield match (0–40 points)
     if (criteria.minYield != null && yieldRate < criteria.minYield) return -1; // hard filter
     if (criteria.maxYield != null && yieldRate > criteria.maxYield) return -1;
@@ -141,8 +144,11 @@ function parseGoal(goal = '') {
     const riskMatch = text.match(/(\d+)\s*(?:%\s*)?risk/);
     if (riskMatch) criteria.maxRisk = parseInt(riskMatch[1]);
 
-    if (text.includes('real estate') || text.includes('property') || text.includes('rental')) criteria.assetTypes = [1];
-    if (text.includes('vehicle') || text.includes('equipment')) criteria.assetTypes = [2];
+    const assetTypes = [];
+    if (text.includes('real estate') || text.includes('property') || text.includes('rental')) assetTypes.push(1);
+    if (text.includes('vehicle')) assetTypes.push(2);
+    if (text.includes('equipment')) assetTypes.push(3);
+    if (assetTypes.length) criteria.assetTypes = [...new Set(assetTypes)];
 
     if (text.includes('verified only') || text.includes('verified assets')) criteria.verifiedOnly = true;
 

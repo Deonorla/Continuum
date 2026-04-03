@@ -1,7 +1,7 @@
 const express = require("express");
 const { ethers } = require("ethers");
 const { generateDueDiligence, aggregateMarketIntel } = require("../services/assetIntelligence");
-const { screenAssets } = require("../services/assetScreener");
+const { screenAssets, parseGoal } = require("../services/assetScreener");
 const { formatStellarAmount } = require("../services/stellarAnchorService");
 
 const router = express.Router();
@@ -78,6 +78,12 @@ function productiveOnly(asset) {
     return [1, 2, 3].includes(Number(asset?.assetType || 0));
 }
 
+const MARKET_TYPE_TO_CHAIN_ASSET_TYPE = {
+    real_estate: 1,
+    vehicle: 2,
+    commodity: 3,
+};
+
 function assetTypeKey(assetType) {
     const numericType = Number(assetType || 0);
     if (numericType === 1) return "real_estate";
@@ -102,6 +108,117 @@ function percentage(part, total) {
 
 function sumStringAmounts(values = []) {
     return values.reduce((sum, value) => sum + BigInt(value || "0"), 0n);
+}
+
+function normalizeText(value = "") {
+    return String(value || "").trim().toLowerCase();
+}
+
+function parseBooleanQuery(value) {
+    if (value === undefined || value === null || value === "") return false;
+    return ["1", "true", "yes", "on"].includes(String(value).trim().toLowerCase());
+}
+
+function parseOptionalNumber(value) {
+    if (value === undefined || value === null || value === "") return undefined;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function buildMarketBrowseFilters(query = {}) {
+    const search = String(query.search || "").trim();
+    const goal = String(query.goal || "").trim();
+    const type = String(query.type || "").trim();
+    const criteria = goal ? { ...parseGoal(goal) } : {};
+    const mappedType = MARKET_TYPE_TO_CHAIN_ASSET_TYPE[type];
+    const minYield = parseOptionalNumber(query.minYield);
+    const maxYield = parseOptionalNumber(query.maxYield);
+    const maxRisk = parseOptionalNumber(query.maxRisk);
+    const verifiedOnly = parseBooleanQuery(query.verifiedOnly);
+    const rentalReady = parseBooleanQuery(query.rentalReady);
+    const hasAuction = parseBooleanQuery(query.hasAuction);
+    const limit = parseOptionalNumber(query.limit);
+
+    if (mappedType) criteria.assetTypes = [mappedType];
+    if (minYield !== undefined) criteria.minYield = minYield;
+    if (maxYield !== undefined) criteria.maxYield = maxYield;
+    if (maxRisk !== undefined) criteria.maxRisk = maxRisk;
+    if (verifiedOnly) criteria.verifiedOnly = true;
+    if (rentalReady) criteria.rentalReadyOnly = true;
+    if (limit !== undefined) criteria.limit = limit;
+
+    const appliedFilters = {
+        search: search || null,
+        goal: goal || null,
+        type: type || null,
+        minYield: minYield ?? null,
+        maxYield: maxYield ?? null,
+        maxRisk: maxRisk ?? null,
+        verifiedOnly,
+        rentalReady,
+        hasAuction,
+        limit: limit ?? null,
+    };
+
+    return {
+        search,
+        goal,
+        hasAuction,
+        criteria,
+        appliedFilters,
+        activeFilterCount: Object.values(appliedFilters).filter((value) => {
+            if (value === null || value === undefined || value === false) return false;
+            if (typeof value === "string") return Boolean(value.trim());
+            return true;
+        }).length,
+    };
+}
+
+function assetMatchesSearch(asset, search = "") {
+    const query = normalizeText(search);
+    if (!query) return true;
+    const haystack = [
+        asset?.publicMetadata?.name,
+        asset?.publicMetadata?.description,
+        asset?.publicMetadata?.location,
+        asset?.name,
+        asset?.description,
+        asset?.location,
+        asset?.jurisdiction,
+        asset?.issuer,
+    ]
+        .filter(Boolean)
+        .map((value) => normalizeText(value))
+        .join(" ");
+    return haystack.includes(query);
+}
+
+function applyMarketBrowseFilters(assets = [], browseFilters = {}) {
+    const baseFiltered = assets.filter((asset) => {
+        if (!assetMatchesSearch(asset, browseFilters.search)) return false;
+        if (browseFilters.hasAuction && !asset.market?.hasActiveAuction) return false;
+        return true;
+    });
+
+    const rankedAssets = screenAssets(baseFiltered, {
+        ...browseFilters.criteria,
+        limit: baseFiltered.length,
+    });
+    const rankedByTokenId = new Map(
+        rankedAssets.map(({ asset: _asset, ...entry }) => [Number(entry.tokenId), entry]),
+    );
+    const requiresScreening = Object.keys(browseFilters.criteria || {}).length > 0;
+    const filteredAssets = requiresScreening
+        ? baseFiltered.filter((asset) => rankedByTokenId.has(Number(asset.tokenId)))
+        : baseFiltered;
+
+    return {
+        assets: filteredAssets.map((asset) => ({
+            ...asset,
+            screening: rankedByTokenId.get(Number(asset.tokenId)) || null,
+        })),
+        rankedAssets,
+    };
 }
 
 function summarizeActivity(activity = []) {
@@ -188,7 +305,7 @@ function enrichAuction(auction) {
     };
 }
 
-function buildMarketSummary(assets = [], activeAuctions = []) {
+function buildMarketSummary(assets = [], activeAuctions = [], rankedAssets = [], browseFilters = {}, universeCount = assets.length) {
     const marketIntel = aggregateMarketIntel(assets);
     const totalClaimableYield = sumStringAmounts(assets.map((asset) => asset.claimableYield || "0"));
     const typeBreakdown = {
@@ -196,7 +313,7 @@ function buildMarketSummary(assets = [], activeAuctions = []) {
         vehicle: Number(marketIntel.sectorBreakdown?.[2] || 0),
         commodity: Number(marketIntel.sectorBreakdown?.[3] || 0),
     };
-    const topOpportunities = (marketIntel.topPerformers || []).slice(0, 3).map((entry) => ({
+    const topOpportunities = (rankedAssets.length ? rankedAssets : (marketIntel.topPerformers || [])).slice(0, 3).map((entry) => ({
         tokenId: entry.tokenId,
         name: entry.name || `Asset #${entry.tokenId}`,
         assetType: assetTypeKey(entry.assetType),
@@ -221,6 +338,7 @@ function buildMarketSummary(assets = [], activeAuctions = []) {
 
     return {
         totalProductiveTwins: assets.length,
+        universeProductiveTwins: universeCount,
         liveAuctions: activeAuctions.length,
         verifiedCount: Number(marketIntel.verifiedCount || 0),
         verifiedSharePct: percentage(marketIntel.verifiedCount, marketIntel.totalAssets),
@@ -232,6 +350,8 @@ function buildMarketSummary(assets = [], activeAuctions = []) {
         totalClaimableYield: totalClaimableYield.toString(),
         totalClaimableYieldDisplay: formatStellarAmount(totalClaimableYield),
         typeBreakdown,
+        activeFilterCount: Number(browseFilters.activeFilterCount || 0),
+        browse: browseFilters.appliedFilters || {},
         highlights: {
             topOpportunities,
             auctionsClosingSoon,
@@ -328,6 +448,7 @@ function requirePaidAction(price, description) {
 
 router.get("/market/assets", asyncHandler(async (req, res) => {
     const services = await req.app.locals.ready;
+    const browseFilters = buildMarketBrowseFilters(req.query || {});
     const rawAssets = services.chainService?.isConfigured?.()
         ? await services.chainService.listAssetSnapshots({ limit: 200 })
         : await services.store.listAssets();
@@ -338,10 +459,17 @@ router.get("/market/assets", asyncHandler(async (req, res) => {
         const auction = activeAuctions.find((entry) => Number(entry.assetId) === Number(asset.tokenId)) || null;
         return marketAssetSummary(await hydrateAsset(services, asset), auction);
     }));
+    const browseResult = applyMarketBrowseFilters(assets, browseFilters);
     res.json({
         code: "market_assets_listed",
-        assets,
-        summary: buildMarketSummary(assets, activeAuctions),
+        assets: browseResult.assets,
+        summary: buildMarketSummary(
+            browseResult.assets,
+            activeAuctions.filter((auction) => browseResult.assets.some((asset) => Number(asset.tokenId) === Number(auction.assetId))),
+            browseResult.rankedAssets,
+            browseFilters,
+            assets.length,
+        ),
     });
 }));
 

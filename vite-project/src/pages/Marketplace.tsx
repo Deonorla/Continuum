@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   BarChart2,
@@ -29,6 +29,7 @@ import {
 import { mapApiAssetToUiAsset, TYPE_META } from './rwa/rwaData';
 
 const SORT_OPTIONS = [
+  { value: 'score_desc', label: 'Best Match' },
   { value: 'auction_desc', label: 'Live Auctions' },
   { value: 'yield_desc', label: 'Highest Yield' },
   { value: 'price_asc', label: 'Lowest Rate' },
@@ -46,11 +47,15 @@ function buildUiAsset(asset: any) {
     currentOwner: asset.currentOwner,
     publicMetadata: asset.publicMetadata,
     verificationStatusLabel: asset.verificationStatusLabel,
+    screening: asset.screening || null,
   };
 }
 
 function sortAssets(assets: any[], sort: string) {
   const copy = [...assets];
+  if (sort === 'score_desc') {
+    return copy.sort((left, right) => Number(right.screening?.score || 0) - Number(left.screening?.score || 0));
+  }
   if (sort === 'auction_desc') {
     return copy.sort((left, right) => Number(Boolean(right.market?.hasActiveAuction)) - Number(Boolean(left.market?.hasActiveAuction)));
   }
@@ -494,14 +499,31 @@ export default function Marketplace() {
   const [marketSummary, setMarketSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [goal, setGoal] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [minYield, setMinYield] = useState('');
+  const [maxRisk, setMaxRisk] = useState('');
+  const [verifiedOnly, setVerifiedOnly] = useState(false);
+  const [rentalReadyOnly, setRentalReadyOnly] = useState(false);
+  const [liveAuctionsOnly, setLiveAuctionsOnly] = useState(false);
   const [sort, setSort] = useState('auction_desc');
   const [selected, setSelected] = useState<any>(null);
+  const deferredSearch = useDeferredValue(search);
+  const deferredGoal = useDeferredValue(goal);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetchMarketCatalog();
+      const response = await fetchMarketCatalog({
+        search: deferredSearch || undefined,
+        goal: deferredGoal || undefined,
+        type: typeFilter !== 'all' ? typeFilter : undefined,
+        minYield: minYield || undefined,
+        maxRisk: maxRisk || undefined,
+        verifiedOnly: verifiedOnly ? 'true' : undefined,
+        rentalReady: rentalReadyOnly ? 'true' : undefined,
+        hasAuction: liveAuctionsOnly ? 'true' : undefined,
+      });
       setAssets((response.assets || []).map(buildUiAsset));
       setMarketSummary(response.summary || null);
     } catch {
@@ -510,31 +532,20 @@ export default function Marketplace() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [deferredGoal, deferredSearch, liveAuctionsOnly, maxRisk, minYield, rentalReadyOnly, typeFilter, verifiedOnly]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const filtered = useMemo(() => {
-    return sortAssets(
-      assets.filter((asset) => {
-        if (typeFilter !== 'all' && asset.type !== typeFilter) return false;
-        if (!search) return true;
-        const query = search.toLowerCase();
-        return (
-          asset.name?.toLowerCase().includes(query) ||
-          asset.location?.toLowerCase().includes(query) ||
-          asset.description?.toLowerCase().includes(query)
-        );
-      }),
-      sort,
-    );
-  }, [assets, search, sort, typeFilter]);
+  const filtered = useMemo(() => sortAssets(assets, sort), [assets, sort]);
 
   const liveAuctions = Number(marketSummary?.liveAuctions ?? assets.filter((asset) => asset.market?.hasActiveAuction).length);
   const totalYield = Number(marketSummary?.totalClaimableYieldDisplay ?? assets.reduce((sum, asset) => sum + Number(asset.yieldBalance || 0), 0));
   const claimableYieldDisplay = `${totalYield.toFixed(2)} USDC`;
+  const activeFilterCount = Number(marketSummary?.activeFilterCount || 0);
+  const browseState = marketSummary?.browse || {};
+  const universeCount = Number(marketSummary?.universeProductiveTwins ?? assets.length);
   const discoveryStats = [
     { label: 'Productive Twins', value: String(marketSummary?.totalProductiveTwins ?? assets.length), color: 'text-primary' },
     { label: 'Live Auctions', value: String(liveAuctions), color: 'text-purple-600' },
@@ -554,6 +565,28 @@ export default function Marketplace() {
   };
   const topOpportunities = marketSummary?.highlights?.topOpportunities || [];
   const auctionsClosingSoon = marketSummary?.highlights?.auctionsClosingSoon || [];
+  const screeningPills = [
+    { label: browseState.search ? `Search: ${browseState.search}` : '', active: Boolean(browseState.search) },
+    { label: browseState.type ? `${TYPE_META[browseState.type as keyof typeof TYPE_META]?.label || browseState.type}` : '', active: Boolean(browseState.type) },
+    { label: 'Verified Only', active: verifiedOnly },
+    { label: 'Rental Ready', active: rentalReadyOnly },
+    { label: 'Live Auctions', active: liveAuctionsOnly },
+    { label: minYield ? `Min Yield ${minYield}%` : '', active: Boolean(minYield) },
+    { label: maxRisk ? `Max Risk ${maxRisk}` : '', active: Boolean(maxRisk) },
+    { label: browseState.goal ? `Goal: ${browseState.goal}` : '', active: Boolean(browseState.goal) },
+  ].filter((item) => item.active);
+
+  const clearScreen = useCallback(() => {
+    setSearch('');
+    setGoal('');
+    setTypeFilter('all');
+    setMinYield('');
+    setMaxRisk('');
+    setVerifiedOnly(false);
+    setRentalReadyOnly(false);
+    setLiveAuctionsOnly(false);
+    setSort('auction_desc');
+  }, []);
 
   return (
     <div className="p-4 sm:p-8 max-w-[1600px] mx-auto space-y-8">
@@ -675,42 +708,118 @@ export default function Marketplace() {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-[180px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-4">
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="relative flex-1 min-w-[180px]">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search productive twins..."
+              className="w-full bg-slate-50 border border-slate-100 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+            />
+          </div>
+
+          <div className="flex gap-1.5">
+            {TYPE_FILTERS.map((type) => (
+              <button
+                key={type}
+                onClick={() => setTypeFilter(type)}
+                className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${
+                  typeFilter === type ? 'bg-primary text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                }`}
+              >
+                {type === 'all' ? 'All' : TYPE_META[type]?.label || type}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <SlidersHorizontal size={14} className="text-slate-400" />
+            <Select
+              options={SORT_OPTIONS}
+              value={sort}
+              onChange={(value) => setSort(String(value))}
+              className="w-[10rem] text-slate-400"
+              compact
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-[1.4fr_auto_auto_auto]">
           <input
             type="text"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search productive twins..."
-            className="w-full bg-slate-50 border border-slate-100 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+            value={goal}
+            onChange={(event) => setGoal(event.target.value)}
+            placeholder="Agent screen goal, e.g. verified assets under 40 risk"
+            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
           />
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={minYield}
+            onChange={(event) => setMinYield(event.target.value)}
+            placeholder="Min yield %"
+            className="w-full lg:w-[9rem] bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+          />
+          <input
+            type="number"
+            min="0"
+            max="100"
+            step="1"
+            value={maxRisk}
+            onChange={(event) => setMaxRisk(event.target.value)}
+            placeholder="Max risk"
+            className="w-full lg:w-[9rem] bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+          />
+          <button
+            onClick={clearScreen}
+            className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-500 hover:bg-slate-50"
+          >
+            Clear Screen
+          </button>
         </div>
 
-        <div className="flex gap-1.5">
-          {TYPE_FILTERS.map((type) => (
+        <div className="flex flex-wrap gap-2 items-center">
+          {[
+            { label: 'Verified Only', active: verifiedOnly, setActive: setVerifiedOnly },
+            { label: 'Rental Ready', active: rentalReadyOnly, setActive: setRentalReadyOnly },
+            { label: 'Live Auctions', active: liveAuctionsOnly, setActive: setLiveAuctionsOnly },
+          ].map((item) => (
             <button
-              key={type}
-              onClick={() => setTypeFilter(type)}
+              key={item.label}
+              onClick={() => item.setActive(!item.active)}
               className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${
-                typeFilter === type ? 'bg-primary text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                item.active ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
               }`}
             >
-              {type === 'all' ? 'All' : TYPE_META[type]?.label || type}
+              {item.label}
             </button>
           ))}
+          <span className="text-xs text-slate-400">
+            Showing {String(marketSummary?.totalProductiveTwins ?? assets.length)} of {String(universeCount)} productive twins.
+          </span>
         </div>
 
-        <div className="flex items-center gap-2">
-          <SlidersHorizontal size={14} className="text-slate-400" />
-          <Select
-            options={SORT_OPTIONS}
-            value={sort}
-            onChange={(value) => setSort(String(value))}
-            className="w-[10rem] text-slate-400"
-            compact
-          />
-        </div>
+        {activeFilterCount > 0 && (
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              {screeningPills.map((item) => (
+                <span
+                  key={item.label}
+                  className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-blue-700"
+                >
+                  {item.label}
+                </span>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500">
+              The free browse layer is now being screened server-side before premium analysis or bidding starts.
+            </p>
+          </div>
+        )}
       </div>
 
       {loading ? (

@@ -124,7 +124,6 @@ function createFreighterSigner(address) {
       if (typeof response.signedMessage === "string") {
         return response.signedMessage;
       }
-
       const bytes = Array.from(new Uint8Array(response.signedMessage));
       const binary = bytes.map((value) => String.fromCharCode(value)).join("");
       return window.btoa(binary);

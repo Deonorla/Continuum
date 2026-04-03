@@ -26,6 +26,7 @@ import {
   fetchMarketAssets,
   pauseAgentRuntime,
   rebalanceMarketTreasury,
+  routeMarketYield,
   saveAgentMandate,
   startAgentRuntime,
   tickAgentRuntime,
@@ -116,6 +117,9 @@ export default function AgentConsolePage() {
   const [treasurySessionId, setTreasurySessionId] = useState('');
   const [treasuryActionStatus, setTreasuryActionStatus] = useState<'idle' | 'loading' | 'ok' | '402' | 'err'>('idle');
   const [treasuryActionError, setTreasuryActionError] = useState('');
+  const [yieldRouteTokenId, setYieldRouteTokenId] = useState('');
+  const [yieldRouteStatus, setYieldRouteStatus] = useState<'idle' | 'loading' | 'ok' | '402' | 'err'>('idle');
+  const [yieldRouteError, setYieldRouteError] = useState('');
   const runtime = state?.runtime || {};
   const agentStatus: AgentStatus = runtime?.running
     ? 'running'
@@ -231,6 +235,28 @@ export default function AgentConsolePage() {
       }
     }
   }, [agentPublicKey, refreshState, treasurySessionId]);
+
+  const routeYieldIntoTreasury = useCallback(async () => {
+    if (!agentPublicKey) return;
+    setYieldRouteStatus('loading');
+    setYieldRouteError('');
+    try {
+      await routeMarketYield(
+        yieldRouteTokenId ? { tokenId: Number(yieldRouteTokenId) } : {},
+        treasurySessionId || undefined,
+      );
+      setYieldRouteStatus('ok');
+      await refreshState();
+    } catch (routeError: any) {
+      const message = routeError?.message || 'Yield routing failed.';
+      setYieldRouteError(message);
+      if (String(message).includes('402') || String(message).includes('Payment')) {
+        setYieldRouteStatus('402');
+      } else {
+        setYieldRouteStatus('err');
+      }
+    }
+  }, [agentPublicKey, refreshState, treasurySessionId, yieldRouteTokenId]);
 
   const mergedLogs = useMemo<LogEntry[]>(() => (
     Array.isArray(state?.decisionLog) ? state.decisionLog.map((entry: any) => ({
@@ -438,6 +464,22 @@ export default function AgentConsolePage() {
                   >
                     {treasuryActionStatus === 'loading' ? 'Optimizing...' : 'Optimize Treasury · 0.02 USDC'}
                   </button>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={yieldRouteTokenId}
+                    onChange={(event) => setYieldRouteTokenId(event.target.value)}
+                    placeholder="Optional token ID to claim + route"
+                    className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                  <button
+                    onClick={() => void routeYieldIntoTreasury()}
+                    disabled={!agentPublicKey || yieldRouteStatus === 'loading'}
+                    className="w-full py-2.5 rounded-xl border border-purple-200 text-purple-700 text-xs font-bold hover:bg-purple-50 disabled:opacity-50"
+                  >
+                    {yieldRouteStatus === 'loading' ? 'Routing Yield...' : 'Route Yield · 0.03 USDC'}
+                  </button>
                   {treasuryActionStatus === '402' && (
                     <p className="text-xs text-amber-700">Treasury optimization is paid. Reuse or enter a valid Continuum payment session first.</p>
                   )}
@@ -446,6 +488,15 @@ export default function AgentConsolePage() {
                   )}
                   {treasuryActionStatus === 'ok' && (
                     <p className="text-xs text-secondary">Treasury optimization completed and refreshed the live state.</p>
+                  )}
+                  {yieldRouteStatus === '402' && (
+                    <p className="text-xs text-amber-700">Yield routing is paid too. Reuse or enter a valid Continuum payment session first.</p>
+                  )}
+                  {yieldRouteStatus === 'err' && (
+                    <p className="text-xs text-red-500">{yieldRouteError || 'Yield routing failed.'}</p>
+                  )}
+                  {yieldRouteStatus === 'ok' && (
+                    <p className="text-xs text-secondary">Claimable yield was routed through the treasury optimizer.</p>
                   )}
                 </div>
                 <div className="grid grid-cols-2 gap-2">

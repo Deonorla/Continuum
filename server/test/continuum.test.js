@@ -537,6 +537,42 @@ describe("Continuum API Integration", function () {
         expect(response.body.paidVia.streamId).to.equal("77");
     });
 
+    it("returns 402 for paid yield routing without a payment session", async () => {
+        const response = await request(app)
+            .post("/api/market/yield/route")
+            .set("Authorization", `Bearer ${token}`)
+            .send({ tokenId: 7 })
+            .expect(402);
+
+        expect(response.body.message).to.equal("Payment Required");
+        expect(response.headers["x-stream-rate"]).to.equal("0.03");
+        expect(response.headers["x-payment-currency"]).to.equal("USDC");
+    });
+
+    it("routes yield through the paid treasury path once a valid session is supplied", async () => {
+        const response = await request(app)
+            .post("/api/market/yield/route")
+            .set("Authorization", `Bearer ${token}`)
+            .set("x-stream-stream-id", "77")
+            .send({ tokenId: 7 })
+            .expect(200);
+
+        expect(response.body.code).to.equal("yield_routed");
+        expect(response.body.claim.amount).to.equal("3500000");
+        expect(response.body.optimization.objective).to.equal("highest_approved_return_first");
+        expect(response.body.paidVia.mode).to.equal("streaming");
+        expect(response.body.paidVia.streamId).to.equal("77");
+
+        const stateResponse = await request(app)
+            .get(`/api/agents/${agentId}/state`)
+            .set("Authorization", `Bearer ${token}`)
+            .expect(200);
+
+        expect(stateResponse.body.state.performance.realizedYield).to.equal("3500000");
+        expect(stateResponse.body.state.performance.paidActionFees).to.equal("300000");
+        expect(stateResponse.body.state.performance.recentEvents.some((event) => event.category === "yield")).to.equal(true);
+    });
+
     it("creates a managed agent and exposes its state", async () => {
         const response = await request(app)
             .get(`/api/agents/${agentId}/state`)

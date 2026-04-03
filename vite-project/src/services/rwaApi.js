@@ -239,10 +239,13 @@ export async function claimMarketYield(tokenId) {
   });
 }
 
-export async function routeMarketYield(payload = {}) {
+export async function routeMarketYield(payload = {}, sessionId) {
   return request('/api/market/yield/route', {
     method: 'POST',
-    headers: agentHeaders(),
+    headers: {
+      ...agentHeaders(),
+      ...(sessionId ? { 'x-stream-stream-id': String(sessionId) } : {}),
+    },
     body: JSON.stringify(payload),
   });
 }

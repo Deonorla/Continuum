@@ -686,7 +686,7 @@ router.post("/market/yield/claim", requireJwt, asyncHandler(async (req, res) => 
     });
 }));
 
-router.post("/market/yield/route", requireJwt, asyncHandler(async (req, res) => {
+router.post("/market/yield/route", requirePaidAction("0.03", "Yield routing"), requireJwt, asyncHandler(async (req, res) => {
     const { services, ownerPublicKey, agentId } = await resolveAgentContext(req);
     let claim = null;
     if (req.body?.tokenId) {
@@ -699,12 +699,17 @@ router.post("/market/yield/route", requireJwt, asyncHandler(async (req, res) => 
         });
     }
     const treasury = await services.treasuryManager.rebalance({ ownerPublicKey, agentId });
+    await services.agentState.recordPaidActionFee(agentId, req.streamEngineActionFee, {
+        action: "yield_route",
+        tokenId: req.body?.tokenId ? Number(req.body.tokenId) : null,
+    });
     res.json({
         code: "yield_routed",
         action: "routeYield",
         claim,
         treasury,
         optimization: treasury.optimization || null,
+        paidVia: req.streamEngine || null,
     });
 }));
 

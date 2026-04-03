@@ -33,6 +33,7 @@ export function AssetCard({ asset, onDetails }) {
   const seed = IMAGE_SEEDS[asset.type] || 'villa';
   const rentalReadiness = resolveRentalReadiness(asset);
   const isRentalReady = Boolean(rentalReadiness.ready);
+  const agentSignals = asset.agentSignals || null;
 
   return (
     <motion.div
@@ -69,7 +70,31 @@ export function AssetCard({ asset, onDetails }) {
           <span className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400">{asset.location}</span>
         </div>
         <h3 className="text-xl font-headline font-bold text-slate-900 mb-2">{asset.name}</h3>
-        <p className="text-sm text-slate-500 line-clamp-2 mb-6">{asset.description}</p>
+        <p className="text-sm text-slate-500 line-clamp-2 mb-4">{asset.description}</p>
+        {agentSignals && (agentSignals.bidFocus || agentSignals.watchSignal || agentSignals.screenHit || agentSignals.watched) && (
+          <div className="flex flex-wrap gap-2 mb-6">
+            {agentSignals.bidFocus && (
+              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-blue-700">
+                Bid Focus
+              </span>
+            )}
+            {agentSignals.watchSignal && (
+              <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-700">
+                Watch Signal
+              </span>
+            )}
+            {agentSignals.screenHit && (
+              <span className="rounded-full bg-purple-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-purple-600">
+                Shortlist Hit
+              </span>
+            )}
+            {agentSignals.watched && (
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-600">
+                Watching
+              </span>
+            )}
+          </div>
+        )}
         <div className="flex items-center justify-between pt-6 border-t border-slate-50">
           <div>
             <p className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400 mb-1">Monthly Est.</p>

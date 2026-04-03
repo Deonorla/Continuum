@@ -24,6 +24,7 @@ import {
   createMarketAuction,
   deleteAgentScreen,
   fetchAuction,
+  fetchAgentState,
   fetchAgentScreens,
   fetchAgentWatchlist,
   fetchMarketAsset,
@@ -531,6 +532,7 @@ export default function Marketplace() {
   const { walletAddress } = useWallet();
   const { agentPublicKey, activate } = useAgentWallet(walletAddress);
   const [assets, setAssets] = useState<any[]>([]);
+  const [agentState, setAgentState] = useState<any>(null);
   const [marketSummary, setMarketSummary] = useState<any>(null);
   const [savedScreens, setSavedScreens] = useState<any[]>([]);
   const [watchlist, setWatchlist] = useState<any[]>([]);
@@ -565,17 +567,20 @@ export default function Marketplace() {
         rentalReady: rentalReadyOnly ? 'true' : undefined,
         hasAuction: liveAuctionsOnly ? 'true' : undefined,
       };
-      const [response, nextScreens, nextWatchlist] = await Promise.all([
+      const [response, nextScreens, nextWatchlist, nextAgentState] = await Promise.all([
         fetchMarketCatalog(query),
         agentPublicKey ? fetchAgentScreens(agentPublicKey) : Promise.resolve([]),
         agentPublicKey ? fetchAgentWatchlist(agentPublicKey) : Promise.resolve([]),
+        agentPublicKey ? fetchAgentState(agentPublicKey) : Promise.resolve(null),
       ]);
       setAssets((response.assets || []).map(buildUiAsset));
+      setAgentState(nextAgentState);
       setMarketSummary(response.summary || null);
       setSavedScreens(nextScreens || []);
       setWatchlist(nextWatchlist || []);
     } catch {
       setAssets([]);
+      setAgentState(null);
       setMarketSummary(null);
       if (!agentPublicKey) {
         setSavedScreens([]);
@@ -590,7 +595,42 @@ export default function Marketplace() {
     void load();
   }, [load]);
 
-  const filtered = useMemo(() => sortAssets(assets, sort), [assets, sort]);
+  const runtimeSummary = agentState?.runtime?.lastSummary || {};
+  const screenHighlights = Array.isArray(runtimeSummary.screenHighlights) ? runtimeSummary.screenHighlights : [];
+  const watchlistHighlights = Array.isArray(runtimeSummary.watchlistHighlights) ? runtimeSummary.watchlistHighlights : [];
+  const bidFocus = runtimeSummary.bidFocus || null;
+  const watchedTokenIds = useMemo(
+    () => new Set((watchlist || []).map((entry: any) => Number(entry.tokenId))),
+    [watchlist],
+  );
+  const screenHighlightTokenIds = useMemo(
+    () => new Set(
+      screenHighlights
+        .map((entry: any) => Number(entry.topTokenId))
+        .filter((tokenId: number) => Number.isFinite(tokenId) && tokenId > 0),
+    ),
+    [screenHighlights],
+  );
+  const watchSignalByTokenId = useMemo(
+    () => new Map((watchlistHighlights || []).map((entry: any) => [Number(entry.tokenId), entry])),
+    [watchlistHighlights],
+  );
+  const annotatedAssets = useMemo(
+    () => assets.map((asset) => {
+      const tokenId = Number(asset.tokenId);
+      return {
+        ...asset,
+        agentSignals: {
+          watched: watchedTokenIds.has(tokenId),
+          screenHit: screenHighlightTokenIds.has(tokenId),
+          watchSignal: watchSignalByTokenId.get(tokenId) || null,
+          bidFocus: Number(bidFocus?.assetId || 0) === tokenId,
+        },
+      };
+    }),
+    [assets, bidFocus?.assetId, screenHighlightTokenIds, watchedTokenIds, watchSignalByTokenId],
+  );
+  const filtered = useMemo(() => sortAssets(annotatedAssets, sort), [annotatedAssets, sort]);
 
   const liveAuctions = Number(marketSummary?.liveAuctions ?? assets.filter((asset) => asset.market?.hasActiveAuction).length);
   const totalYield = Number(marketSummary?.totalClaimableYieldDisplay ?? assets.reduce((sum, asset) => sum + Number(asset.yieldBalance || 0), 0));
@@ -617,10 +657,6 @@ export default function Marketplace() {
   };
   const topOpportunities = marketSummary?.highlights?.topOpportunities || [];
   const auctionsClosingSoon = marketSummary?.highlights?.auctionsClosingSoon || [];
-  const watchedTokenIds = useMemo(
-    () => new Set((watchlist || []).map((entry: any) => Number(entry.tokenId))),
-    [watchlist],
-  );
   const screeningPills = [
     { label: browseState.search ? `Search: ${browseState.search}` : '', active: Boolean(browseState.search) },
     { label: browseState.type ? `${TYPE_META[browseState.type as keyof typeof TYPE_META]?.label || browseState.type}` : '', active: Boolean(browseState.type) },
@@ -832,16 +868,68 @@ export default function Marketplace() {
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-3">
-          <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Discovery Notes</p>
-          <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-            Verified share and sector mix update from the live market response, not local UI guesses.
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Autonomous Attention</p>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              {agentPublicKey ? 'Live runtime' : 'Activate agent'}
+            </span>
           </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-            Free browse stays open. Paid calls start when you request premium analysis or bid placement.
-          </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-            Market rankings are yield- and risk-aware so the agent sees a useful shortlist before spending.
-          </div>
+          {agentPublicKey ? (
+            <>
+              <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-3">
+                <p className="text-[10px] font-label uppercase tracking-widest text-blue-700">Current Bid Focus</p>
+                {bidFocus ? (
+                  <>
+                    <p className="mt-1 text-sm font-bold text-slate-800">
+                      Auction #{bidFocus.auctionId} · twin #{bidFocus.assetId}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {Array.isArray(bidFocus.prioritySource) && bidFocus.prioritySource.length > 0
+                        ? `Priority source: ${bidFocus.prioritySource.join(' + ')}`
+                        : 'No shortlist bias applied on the last runtime loop.'}
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-1 text-sm text-slate-500">No eligible live auction target is active right now.</p>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: 'Screen Hits', value: String(screenHighlights.length) },
+                  { label: 'Watch Signals', value: String(watchlistHighlights.length) },
+                  { label: 'Auto Bids', value: String(runtimeSummary.autoBids || 0) },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
+                    <p className="text-[9px] font-label uppercase tracking-widest text-slate-400">{item.label}</p>
+                    <p className="mt-1 text-sm font-bold text-slate-800">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+              {(watchlistHighlights || []).length ? (
+                (watchlistHighlights || []).slice(0, 3).map((entry: any) => (
+                  <div key={entry.tokenId} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">{entry.name}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Twin #{entry.tokenId} · {Array.isArray(entry.reasons) ? entry.reasons.join(' · ') : 'signal'}
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-purple-600">
+                        {entry.hasLiveAuction ? 'live auction' : entry.severity || 'info'}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-slate-400">No active watchlist alerts from the managed runtime yet.</p>
+              )}
+            </>
+          ) : (
+            <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+              Activate the managed agent to see live shortlist hits, watchlist signals, and current bid focus in the market.
+            </div>
+          )}
         </div>
       </div>
 

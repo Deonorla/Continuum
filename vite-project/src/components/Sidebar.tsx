@@ -8,17 +8,17 @@ import { useAgentWallet } from '../hooks/useAgentWallet';
 
 const ownerNavItems = [
   { icon: LayoutDashboard, label: 'Owner Hub',        href: '/app',              sub: 'Balances · assets · overview' },
-  { icon: Zap,             label: 'Payment Streams',  href: '/app/streams',      sub: 'Stream USDC · XLM' },
-  { icon: Store,           label: 'Marketplace',      href: '/app/marketplace',  sub: 'Discover · Rent · Bid' },
-  { icon: Layers,          label: 'RWA Studio',       href: '/app/rwa',          sub: 'Mint · Manage · Attest' },
   { icon: Bot,             label: 'My Agent',         href: '/app/agent',        sub: 'Wallet · Rules · P&L' },
+  { icon: Zap,             label: 'Payment Streams',  href: '/app/streams',      sub: 'Stream USDC · XLM' },
+  // { icon: Store,           label: 'Marketplace',      href: '/app/marketplace',  sub: 'Discover · Rent · Bid' },
+  { icon: Layers,          label: 'RWA Studio',       href: '/app/rwa',          sub: 'Mint · Manage · Attest' },
 ];
 
 const agentNavItems = [
   { icon: LayoutDashboard, label: 'Agent Hub',        href: '/app',              sub: 'Balances · activity · P&L' },
-  { icon: Zap,             label: 'Payment Streams',  href: '/app/streams',      sub: 'Autonomous streams' },
-  { icon: Store,           label: 'Marketplace',      href: '/app/marketplace',  sub: 'Discover · Rent · Bid' },
   { icon: Bot,             label: 'My Agent',         href: '/app/agent',        sub: 'Wallet · Rules · P&L' },
+  { icon: Store,           label: 'Marketplace',      href: '/app/marketplace',  sub: 'Discover · Rent · Bid' },
+  { icon: Zap,             label: 'Payment Streams',  href: '/app/streams',      sub: 'Autonomous streams' },
 ];
 
 function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {

@@ -71,6 +71,27 @@ export default function AgentConsolePage() {
   const [marketAssets, setMarketAssets] = useState<any[]>([]);
 
   const [showFundModal, setShowFundModal] = useState(false);
+  const [screenedAssets, setScreenedAssets] = useState<any[]>([]);
+  const [marketIntel, setMarketIntel] = useState<any>(null);
+
+  // Fetch screened assets and market intel on mount and when agent runs
+  const refreshOpportunities = useCallback(async () => {
+    if (!agentPublicKey) return;
+    try {
+      const { agentAuthHeaders } = await import('../hooks/useAgentWallet');
+      const { getRwaApiBaseUrl } = await import('../services/rwaApi.js');
+      const base = getRwaApiBaseUrl();
+      const headers = { 'Content-Type': 'application/json', ...agentAuthHeaders() };
+      const [screenRes, intelRes] = await Promise.all([
+        fetch(`${base}/api/agent/screen`, { method: 'POST', headers, body: JSON.stringify({ criteria: { limit: 5 } }) }),
+        fetch(`${base}/api/agent/market-intel`, { headers }),
+      ]);
+      if (screenRes.ok) { const d = await screenRes.json(); setScreenedAssets(d.assets || []); }
+      if (intelRes.ok) { const d = await intelRes.json(); setMarketIntel(d); }
+    } catch {}
+  }, [agentPublicKey]);
+
+  useEffect(() => { refreshOpportunities(); }, [refreshOpportunities]);
   const { start: startLoop, stop: stopLoop } = useAgentLoop(agentPublicKey);
   const logBottomRef = useRef<HTMLDivElement>(null);
 
@@ -254,32 +275,45 @@ export default function AgentConsolePage() {
             </Link>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {marketAssets.length === 0 ? (
+            {/* Market intel summary */}
+            {marketIntel && (
+              <div className="grid grid-cols-3 gap-2 mb-2">
+                {[
+                  { label: 'Avg Yield', value: `${marketIntel.avgYield}%`, color: 'text-secondary' },
+                  { label: 'Verified',  value: String(marketIntel.verifiedCount), color: 'text-primary' },
+                  { label: 'Alerts',    value: String((marketIntel.alerts || []).length), color: (marketIntel.alerts || []).length > 0 ? 'text-red-500' : 'text-slate-400' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="bg-slate-50 rounded-xl border border-slate-100 px-2 py-2 text-center">
+                    <p className={`text-sm font-bold ${color}`}>{value}</p>
+                    <p className="text-[9px] font-label uppercase tracking-widest text-slate-400">{label}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {screenedAssets.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center py-12">
                 <Store size={32} className="text-slate-200 mb-3" />
-                <p className="text-sm text-slate-400">No assets available yet.</p>
-                <Link to="/app/marketplace" className="mt-4 text-xs font-bold text-primary hover:underline">Browse marketplace</Link>
+                <p className="text-sm text-slate-400">{agentPublicKey ? 'No assets match current rules.' : 'Activate agent to screen assets.'}</p>
+                <button onClick={refreshOpportunities} className="mt-3 text-xs font-bold text-primary hover:underline">Refresh</button>
               </div>
-            ) : marketAssets.map(asset => (
-              <div key={asset.id} className="bg-white rounded-2xl border border-slate-100 p-4 flex items-center gap-4 hover:shadow-md transition-shadow">
-                <div className="w-12 h-12 rounded-xl bg-slate-100 overflow-hidden shrink-0">
-                  <img src={`https://picsum.photos/seed/${asset.type}${asset.id}/100/100`} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            ) : screenedAssets.map(asset => (
+              <div key={asset.tokenId} className="bg-white rounded-2xl border border-slate-100 p-4 space-y-2 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-bold text-slate-900">Asset #{asset.tokenId}</p>
+                  <span className={cn('text-[9px] font-bold px-2 py-0.5 rounded-full',
+                    asset.verificationStatus === 'verified' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600')}>
+                    {asset.verificationStatus}
+                  </span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-slate-900 truncate">{asset.name}</p>
-                  <p className="text-xs text-slate-400 truncate">{asset.location}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] font-bold text-secondary">${asset.pricePerHour.toFixed(4)}/hr</span>
-                    <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full',
-                      asset.verificationStatus === 'verified' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600')}>
-                      {asset.verificationStatusLabel || 'Pending'}
-                    </span>
-                  </div>
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="text-secondary font-bold">{asset.yieldRate}% yield</span>
+                  <span className="text-slate-400">Risk: {asset.riskScore}/100</span>
+                  <span className="text-purple-600 font-bold">Score: {asset.score}</span>
                 </div>
-                <Link to="/app/marketplace"
-                  className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center hover:bg-primary hover:text-white transition-all shrink-0">
-                  <BarChart2 size={14} />
-                </Link>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-slate-400">{asset.issuer ? `${asset.issuer.slice(0,8)}…` : 'Unknown issuer'}</span>
+                  <Link to={`/app/marketplace`} className="text-[10px] font-bold text-primary hover:underline">View →</Link>
+                </div>
               </div>
             ))}
           </div>

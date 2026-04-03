@@ -1,0 +1,155 @@
+/**
+ * Asset Screening Engine
+ * Filters, scores, and ranks RWA assets against agent criteria.
+ * Pure functions — no I/O, easy to test.
+ */
+
+const VERIFICATION_WEIGHTS = { verified: 1, verified_with_warnings: 0.7, pending_attestation: 0.3 };
+
+/**
+ * Extract a numeric yield rate (annualized %) from an asset.
+ * Uses stream data if available, falls back to claimableYield heuristic.
+ */
+function extractYieldRate(asset) {
+    const stream = asset.stream;
+    if (stream && stream.totalAmount && stream.duration && stream.duration > 0) {
+        const annualizedRate =
+            (Number(stream.totalAmount) / Number(stream.duration)) * 31536000 // seconds/year
+            / Math.max(Number(asset.stream.depositedAmount || stream.totalAmount), 1)
+            * 100;
+        return Math.min(annualizedRate, 999); // cap at 999%
+    }
+    // Fallback: claimableYield as % of deposited
+    const claimable = Number(asset.claimableYield || 0);
+    const deposited = Number(asset.totalYieldDeposited || 0);
+    if (deposited > 0) return (claimable / deposited) * 100;
+    return 0;
+}
+
+/**
+ * Estimate a simple risk score 0–100 (lower = safer).
+ */
+function estimateRiskScore(asset) {
+    let risk = 50; // baseline
+    const status = asset.verificationStatusLabel || '';
+    if (status === 'verified') risk -= 20;
+    else if (status === 'verified_with_warnings') risk -= 5;
+    else if (status === 'pending_attestation') risk += 15;
+    else if (['frozen', 'disputed', 'revoked'].includes(status)) risk += 30;
+
+    // More attestations = lower risk
+    const attestationCount = (asset.attestations || []).filter(a => !a.revoked).length;
+    risk -= Math.min(attestationCount * 5, 20);
+
+    // Flash advance outstanding = higher risk
+    if (Number(asset.flashAdvanceOutstanding || 0) > 0) risk += 10;
+
+    return Math.max(0, Math.min(100, risk));
+}
+
+/**
+ * Score an asset 0–100 against criteria. Higher = better match.
+ */
+function scoreAsset(asset, criteria) {
+    const yieldRate = extractYieldRate(asset);
+    const riskScore = estimateRiskScore(asset);
+    let score = 0;
+
+    // Yield match (0–40 points)
+    if (criteria.minYield != null && yieldRate < criteria.minYield) return -1; // hard filter
+    if (criteria.maxYield != null && yieldRate > criteria.maxYield) return -1;
+    score += Math.min((yieldRate / Math.max(criteria.minYield || 1, 1)) * 20, 40);
+
+    // Risk match (0–30 points)
+    if (criteria.maxRisk != null && riskScore > criteria.maxRisk) return -1; // hard filter
+    score += Math.max(0, 30 - riskScore * 0.3);
+
+    // Verification bonus (0–20 points)
+    score += (VERIFICATION_WEIGHTS[asset.verificationStatusLabel] || 0) * 20;
+
+    // Rental ready bonus (0–10 points)
+    if (asset.rentalReady) score += 10;
+
+    // Asset type filter
+    if (criteria.assetTypes?.length && !criteria.assetTypes.includes(asset.assetType)) return -1;
+
+    // Jurisdiction filter
+    if (criteria.jurisdictions?.length && asset.jurisdiction &&
+        !criteria.jurisdictions.includes(asset.jurisdiction)) return -1;
+
+    // Issuer exclusion
+    if (criteria.excludeIssuers?.length &&
+        criteria.excludeIssuers.includes(asset.issuer)) return -1;
+
+    return Math.round(score);
+}
+
+/**
+ * Screen and rank a list of assets against criteria.
+ * @param {any[]} assets
+ * @param {ScreenCriteria} criteria
+ * @returns {ScoredAsset[]}
+ */
+function screenAssets(assets, criteria = {}) {
+    const results = [];
+    for (const asset of assets) {
+        const score = scoreAsset(asset, criteria);
+        if (score < 0) continue;
+        results.push({
+            tokenId: asset.tokenId,
+            name: asset.name || asset.publicMetadataURI || `Asset #${asset.tokenId}`,
+            assetType: asset.assetType,
+            verificationStatus: asset.verificationStatusLabel,
+            issuer: asset.issuer,
+            jurisdiction: asset.jurisdiction,
+            yieldRate: Math.round(extractYieldRate(asset) * 100) / 100,
+            riskScore: estimateRiskScore(asset),
+            rentalReady: asset.rentalReady,
+            claimableYield: asset.claimableYield,
+            score,
+            asset, // full asset for downstream use
+        });
+    }
+    // Sort by score descending
+    results.sort((a, b) => b.score - a.score);
+    return criteria.limit ? results.slice(0, criteria.limit) : results;
+}
+
+/**
+ * Parse a natural-language goal into structured criteria using simple heuristics.
+ * For richer parsing, pipe through Gemini before calling this.
+ */
+function parseGoal(goal = '') {
+    const text = goal.toLowerCase();
+    const criteria = {};
+
+    const yieldMatch = text.match(/(\d+(?:\.\d+)?)\s*%/g);
+    if (yieldMatch) {
+        const nums = yieldMatch.map(m => parseFloat(m));
+        if (text.includes('at least') || text.includes('minimum') || text.includes('above')) {
+            criteria.minYield = Math.min(...nums);
+        } else if (text.includes('under') || text.includes('below') || text.includes('max')) {
+            criteria.maxYield = Math.max(...nums);
+        } else if (nums.length >= 2) {
+            criteria.minYield = Math.min(...nums);
+            criteria.maxYield = Math.max(...nums);
+        } else {
+            criteria.minYield = nums[0];
+        }
+    }
+
+    const riskMatch = text.match(/(\d+)\s*(?:%\s*)?risk/);
+    if (riskMatch) criteria.maxRisk = parseInt(riskMatch[1]);
+
+    if (text.includes('real estate') || text.includes('property') || text.includes('rental')) criteria.assetTypes = [1];
+    if (text.includes('vehicle') || text.includes('equipment')) criteria.assetTypes = [2];
+
+    if (text.includes('verified only') || text.includes('verified assets')) criteria.verifiedOnly = true;
+
+    const limitMatch = text.match(/top\s+(\d+)|(\d+)\s+assets?/);
+    if (limitMatch) criteria.limit = parseInt(limitMatch[1] || limitMatch[2]);
+
+    return criteria;
+}
+
+module.exports = { screenAssets, scoreAsset, extractYieldRate, estimateRiskScore, parseGoal };

@@ -105,6 +105,12 @@ If you want the managed-agent path protected by Auth0, fill:
 - `AUTH0_ISSUER`
 - `AUTH0_OWNER_PUBLIC_KEY_CLAIM`
 
+For the live Continuum treasury loop, also fill:
+
+- `CONTINUUM_SAFE_YIELD_VENUES`
+- `CONTINUUM_BLEND_VENUES`
+- `CONTINUUM_AMM_VENUES`
+
 ### 3. Run the stack
 
 ```bash

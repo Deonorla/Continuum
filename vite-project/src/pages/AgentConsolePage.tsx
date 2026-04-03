@@ -222,6 +222,8 @@ export default function AgentConsolePage() {
 
   const performance = state?.performance || {};
   const treasury = state?.treasury || { positions: [], summary: {} };
+  const treasurySummary = treasury.summary || {};
+  const treasuryHealth = treasurySummary.health || {};
   const reservations = state?.reservations || [];
   const positions = state?.positions || { assets: [], sessions: [] };
   const walletState = state?.wallet || { balances: [] };
@@ -390,6 +392,35 @@ export default function AgentConsolePage() {
 
               <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 space-y-3">
                 <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Treasury Positions</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Deployed', value: formatMoney(Number(treasurySummary.deployed || 0) / 1e7) },
+                    { label: 'Projected Return', value: formatMoney(Number(treasurySummary.projectedAnnualReturn || 0) / 1e7) },
+                    { label: 'Weighted APY', value: `${Number(treasurySummary.weightedProjectedNetApy || 0).toFixed(2)}%` },
+                    { label: 'Liquid Balance', value: formatMoney(Number(treasurySummary.liquidBalance || 0) / 1e7) },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-xl border border-slate-100 bg-white px-3 py-2">
+                      <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">{item.label}</p>
+                      <p className="text-xs font-bold text-slate-800">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: 'Safe Yield', ok: Boolean(treasuryHealth.safeYield?.ok) },
+                    { label: 'Blend', ok: Boolean(treasuryHealth.blendLending?.ok) },
+                    { label: 'Stellar AMM', ok: Boolean(treasuryHealth.stellarAmm?.ok) },
+                  ].map((entry) => (
+                    <span
+                      key={entry.label}
+                      className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${
+                        entry.ok ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-700'
+                      }`}
+                    >
+                      {entry.label}
+                    </span>
+                  ))}
+                </div>
                 {(treasury.positions || []).length === 0 ? (
                   <p className="text-sm text-slate-400">No treasury deployments yet. Rebalance from the Marketplace flow after opening a payment session.</p>
                 ) : (

@@ -270,6 +270,14 @@ export async function fetchAgentState(agentId) {
   return response.state || null;
 }
 
+export async function fetchAgentRuntime(agentId) {
+  const response = await request(`/api/agents/${agentId}/runtime`, {
+    method: 'GET',
+    headers: agentHeaders(),
+  });
+  return response.runtime || null;
+}
+
 export async function fetchAgentPerformance(agentId) {
   const response = await request(`/api/agents/${agentId}/performance`, {
     method: 'GET',
@@ -301,4 +309,31 @@ export async function fetchAgentWalletState(agentId) {
     headers: agentHeaders(),
   });
   return response.wallet || null;
+}
+
+export async function startAgentRuntime(agentId, payload = {}) {
+  const response = await request(`/api/agents/${agentId}/runtime/start`, {
+    method: 'POST',
+    headers: agentHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return response.runtime || null;
+}
+
+export async function pauseAgentRuntime(agentId) {
+  const response = await request(`/api/agents/${agentId}/runtime/pause`, {
+    method: 'POST',
+    headers: agentHeaders(),
+    body: JSON.stringify({}),
+  });
+  return response.runtime || null;
+}
+
+export async function tickAgentRuntime(agentId) {
+  const response = await request(`/api/agents/${agentId}/runtime/tick`, {
+    method: 'POST',
+    headers: agentHeaders(),
+    body: JSON.stringify({}),
+  });
+  return response.runtime || null;
 }

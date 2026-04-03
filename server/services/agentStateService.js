@@ -8,6 +8,38 @@ function agentKey(agentId, suffix = "") {
         : `continuum:agent:${String(agentId).toUpperCase()}`;
 }
 
+function defaultRuntime(agentId = "") {
+    return {
+        agentId: String(agentId).toUpperCase(),
+        status: "idle",
+        running: false,
+        executeTreasury: false,
+        executeClaims: true,
+        heartbeatCount: 0,
+        startedAt: 0,
+        pausedAt: 0,
+        lastTickAt: 0,
+        lastScreenedAt: 0,
+        lastRebalanceAt: 0,
+        nextTickAt: 0,
+        lastError: "",
+        lastErrorAt: 0,
+        lastSummary: {
+            opportunities: 0,
+            riskAlerts: 0,
+            rebalanceActions: 0,
+            autoClaims: 0,
+            treasuryExecuted: false,
+        },
+        fingerprints: {
+            opportunities: "",
+            risks: "",
+            rebalance: "",
+        },
+        updatedAt: nowSeconds(),
+    };
+}
+
 function ownerKey(ownerPublicKey) {
     return `continuum:owner:${String(ownerPublicKey).toUpperCase()}:agent`;
 }
@@ -165,6 +197,7 @@ class AgentStateService {
             reservePolicy: mandate.reservePolicy,
             updatedAt: nowSeconds(),
         });
+        await this.store.upsertRecord(agentKey(agentId, "runtime"), defaultRuntime(agentId));
         return profile;
     }
 
@@ -314,6 +347,22 @@ class AgentStateService {
         };
     }
 
+    async getRuntime(agentId) {
+        return (await this.store.getRecord(agentKey(agentId, "runtime"))) || defaultRuntime(agentId);
+    }
+
+    async setRuntime(agentId, runtime = {}) {
+        const next = {
+            ...(await this.getRuntime(agentId)),
+            ...runtime,
+            agentId: String(agentId).toUpperCase(),
+            running: Boolean(runtime.running ?? runtime.status === "running" ?? false),
+            updatedAt: nowSeconds(),
+        };
+        await this.store.upsertRecord(agentKey(agentId, "runtime"), next);
+        return next;
+    }
+
     async recordPaidActionFee(agentId, amount, metadata = {}) {
         const current = await this.store.getRecord(agentKey(agentId, "performance")) || {
             agentId: String(agentId).toUpperCase(),
@@ -399,6 +448,7 @@ class AgentStateService {
 
 module.exports = {
     AgentStateService,
+    defaultRuntime,
     defaultMandate,
     mergeMandate,
 };

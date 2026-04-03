@@ -369,6 +369,53 @@ describe("Continuum API Integration", function () {
         expect(response.body.agentId).to.equal(agentId);
         expect(response.body.state.wallet.publicKey).to.equal(agentKeypair.publicKey());
         expect(response.body.state.positions.assets).to.have.length(1);
+        expect(response.body.state.runtime.status).to.equal("idle");
+    });
+
+    it("runs the managed backend runtime and exposes live runtime state", async () => {
+        const startResponse = await request(app)
+            .post(`/api/agents/${agentId}/runtime/start`)
+            .set("Authorization", `Bearer ${token}`)
+            .send({
+                executeTreasury: true,
+                executeClaims: true,
+            })
+            .expect(200);
+
+        expect(startResponse.body.code).to.equal("agent_runtime_started");
+        expect(startResponse.body.runtime.running).to.equal(true);
+        expect(startResponse.body.runtime.lastSummary.autoClaims).to.equal(1);
+        expect(startResponse.body.runtime.lastSummary.treasuryExecuted).to.equal(true);
+
+        const firstHeartbeat = Number(startResponse.body.runtime.heartbeatCount || 0);
+
+        const tickResponse = await request(app)
+            .post(`/api/agents/${agentId}/runtime/tick`)
+            .set("Authorization", `Bearer ${token}`)
+            .send({})
+            .expect(200);
+
+        expect(tickResponse.body.code).to.equal("agent_runtime_ticked");
+        expect(Number(tickResponse.body.runtime.heartbeatCount)).to.be.greaterThan(firstHeartbeat);
+
+        const stateResponse = await request(app)
+            .get(`/api/agents/${agentId}/state`)
+            .set("Authorization", `Bearer ${token}`)
+            .expect(200);
+
+        expect(stateResponse.body.state.runtime.running).to.equal(true);
+        expect(stateResponse.body.state.performance.realizedYield).to.equal("7000000");
+        expect(stateResponse.body.state.treasury.positions).to.have.length(1);
+
+        const pauseResponse = await request(app)
+            .post(`/api/agents/${agentId}/runtime/pause`)
+            .set("Authorization", `Bearer ${token}`)
+            .send({})
+            .expect(200);
+
+        expect(pauseResponse.body.code).to.equal("agent_runtime_paused");
+        expect(pauseResponse.body.runtime.running).to.equal(false);
+        expect(pauseResponse.body.runtime.status).to.equal("paused");
     });
 
     it("persists mandate updates server-side", async () => {

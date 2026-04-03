@@ -27,6 +27,7 @@ const { createRuntimeConfig } = require("../utils/runtimeConfig");
 const { AgentWalletService } = require("./services/agentWalletService");
 const { AgentAuthService } = require("./services/agentAuthService");
 const { AgentStateService } = require("./services/agentStateService");
+const { AgentRuntimeService } = require("./services/agentRuntimeService");
 const { AuctionEngine } = require("./services/auctionEngine");
 const { TreasuryManager } = require("./services/treasuryManager");
 const agentRoutes = require("./routes/agent");
@@ -231,6 +232,16 @@ async function buildServices(config) {
 
     if (!services.auctionEngine) {
         services.auctionEngine = new AuctionEngine({
+            store: services.store,
+            chainService: services.chainService,
+            agentWallet: services.agentWallet,
+            agentState: services.agentState,
+            treasuryManager: services.treasuryManager,
+        });
+    }
+
+    if (!services.agentRuntime) {
+        services.agentRuntime = new AgentRuntimeService({
             store: services.store,
             chainService: services.chainService,
             agentWallet: services.agentWallet,

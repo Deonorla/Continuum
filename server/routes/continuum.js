@@ -396,7 +396,7 @@ router.get("/agents/:agentId/state", requireJwt, asyncHandler(async (req, res) =
     if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
         return res.status(403).json({ error: "Cannot inspect another agent state.", code: "agent_scope_forbidden" });
     }
-    const [walletState, mandate, performance, treasury, reservations, decisionLog, assets, sessions] = await Promise.all([
+    const [walletState, mandate, performance, treasury, reservations, decisionLog, assets, sessions, runtime] = await Promise.all([
         services.agentWallet.getBalances({ owner: ownerPublicKey }),
         services.agentState.getMandate(agentId),
         services.agentState.getPerformance(agentId),
@@ -405,6 +405,7 @@ router.get("/agents/:agentId/state", requireJwt, asyncHandler(async (req, res) =
         services.agentState.getDecisionLog(agentId, 50),
         services.chainService.listAssetSnapshots({ owner: agentPublicKey }),
         services.chainService.listSessions({ owner: agentPublicKey }),
+        services.agentRuntime.getState({ agentId }),
     ]);
     res.json({
         code: "agent_state_loaded",
@@ -416,11 +417,73 @@ router.get("/agents/:agentId/state", requireJwt, asyncHandler(async (req, res) =
             treasury,
             reservations,
             decisionLog,
+            runtime,
             positions: {
                 assets,
                 sessions,
             },
         },
+    });
+}));
+
+router.get("/agents/:agentId/runtime", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot inspect another agent runtime.", code: "agent_scope_forbidden" });
+    }
+    const runtime = await services.agentRuntime.getState({ agentId });
+    res.json({
+        code: "agent_runtime_loaded",
+        agentId,
+        runtime,
+    });
+}));
+
+router.post("/agents/:agentId/runtime/start", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId, ownerPublicKey } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot start another agent runtime.", code: "agent_scope_forbidden" });
+    }
+    const result = await services.agentRuntime.start({
+        agentId,
+        ownerPublicKey,
+        executeTreasury: req.body?.executeTreasury !== false,
+        executeClaims: req.body?.executeClaims !== false,
+    });
+    res.json({
+        code: "agent_runtime_started",
+        agentId,
+        ...result,
+    });
+}));
+
+router.post("/agents/:agentId/runtime/pause", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot pause another agent runtime.", code: "agent_scope_forbidden" });
+    }
+    const runtime = await services.agentRuntime.pause({ agentId });
+    res.json({
+        code: "agent_runtime_paused",
+        agentId,
+        runtime,
+    });
+}));
+
+router.post("/agents/:agentId/runtime/tick", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId, ownerPublicKey } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot tick another agent runtime.", code: "agent_scope_forbidden" });
+    }
+    const result = await services.agentRuntime.tick({
+        agentId,
+        ownerPublicKey,
+        reason: "manual",
+    });
+    res.json({
+        code: "agent_runtime_ticked",
+        agentId,
+        ...result,
     });
 }));
 

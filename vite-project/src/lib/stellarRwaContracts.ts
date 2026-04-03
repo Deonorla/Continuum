@@ -13,7 +13,7 @@ import { Client as AttestationRegistryClient } from '../../../sdk/generated/stel
 import { Client as YieldVaultClient } from '../../../sdk/generated/stellar/yield-vault/src/index.ts';
 
 const DEFAULT_IPFS_GATEWAY =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_IPFS_GATEWAY_URL)
+  (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_IPFS_GATEWAY_URL)
   || 'https://gateway.pinata.cloud/ipfs';
 
 function isConfiguredContractId(contractId?: string) {

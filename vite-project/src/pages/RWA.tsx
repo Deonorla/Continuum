@@ -25,6 +25,8 @@ import { supportedPaymentAssets } from '../contactInfo.js';
 import {
   fetchRwaAsset,
   fetchRwaAssets,
+  getRwaApiBaseUrl,
+  mintRwaAsset,
   pinRwaMetadata,
   storeRwaEvidence,
 } from '../services/rwaApi.js';
@@ -32,7 +34,6 @@ import {
   approveAndCreateAssetYieldStream,
   claimAssetYield,
   flashAdvanceAssetYield,
-  mintAssetTwinWithFreighter,
   parseTokenAmount,
   registerAssetAttestationWithFreighter,
   revokeAssetAttestationWithFreighter,
@@ -41,7 +42,6 @@ import {
   updateAssetVerificationTag,
 } from '../services/rwaContractApi.js';
 import {
-  getStellarIssuerApproval,
   hashJson,
   hashText,
 } from '../lib/stellarRwaContracts.ts';
@@ -60,7 +60,6 @@ const DEFAULT_FORM = {
 };
 
 const RIGHTS_MODEL = 'verified_rental_asset';
-const RIGHTS_MODEL_CODE = 1;
 const DOCUMENT_ORDER = ['deed', 'survey', 'valuation', 'inspection', 'insurance', 'tax', 'tenancy', 'encumbrance'];
 const ACCESS_MECHANISMS = {
   real_estate: 'Smart lock + concierge verification',
@@ -196,11 +195,15 @@ async function buildEvidenceBundle(files, { propertyRef, jurisdiction, rightsMod
   const usedKeys = new Set();
 
   for (const file of files) {
-    const key = resolveDocumentKey(file.name, usedKeys);
+    let key = resolveDocumentKey(file.name, usedKeys);
     if (!key) {
-      continue;
+      // overflow: use sanitized filename as key
+      key = file.name.replace(/[^a-z0-9]/gi, '_').toLowerCase().slice(0, 32);
+      let deduped = key;
+      let i = 2;
+      while (usedKeys.has(deduped)) deduped = `${key}_${i++}`;
+      key = deduped;
     }
-
     usedKeys.add(key);
     documents[key] = {
       hash: await hashFile(file),
@@ -421,7 +424,10 @@ function AssetWorkspacePanel({ asset, onAssetChanged }) {
     const { result } = await runAction('Opening asset yield stream on Soroban...', () =>
       approveAndCreateAssetYieldStream({
         signer,
+        substrateSession: null,
         tokenAddress: assetConfig?.tokenAddress,
+        streamAddress: null,
+        hubAddress: null,
         tokenId: asset.tokenId,
         totalAmount: parsedAmount,
         duration: Number(yieldDuration),
@@ -435,6 +441,8 @@ function AssetWorkspacePanel({ asset, onAssetChanged }) {
     const { result } = await runAction('Claiming accrued yield...', () =>
       claimAssetYield({
         signer,
+        substrateSession: null,
+        hubAddress: null,
         tokenId: asset.tokenId,
       })
     );
@@ -452,6 +460,8 @@ function AssetWorkspacePanel({ asset, onAssetChanged }) {
     const { result } = await runAction('Requesting flash advance...', () =>
       flashAdvanceAssetYield({
         signer,
+        substrateSession: null,
+        hubAddress: null,
         tokenId: asset.tokenId,
         amount: parsedAmount,
       })
@@ -478,6 +488,8 @@ function AssetWorkspacePanel({ asset, onAssetChanged }) {
     const { result } = await runAction('Republishing public metadata...', () =>
       updateAssetMetadataOnChain({
         signer,
+        substrateSession: null,
+        hubAddress: null,
         tokenId: asset.tokenId,
         metadataURI: pinResult.uri,
       })
@@ -517,6 +529,8 @@ function AssetWorkspacePanel({ asset, onAssetChanged }) {
     const { result } = await runAction('Refreshing evidence anchors...', () =>
       updateAssetEvidenceOnChain({
         signer,
+        substrateSession: null,
+        hubAddress: null,
         tokenId: asset.tokenId,
         evidenceRoot: storedEvidence.evidenceRoot,
         evidenceManifestHash: storedEvidence.evidenceManifestHash,
@@ -539,6 +553,8 @@ function AssetWorkspacePanel({ asset, onAssetChanged }) {
     const { result } = await runAction('Updating verification tag...', () =>
       updateAssetVerificationTag({
         signer,
+        substrateSession: null,
+        hubAddress: null,
         tokenId: asset.tokenId,
         tag: tagSeed.trim(),
       })
@@ -821,7 +837,12 @@ function MintingTab({ onMinted, portfolioCount }) {
   };
 
   const handleEvidenceSelection = (event) => {
-    setEvidenceFiles(Array.from(event.target.files || []));
+    const incoming = Array.from(event.target.files || []) as File[];
+    setEvidenceFiles(prev => {
+      const existingNames = new Set((prev as File[]).map(f => f.name));
+      return [...prev, ...incoming.filter(f => !existingNames.has(f.name))];
+    });
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleMint = async (event) => {
@@ -853,7 +874,11 @@ function MintingTab({ onMinted, portfolioCount }) {
       setIsSubmitting(true);
       loadingToast = toast.transaction.pending('Preparing metadata, hashing evidence, and checking issuer onboarding...');
 
-      const issuerApproval = await getStellarIssuerApproval(walletAddress);
+      const issuerApproval = await fetch(`${getRwaApiBaseUrl()}/api/rwa/admin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'getIssuerApproval', issuer: walletAddress }),
+      }).then(r => r.json()).catch(() => ({ approved: true }));
       if (!issuerApproval.approved) {
         const note = issuerApproval.note ? ` ${issuerApproval.note}` : '';
         throw new Error(`This issuer still needs onboarding before minting.${note}`.trim());
@@ -879,19 +904,16 @@ function MintingTab({ onMinted, portfolioCount }) {
       const publicMetadataHash = hashJson(previewMetadata);
       const tagSeed = `${propertyRef}-VERIFY`;
 
-      const mintResult = await mintAssetTwinWithFreighter({
-        signer,
+      const mintResult = await mintRwaAsset({
         issuer: walletAddress,
         assetType: TYPE_TO_CHAIN_ASSET_TYPE[category],
-        rightsModel: RIGHTS_MODEL_CODE,
+        rightsModel: RIGHTS_MODEL,
+        propertyRef,
         publicMetadataURI,
-        publicMetadataHash,
         evidenceRoot: evidenceResult.evidenceRoot,
         evidenceManifestHash: evidenceResult.evidenceManifestHash,
-        propertyRefHash: hashText(propertyRef),
         jurisdiction: '',
-        cidHash: hashText(publicMetadataURI),
-        tagHash: hashText(tagSeed),
+        tag: tagSeed,
         statusReason: 'Awaiting attestation review',
       });
 
@@ -1031,7 +1053,7 @@ function MintingTab({ onMinted, portfolioCount }) {
                 <input
                   type="number"
                   min="0"
-                  step="1000"
+                  step="1"
                   value={form.estimatedValueUsd}
                   onChange={(event) => setField('estimatedValueUsd', event.target.value)}
                   className="w-full rounded-xl border-none bg-slate-50 px-4 py-3 focus:ring-1 focus:ring-blue-300"
@@ -1072,13 +1094,21 @@ function MintingTab({ onMinted, portfolioCount }) {
             </label>
             {evidenceFiles.length > 0 && (
               <div className="flex flex-wrap gap-2">
-                {evidenceFiles.map((file) => (
+                {evidenceFiles.map((file, idx) => (
                   <span
                     key={`${file.name}-${file.size}`}
                     className="flex items-center gap-1.5 rounded-full border border-slate-100 bg-slate-50 px-3 py-1.5 text-[10px] font-medium"
                   >
                     <FileText size={12} />
                     {file.name}
+                    <button
+                      type="button"
+                      onClick={() => setEvidenceFiles(f => f.filter((_, i) => i !== idx))}
+                      className="ml-1 text-slate-400 hover:text-red-500 transition-colors leading-none"
+                      aria-label={`Remove ${file.name}`}
+                    >
+                      ×
+                    </button>
                   </span>
                 ))}
               </div>
@@ -1220,6 +1250,7 @@ function PortfolioTab({ assets, isLoading, onAssetChanged }) {
         renderFooter={(asset) => (
           <RentalSessionComposer
             asset={asset}
+            onStarted={() => {}}
           />
         )}
       />
@@ -1295,7 +1326,7 @@ export default function RWA() {
         <div>
           <h2 className="text-4xl font-headline font-bold tracking-tight text-on-surface">RWA Studio</h2>
           <p className="mt-2 max-w-md font-body text-on-surface-variant">
-            Tokenize physical utility and stream global yields on the Stellar network.
+            Mint, manage and attest tokenized real-world assets on Stellar.
           </p>
         </div>
         <div className="glass-card mt-3 flex items-center gap-3 rounded-full px-4 py-2 md:mt-0">

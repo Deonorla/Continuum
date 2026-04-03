@@ -103,6 +103,20 @@ export async function rwaAdminAction(payload) {
   });
 }
 
+export async function fetchAssetAnalytics(tokenId, sessionId) {
+  return request(`/api/rwa/assets/${tokenId}/analytics`, {
+    method: 'GET',
+    headers: sessionId ? { 'x-stream-stream-id': String(sessionId) } : {},
+  });
+}
+
+export async function placeBid(tokenId, payload) {
+  return request(`/api/rwa/assets/${tokenId}/bid`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function rwaRelayAction(payload) {
   return request('/api/rwa/relay', {
     method: 'POST',

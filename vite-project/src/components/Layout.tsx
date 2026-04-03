@@ -6,13 +6,13 @@ import WalletPickerModal from './WalletPickerModal';
 import { useWallet } from '../context/WalletContext';
 
 function getTitle(pathname) {
-  if (pathname.startsWith('/app/streams')) return 'Streams';
-  if (pathname.startsWith('/app/rwa'))     return 'RWA Studio';
-  if (pathname.startsWith('/app/agent'))   return 'Agent Console';
-  if (pathname.startsWith('/app/verify'))  return 'Asset Verification';
-  if (pathname.startsWith('/app/rent'))    return 'Asset Marketplace';
-  if (pathname.startsWith('/app/docs'))    return 'Documentation';
-  return 'Dashboard';
+  if (pathname.startsWith('/app/streams'))     return 'Payment Streams';
+  if (pathname.startsWith('/app/rwa'))         return 'RWA Studio';
+  if (pathname.startsWith('/app/agent'))       return 'My Agent';
+  if (pathname.startsWith('/app/verify'))      return 'Asset Verification';
+  if (pathname.startsWith('/app/marketplace')) return 'Marketplace';
+  if (pathname.startsWith('/app/docs'))        return 'Documentation';
+  return 'Agent Hub';
 }
 
 export default function Layout({ children }) {

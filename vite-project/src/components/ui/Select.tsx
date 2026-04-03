@@ -14,9 +14,10 @@ interface SelectProps {
   value: string | number;
   onChange: (value: string | number) => void;
   className?: string;
+  compact?: boolean;
 }
 
-export default function Select({ options, value, onChange, className }: SelectProps) {
+export default function Select({ options, value, onChange, className, compact }: SelectProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const selected = options.find((o) => String(o.value) === String(value));
@@ -34,7 +35,10 @@ export default function Select({ options, value, onChange, className }: SelectPr
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full bg-white border border-slate-200 rounded-2xl px-5 py-4 flex items-center justify-between gap-3 text-sm font-medium text-slate-800 shadow-sm hover:border-slate-300 hover:shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-blue-200"
+        className={cn(
+          'w-full bg-white border border-slate-200 rounded-2xl flex items-center justify-between gap-3 text-sm font-medium text-slate-800 shadow-sm hover:border-slate-300 hover:shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-blue-200',
+          compact ? 'px-3 py-2' : 'px-5 py-4',
+        )}
       >
         <span>{selected?.label ?? 'Select…'}</span>
         <motion.span animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.2 }}>

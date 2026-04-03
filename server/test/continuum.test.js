@@ -408,6 +408,24 @@ describe("Continuum API Integration", function () {
         expect(response.headers["x-payment-currency"]).to.equal("USDC");
     });
 
+    it("returns rich premium analysis once a valid payment session is supplied", async () => {
+        const response = await request(app)
+            .get("/api/market/assets/7/analytics")
+            .set("x-stream-stream-id", "77")
+            .expect(200);
+
+        expect(response.body.code).to.equal("market_analysis_ready");
+        expect(response.body.analytics.verdict).to.equal("BUY");
+        expect(response.body.analytics.summary).to.include("Asset #7");
+        expect(response.body.analytics.yieldAssessment).to.be.a("string");
+        expect(response.body.analytics.marketContext.peerRank).to.equal(1);
+        expect(response.body.analytics.marketContext.verifiedSharePct).to.equal(100);
+        expect(response.body.analytics.auctionContext.activeAuction.auctionId).to.equal(3);
+        expect(response.body.analytics.recentActivity).to.have.length(1);
+        expect(response.body.paidVia.mode).to.equal("streaming");
+        expect(response.body.paidVia.streamId).to.equal("77");
+    });
+
     it("creates a managed agent and exposes its state", async () => {
         const response = await request(app)
             .get(`/api/agents/${agentId}/state`)

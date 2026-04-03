@@ -2,6 +2,8 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'rea
 import {
   AlertCircle,
   BarChart2,
+  Bookmark,
+  BookmarkCheck,
   Clock3,
   Gavel,
   RefreshCw,
@@ -18,12 +20,18 @@ import Select from '../components/ui/Select';
 import { useWallet } from '../context/WalletContext';
 import { useAgentWallet } from '../hooks/useAgentWallet';
 import {
+  addAgentWatchAsset,
   createMarketAuction,
+  deleteAgentScreen,
   fetchAuction,
+  fetchAgentScreens,
+  fetchAgentWatchlist,
   fetchMarketAsset,
   fetchMarketAnalytics,
   fetchMarketCatalog,
   placeAuctionBid,
+  removeAgentWatchAsset,
+  saveAgentScreen,
   settleAuction,
 } from '../services/rwaApi.js';
 import { mapApiAssetToUiAsset, TYPE_META } from './rwa/rwaData';
@@ -94,10 +102,16 @@ function formatBidPlacedAt(value?: number) {
 function MarketActions({
   asset,
   agentPublicKey,
+  isWatched,
+  watchPending,
+  onToggleWatch,
   onRefresh,
 }: {
   asset: any;
   agentPublicKey: string | null | undefined;
+  isWatched: boolean;
+  watchPending: boolean;
+  onToggleWatch: (asset: any) => Promise<void>;
   onRefresh: () => Promise<void>;
 }) {
   const [details, setDetails] = useState<any>(null);
@@ -195,6 +209,27 @@ function MarketActions({
     <div className="space-y-5 pt-4 border-t border-slate-100">
       <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-700">
         Twin transfers in Continuum represent platform and economic ownership inside the marketplace. They do not automatically transfer legal title in the physical world.
+      </div>
+
+      <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+        <div>
+          <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Shortlist Monitoring</p>
+          <p className="mt-1 text-sm text-slate-600">
+            Save this twin to the managed watchlist so the agent can keep it visible across refreshes.
+          </p>
+        </div>
+        <button
+          onClick={() => void onToggleWatch(asset)}
+          disabled={!agentPublicKey || watchPending}
+          className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold uppercase tracking-widest transition-all ${
+            isWatched
+              ? 'bg-slate-900 text-white'
+              : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+          } disabled:opacity-50`}
+        >
+          {isWatched ? <BookmarkCheck size={13} /> : <Bookmark size={13} />}
+          {watchPending ? 'Saving...' : isWatched ? 'Watching' : 'Watch Twin'}
+        </button>
       </div>
 
       <div className="space-y-2">
@@ -494,9 +529,11 @@ function MarketActions({
 
 export default function Marketplace() {
   const { walletAddress } = useWallet();
-  const { agentPublicKey } = useAgentWallet(walletAddress);
+  const { agentPublicKey, activate } = useAgentWallet(walletAddress);
   const [assets, setAssets] = useState<any[]>([]);
   const [marketSummary, setMarketSummary] = useState<any>(null);
+  const [savedScreens, setSavedScreens] = useState<any[]>([]);
+  const [watchlist, setWatchlist] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [goal, setGoal] = useState('');
@@ -508,13 +545,17 @@ export default function Marketplace() {
   const [liveAuctionsOnly, setLiveAuctionsOnly] = useState(false);
   const [sort, setSort] = useState('auction_desc');
   const [selected, setSelected] = useState<any>(null);
+  const [saveScreenStatus, setSaveScreenStatus] = useState<'idle' | 'saving' | 'ok' | 'err'>('idle');
+  const [saveScreenError, setSaveScreenError] = useState('');
+  const [watchActionError, setWatchActionError] = useState('');
+  const [watchPendingTokenId, setWatchPendingTokenId] = useState<number | null>(null);
   const deferredSearch = useDeferredValue(search);
   const deferredGoal = useDeferredValue(goal);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetchMarketCatalog({
+      const query = {
         search: deferredSearch || undefined,
         goal: deferredGoal || undefined,
         type: typeFilter !== 'all' ? typeFilter : undefined,
@@ -523,16 +564,27 @@ export default function Marketplace() {
         verifiedOnly: verifiedOnly ? 'true' : undefined,
         rentalReady: rentalReadyOnly ? 'true' : undefined,
         hasAuction: liveAuctionsOnly ? 'true' : undefined,
-      });
+      };
+      const [response, nextScreens, nextWatchlist] = await Promise.all([
+        fetchMarketCatalog(query),
+        agentPublicKey ? fetchAgentScreens(agentPublicKey) : Promise.resolve([]),
+        agentPublicKey ? fetchAgentWatchlist(agentPublicKey) : Promise.resolve([]),
+      ]);
       setAssets((response.assets || []).map(buildUiAsset));
       setMarketSummary(response.summary || null);
+      setSavedScreens(nextScreens || []);
+      setWatchlist(nextWatchlist || []);
     } catch {
       setAssets([]);
       setMarketSummary(null);
+      if (!agentPublicKey) {
+        setSavedScreens([]);
+        setWatchlist([]);
+      }
     } finally {
       setLoading(false);
     }
-  }, [deferredGoal, deferredSearch, liveAuctionsOnly, maxRisk, minYield, rentalReadyOnly, typeFilter, verifiedOnly]);
+  }, [agentPublicKey, deferredGoal, deferredSearch, liveAuctionsOnly, maxRisk, minYield, rentalReadyOnly, typeFilter, verifiedOnly]);
 
   useEffect(() => {
     void load();
@@ -565,6 +617,10 @@ export default function Marketplace() {
   };
   const topOpportunities = marketSummary?.highlights?.topOpportunities || [];
   const auctionsClosingSoon = marketSummary?.highlights?.auctionsClosingSoon || [];
+  const watchedTokenIds = useMemo(
+    () => new Set((watchlist || []).map((entry: any) => Number(entry.tokenId))),
+    [watchlist],
+  );
   const screeningPills = [
     { label: browseState.search ? `Search: ${browseState.search}` : '', active: Boolean(browseState.search) },
     { label: browseState.type ? `${TYPE_META[browseState.type as keyof typeof TYPE_META]?.label || browseState.type}` : '', active: Boolean(browseState.type) },
@@ -587,6 +643,87 @@ export default function Marketplace() {
     setLiveAuctionsOnly(false);
     setSort('auction_desc');
   }, []);
+
+  const applySavedScreen = useCallback((screen: any) => {
+    const filters = screen?.filters || {};
+    setSearch(String(filters.search || ''));
+    setGoal(String(filters.goal || ''));
+    setTypeFilter(String(filters.type || 'all'));
+    setMinYield(filters.minYield != null ? String(filters.minYield) : '');
+    setMaxRisk(filters.maxRisk != null ? String(filters.maxRisk) : '');
+    setVerifiedOnly(Boolean(filters.verifiedOnly));
+    setRentalReadyOnly(Boolean(filters.rentalReady));
+    setLiveAuctionsOnly(Boolean(filters.hasAuction));
+    setSort('score_desc');
+  }, []);
+
+  const handleSaveScreen = useCallback(async () => {
+    if (!agentPublicKey) {
+      setSaveScreenError('Activate the managed agent first to save marketplace screens.');
+      setSaveScreenStatus('err');
+      return;
+    }
+    setSaveScreenStatus('saving');
+    setSaveScreenError('');
+    try {
+      await saveAgentScreen(agentPublicKey, {
+        filters: marketSummary?.browse || {
+          search: deferredSearch || null,
+          goal: deferredGoal || null,
+          type: typeFilter !== 'all' ? typeFilter : null,
+          minYield: minYield || null,
+          maxRisk: maxRisk || null,
+          verifiedOnly,
+          rentalReady: rentalReadyOnly,
+          hasAuction: liveAuctionsOnly,
+        },
+        summary: {
+          totalProductiveTwins: marketSummary?.totalProductiveTwins ?? assets.length,
+          activeFilterCount,
+          topOpportunity: topOpportunities[0]?.name || '',
+        },
+      });
+      setSaveScreenStatus('ok');
+      await load();
+    } catch (saveError: any) {
+      setSaveScreenStatus('err');
+      setSaveScreenError(saveError?.message || 'Could not save this market screen.');
+    }
+  }, [activeFilterCount, agentPublicKey, assets.length, deferredGoal, deferredSearch, liveAuctionsOnly, load, marketSummary, maxRisk, minYield, rentalReadyOnly, topOpportunities, typeFilter, verifiedOnly]);
+
+  const handleDeleteScreen = useCallback(async (screenId: string) => {
+    if (!agentPublicKey) return;
+    await deleteAgentScreen(agentPublicKey, screenId);
+    await load();
+  }, [agentPublicKey, load]);
+
+  const handleToggleWatch = useCallback(async (asset: any) => {
+    if (!agentPublicKey) {
+      setWatchActionError('Activate the managed agent first to build a marketplace watchlist.');
+      return;
+    }
+    setWatchActionError('');
+    setWatchPendingTokenId(Number(asset.tokenId));
+    try {
+      if (watchedTokenIds.has(Number(asset.tokenId))) {
+        await removeAgentWatchAsset(agentPublicKey, asset.tokenId);
+      } else {
+        await addAgentWatchAsset(agentPublicKey, {
+          tokenId: Number(asset.tokenId),
+          name: asset.name,
+          assetType: asset.type,
+          verificationStatus: asset.verificationStatusLabel,
+          yieldRate: Number(asset.screening?.yieldRate || 0),
+          riskScore: Number(asset.screening?.riskScore || 0),
+        });
+      }
+      await load();
+    } catch (watchError: any) {
+      setWatchActionError(watchError?.message || 'Could not update the watchlist.');
+    } finally {
+      setWatchPendingTokenId(null);
+    }
+  }, [agentPublicKey, load, watchedTokenIds]);
 
   return (
     <div className="p-4 sm:p-8 max-w-[1600px] mx-auto space-y-8">
@@ -708,6 +845,77 @@ export default function Marketplace() {
         </div>
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Saved Screens</p>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{String(savedScreens.length)} saved</span>
+          </div>
+          {savedScreens.length ? (
+            savedScreens.slice(0, 4).map((screen: any) => (
+              <div key={screen.screenId} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">{screen.name}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {Number(screen.summary?.totalProductiveTwins || 0)} twins · {Number(screen.summary?.activeFilterCount || 0)} active filters
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => applySavedScreen(screen)}
+                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-50"
+                    >
+                      Apply
+                    </button>
+                    <button
+                      onClick={() => void handleDeleteScreen(screen.screenId)}
+                      className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-rose-600 hover:bg-rose-100"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-slate-400">No saved screens yet. Save a shortlist once the market view looks right.</p>
+          )}
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Watchlist</p>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{String(watchlist.length)} twins</span>
+          </div>
+          {watchlist.length ? (
+            watchlist.slice(0, 5).map((item: any) => (
+              <div key={item.tokenId} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">{item.name}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {(TYPE_META[item.assetType as keyof typeof TYPE_META]?.label || item.assetType || 'Twin')} · {item.verificationStatus || 'unknown'}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-500">
+                      Yield {Number(item.yieldRate || 0).toFixed(2)}% · Risk {Number(item.riskScore || 0).toFixed(0)}/100
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => void handleToggleWatch({ tokenId: item.tokenId })}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-50"
+                  >
+                    Unwatch
+                  </button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-slate-400">Watch specific twins from the drawer to keep them in the managed shortlist.</p>
+          )}
+        </div>
+      </div>
+
       <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-4">
         <div className="flex flex-wrap gap-3 items-center">
           <div className="relative flex-1 min-w-[180px]">
@@ -820,6 +1028,42 @@ export default function Marketplace() {
             </p>
           </div>
         )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+          <div>
+            <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Agent Shortlist Tools</p>
+            <p className="mt-1 text-sm text-slate-600">
+              Save the current market screen or watch specific twins so the managed agent can keep a persistent shortlist.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {!agentPublicKey && (
+              <button
+                onClick={activate}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-50"
+              >
+                Activate Agent
+              </button>
+            )}
+            <button
+              onClick={() => void handleSaveScreen()}
+              disabled={saveScreenStatus === 'saving'}
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold uppercase tracking-widest text-white disabled:opacity-50"
+            >
+              {saveScreenStatus === 'saving' ? <BookmarkCheck size={13} /> : <Bookmark size={13} />}
+              {saveScreenStatus === 'saving' ? 'Saving...' : 'Save Screen'}
+            </button>
+          </div>
+        </div>
+        {saveScreenStatus === 'ok' && (
+          <p className="text-xs text-emerald-600">This market screen is now saved to the managed agent workspace.</p>
+        )}
+        {saveScreenError && (
+          <p className="text-xs text-red-500">{saveScreenError}</p>
+        )}
+        {watchActionError && (
+          <p className="text-xs text-red-500">{watchActionError}</p>
+        )}
       </div>
 
       {loading ? (
@@ -853,6 +1097,9 @@ export default function Marketplace() {
           <MarketActions
             asset={asset}
             agentPublicKey={agentPublicKey}
+            isWatched={watchedTokenIds.has(Number(asset.tokenId))}
+            watchPending={watchPendingTokenId === Number(asset.tokenId)}
+            onToggleWatch={handleToggleWatch}
             onRefresh={load}
           />
         )}

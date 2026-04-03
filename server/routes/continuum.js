@@ -359,6 +359,21 @@ function buildMarketSummary(assets = [], activeAuctions = [], rankedAssets = [],
     };
 }
 
+function defaultSavedScreenName(filters = {}, summary = {}) {
+    const parts = [];
+    if (filters.type && filters.type !== "all") {
+        parts.push(assetTypeKey(MARKET_TYPE_TO_CHAIN_ASSET_TYPE[filters.type] || filters.type).replace("_", " "));
+    }
+    if (filters.verifiedOnly) parts.push("verified");
+    if (filters.rentalReady) parts.push("rental ready");
+    if (filters.hasAuction) parts.push("live auctions");
+    if (filters.minYield != null) parts.push(`${filters.minYield}%+ yield`);
+    if (filters.maxRisk != null) parts.push(`risk <= ${filters.maxRisk}`);
+    if (filters.goal) parts.push("goal screen");
+    const base = parts.filter(Boolean).slice(0, 3).join(" · ");
+    return base || `Market screen · ${Number(summary.totalProductiveTwins || 0)} twins`;
+}
+
 function send402Response(req, res, price, description) {
     const config = req.app.locals.config || {};
     const decimals = Number(config.tokenDecimals || 7);
@@ -732,7 +747,7 @@ router.get("/agents/:agentId/state", requireJwt, asyncHandler(async (req, res) =
     if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
         return res.status(403).json({ error: "Cannot inspect another agent state.", code: "agent_scope_forbidden" });
     }
-    const [walletState, mandate, performance, treasury, reservations, decisionLog, assets, sessions, runtime] = await Promise.all([
+    const [walletState, mandate, performance, treasury, reservations, decisionLog, assets, sessions, runtime, savedScreens, watchlist] = await Promise.all([
         services.agentWallet.getBalances({ owner: ownerPublicKey }),
         services.agentState.getMandate(agentId),
         services.agentState.getPerformance(agentId),
@@ -742,6 +757,8 @@ router.get("/agents/:agentId/state", requireJwt, asyncHandler(async (req, res) =
         services.chainService.listAssetSnapshots({ owner: agentPublicKey }),
         services.chainService.listSessions({ owner: agentPublicKey }),
         services.agentRuntime.getState({ agentId }),
+        services.agentState.getSavedScreens(agentId),
+        services.agentState.getWatchlist(agentId),
     ]);
     res.json({
         code: "agent_state_loaded",
@@ -752,6 +769,8 @@ router.get("/agents/:agentId/state", requireJwt, asyncHandler(async (req, res) =
             performance,
             treasury,
             reservations,
+            savedScreens,
+            watchlist,
             decisionLog,
             runtime,
             positions: {
@@ -820,6 +839,109 @@ router.post("/agents/:agentId/runtime/tick", requireJwt, asyncHandler(async (req
         code: "agent_runtime_ticked",
         agentId,
         ...result,
+    });
+}));
+
+router.get("/agents/:agentId/screens", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot inspect another agent screen set.", code: "agent_scope_forbidden" });
+    }
+    const screens = await services.agentState.getSavedScreens(agentId);
+    res.json({
+        code: "agent_screens_loaded",
+        agentId,
+        screens,
+    });
+}));
+
+router.post("/agents/:agentId/screens", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot update another agent screen set.", code: "agent_scope_forbidden" });
+    }
+    const filters = { ...(req.body?.filters || {}) };
+    const summary = { ...(req.body?.summary || {}) };
+    const screen = await services.agentState.saveScreen(agentId, {
+        screenId: req.body?.screenId,
+        name: req.body?.name || defaultSavedScreenName(filters, summary),
+        description: req.body?.description || "",
+        filters,
+        summary,
+    });
+    await services.agentState.appendDecision(agentId, {
+        type: "decision",
+        message: "Market screen saved",
+        detail: `${screen.name} · ${Number(summary.totalProductiveTwins || 0)} twins matched`,
+        metadata: {
+            screenId: screen.screenId,
+            activeFilterCount: Number(summary.activeFilterCount || 0),
+        },
+    });
+    res.status(201).json({
+        code: "agent_screen_saved",
+        agentId,
+        screen,
+    });
+}));
+
+router.delete("/agents/:agentId/screens/:screenId", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot update another agent screen set.", code: "agent_scope_forbidden" });
+    }
+    await services.agentState.deleteSavedScreen(agentId, req.params.screenId);
+    res.json({
+        code: "agent_screen_deleted",
+        agentId,
+        screenId: req.params.screenId,
+    });
+}));
+
+router.get("/agents/:agentId/watchlist", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot inspect another agent watchlist.", code: "agent_scope_forbidden" });
+    }
+    const watchlist = await services.agentState.getWatchlist(agentId);
+    res.json({
+        code: "agent_watchlist_loaded",
+        agentId,
+        watchlist,
+    });
+}));
+
+router.post("/agents/:agentId/watchlist", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot update another agent watchlist.", code: "agent_scope_forbidden" });
+    }
+    const asset = await services.agentState.watchAsset(agentId, req.body || {});
+    await services.agentState.appendDecision(agentId, {
+        type: "decision",
+        message: "Twin added to watchlist",
+        detail: `${asset.name} is now being monitored from the marketplace shortlist.`,
+        metadata: {
+            tokenId: asset.tokenId,
+        },
+    });
+    res.status(201).json({
+        code: "agent_watchlist_added",
+        agentId,
+        asset,
+    });
+}));
+
+router.delete("/agents/:agentId/watchlist/:assetId", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot update another agent watchlist.", code: "agent_scope_forbidden" });
+    }
+    await services.agentState.unwatchAsset(agentId, Number(req.params.assetId));
+    res.json({
+        code: "agent_watchlist_removed",
+        agentId,
+        assetId: Number(req.params.assetId),
     });
 }));
 

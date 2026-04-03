@@ -535,6 +535,59 @@ describe("Continuum API Integration", function () {
         expect(response.body.state.wallet.publicKey).to.equal(agentKeypair.publicKey());
         expect(response.body.state.positions.assets).to.have.length(1);
         expect(response.body.state.runtime.status).to.equal("idle");
+        expect(response.body.state.savedScreens).to.deep.equal([]);
+        expect(response.body.state.watchlist).to.deep.equal([]);
+    });
+
+    it("persists saved screens and watchlist entries for the managed agent", async () => {
+        const screenResponse = await request(app)
+            .post(`/api/agents/${agentId}/screens`)
+            .set("Authorization", `Bearer ${token}`)
+            .send({
+                name: "Verified warehouses",
+                filters: {
+                    search: "warehouse",
+                    type: "real_estate",
+                    minYield: 20,
+                    maxRisk: 40,
+                    verifiedOnly: true,
+                    hasAuction: true,
+                },
+                summary: {
+                    totalProductiveTwins: 1,
+                    activeFilterCount: 6,
+                },
+            })
+            .expect(201);
+
+        expect(screenResponse.body.code).to.equal("agent_screen_saved");
+        expect(screenResponse.body.screen.name).to.equal("Verified warehouses");
+
+        const watchResponse = await request(app)
+            .post(`/api/agents/${agentId}/watchlist`)
+            .set("Authorization", `Bearer ${token}`)
+            .send({
+                tokenId: 7,
+                name: "Warehouse Alpha",
+                assetType: "real_estate",
+                verificationStatus: "verified",
+                yieldRate: 25,
+                riskScore: 30,
+            })
+            .expect(201);
+
+        expect(watchResponse.body.code).to.equal("agent_watchlist_added");
+        expect(watchResponse.body.asset.tokenId).to.equal(7);
+
+        const stateResponse = await request(app)
+            .get(`/api/agents/${agentId}/state`)
+            .set("Authorization", `Bearer ${token}`)
+            .expect(200);
+
+        expect(stateResponse.body.state.savedScreens).to.have.length(1);
+        expect(stateResponse.body.state.savedScreens[0].filters.search).to.equal("warehouse");
+        expect(stateResponse.body.state.watchlist).to.have.length(1);
+        expect(stateResponse.body.state.watchlist[0].tokenId).to.equal(7);
     });
 
     it("runs the managed backend runtime and exposes live runtime state", async () => {

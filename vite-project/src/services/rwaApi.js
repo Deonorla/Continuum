@@ -315,6 +315,54 @@ export async function fetchAgentWalletState(agentId) {
   return response.wallet || null;
 }
 
+export async function fetchAgentScreens(agentId) {
+  const response = await request(`/api/agents/${agentId}/screens`, {
+    method: 'GET',
+    headers: agentHeaders(),
+  });
+  return response.screens || [];
+}
+
+export async function saveAgentScreen(agentId, payload) {
+  const response = await request(`/api/agents/${agentId}/screens`, {
+    method: 'POST',
+    headers: agentHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return response.screen || null;
+}
+
+export async function deleteAgentScreen(agentId, screenId) {
+  return request(`/api/agents/${agentId}/screens/${screenId}`, {
+    method: 'DELETE',
+    headers: agentHeaders(),
+  });
+}
+
+export async function fetchAgentWatchlist(agentId) {
+  const response = await request(`/api/agents/${agentId}/watchlist`, {
+    method: 'GET',
+    headers: agentHeaders(),
+  });
+  return response.watchlist || [];
+}
+
+export async function addAgentWatchAsset(agentId, payload) {
+  const response = await request(`/api/agents/${agentId}/watchlist`, {
+    method: 'POST',
+    headers: agentHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return response.asset || null;
+}
+
+export async function removeAgentWatchAsset(agentId, assetId) {
+  return request(`/api/agents/${agentId}/watchlist/${assetId}`, {
+    method: 'DELETE',
+    headers: agentHeaders(),
+  });
+}
+
 export async function startAgentRuntime(agentId, payload = {}) {
   const response = await request(`/api/agents/${agentId}/runtime/start`, {
     method: 'POST',

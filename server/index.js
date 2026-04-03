@@ -183,6 +183,8 @@ async function buildServices(config) {
     if (!services.agentWallet) {
         services.agentWallet = new AgentWalletService({
             agentSecret: process.env.AGENT_SECRET_KEY || "",
+            encryptionKey: process.env.AGENT_ENCRYPTION_KEY || "",
+            store: services.store,
             chainService: services.chainService,
         });
     }

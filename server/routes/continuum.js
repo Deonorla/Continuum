@@ -78,6 +78,13 @@ function productiveOnly(asset) {
     return [1, 2, 3].includes(Number(asset?.assetType || 0));
 }
 
+function assetTypeKey(assetType) {
+    const numericType = Number(assetType || 0);
+    if (numericType === 1) return "real_estate";
+    if (numericType === 2) return "vehicle";
+    return "commodity";
+}
+
 function marketAssetSummary(asset, auction) {
     return {
         ...asset,
@@ -91,6 +98,10 @@ function marketAssetSummary(asset, auction) {
 function percentage(part, total) {
     if (!total) return 0;
     return Number(((Number(part || 0) / Number(total)) * 100).toFixed(1));
+}
+
+function sumStringAmounts(values = []) {
+    return values.reduce((sum, value) => sum + BigInt(value || "0"), 0n);
 }
 
 function summarizeActivity(activity = []) {
@@ -173,6 +184,57 @@ function enrichAuction(auction) {
             spreadToReserve: highestBid ? formatStellarAmount(highestAmount - reserveAmount) : "0.0000000",
             uniqueBidderCount,
             activeBidCount: activeBids.length,
+        },
+    };
+}
+
+function buildMarketSummary(assets = [], activeAuctions = []) {
+    const marketIntel = aggregateMarketIntel(assets);
+    const totalClaimableYield = sumStringAmounts(assets.map((asset) => asset.claimableYield || "0"));
+    const typeBreakdown = {
+        real_estate: Number(marketIntel.sectorBreakdown?.[1] || 0),
+        vehicle: Number(marketIntel.sectorBreakdown?.[2] || 0),
+        commodity: Number(marketIntel.sectorBreakdown?.[3] || 0),
+    };
+    const topOpportunities = (marketIntel.topPerformers || []).slice(0, 3).map((entry) => ({
+        tokenId: entry.tokenId,
+        name: entry.name || `Asset #${entry.tokenId}`,
+        assetType: assetTypeKey(entry.assetType),
+        yieldRate: Number(entry.yieldRate || 0),
+        riskScore: Number(entry.riskScore || 0),
+        score: Number(entry.score || 0),
+        verificationStatus: entry.verificationStatus || "unknown",
+    }));
+    const auctionsClosingSoon = [...activeAuctions]
+        .sort((left, right) => Number(left.endTime || 0) - Number(right.endTime || 0))
+        .slice(0, 3)
+        .map((auction) => ({
+            auctionId: auction.auctionId,
+            assetId: auction.assetId,
+            title: auction.title || `Twin #${auction.assetId}`,
+            endTime: Number(auction.endTime || 0),
+            reservePrice: auction.reservePriceDisplay || auction.marketDepth?.reservePrice || null,
+            highestBid: auction.highestBidDisplay || null,
+            uniqueBidderCount: Number(auction.uniqueBidderCount || 0),
+            minimumNextBid: auction.minimumNextBidDisplay || auction.marketDepth?.minimumNextBid || null,
+        }));
+
+    return {
+        totalProductiveTwins: assets.length,
+        liveAuctions: activeAuctions.length,
+        verifiedCount: Number(marketIntel.verifiedCount || 0),
+        verifiedSharePct: percentage(marketIntel.verifiedCount, marketIntel.totalAssets),
+        rentalReadyCount: Number(marketIntel.rentalReadyCount || 0),
+        rentalReadySharePct: percentage(marketIntel.rentalReadyCount, marketIntel.totalAssets),
+        avgYield: Number(marketIntel.avgYield || 0),
+        avgRisk: Number(marketIntel.avgRisk || 0),
+        topYield: Number(marketIntel.maxYield || 0),
+        totalClaimableYield: totalClaimableYield.toString(),
+        totalClaimableYieldDisplay: formatStellarAmount(totalClaimableYield),
+        typeBreakdown,
+        highlights: {
+            topOpportunities,
+            auctionsClosingSoon,
         },
     };
 }
@@ -270,7 +332,8 @@ router.get("/market/assets", asyncHandler(async (req, res) => {
         ? await services.chainService.listAssetSnapshots({ limit: 200 })
         : await services.store.listAssets();
     const productiveAssets = rawAssets.filter(productiveOnly);
-    const activeAuctions = await services.auctionEngine.listAuctions({ status: "active" });
+    const activeAuctions = (await services.auctionEngine.listAuctions({ status: "active" }))
+        .map((auction) => enrichAuction(auction));
     const assets = await Promise.all(productiveAssets.map(async (asset) => {
         const auction = activeAuctions.find((entry) => Number(entry.assetId) === Number(asset.tokenId)) || null;
         return marketAssetSummary(await hydrateAsset(services, asset), auction);
@@ -278,6 +341,7 @@ router.get("/market/assets", asyncHandler(async (req, res) => {
     res.json({
         code: "market_assets_listed",
         assets,
+        summary: buildMarketSummary(assets, activeAuctions),
     });
 }));
 

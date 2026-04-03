@@ -178,6 +178,10 @@ export async function fetchMarketAssets() {
   return response.assets || [];
 }
 
+export async function fetchMarketCatalog() {
+  return request('/api/market/assets', { method: 'GET' });
+}
+
 export async function fetchMarketAsset(assetId) {
   return request(`/api/market/assets/${assetId}`, { method: 'GET' });
 }

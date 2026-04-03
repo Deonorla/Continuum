@@ -22,7 +22,7 @@ import {
   fetchAuction,
   fetchMarketAsset,
   fetchMarketAnalytics,
-  fetchMarketAssets,
+  fetchMarketCatalog,
   placeAuctionBid,
   settleAuction,
 } from '../services/rwaApi.js';
@@ -491,6 +491,7 @@ export default function Marketplace() {
   const { walletAddress } = useWallet();
   const { agentPublicKey } = useAgentWallet(walletAddress);
   const [assets, setAssets] = useState<any[]>([]);
+  const [marketSummary, setMarketSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -500,10 +501,12 @@ export default function Marketplace() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetchMarketAssets();
-      setAssets(response.map(buildUiAsset));
+      const response = await fetchMarketCatalog();
+      setAssets((response.assets || []).map(buildUiAsset));
+      setMarketSummary(response.summary || null);
     } catch {
       setAssets([]);
+      setMarketSummary(null);
     } finally {
       setLoading(false);
     }
@@ -529,8 +532,28 @@ export default function Marketplace() {
     );
   }, [assets, search, sort, typeFilter]);
 
-  const liveAuctions = assets.filter((asset) => asset.market?.hasActiveAuction).length;
-  const totalYield = assets.reduce((sum, asset) => sum + Number(asset.yieldBalance || 0), 0);
+  const liveAuctions = Number(marketSummary?.liveAuctions ?? assets.filter((asset) => asset.market?.hasActiveAuction).length);
+  const totalYield = Number(marketSummary?.totalClaimableYieldDisplay ?? assets.reduce((sum, asset) => sum + Number(asset.yieldBalance || 0), 0));
+  const claimableYieldDisplay = `${totalYield.toFixed(2)} USDC`;
+  const discoveryStats = [
+    { label: 'Productive Twins', value: String(marketSummary?.totalProductiveTwins ?? assets.length), color: 'text-primary' },
+    { label: 'Live Auctions', value: String(liveAuctions), color: 'text-purple-600' },
+    { label: 'Verified Share', value: `${Number(marketSummary?.verifiedSharePct || 0).toFixed(1)}%`, color: 'text-secondary' },
+    { label: 'Avg Yield', value: `${Number(marketSummary?.avgYield || 0).toFixed(2)}%`, color: 'text-amber-600' },
+  ];
+  const marketPulse = [
+    { label: 'Rental Ready', value: `${Number(marketSummary?.rentalReadySharePct || 0).toFixed(1)}%`, tone: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+    { label: 'Average Risk', value: `${Number(marketSummary?.avgRisk || 0).toFixed(0)}/100`, tone: 'bg-amber-50 text-amber-700 border-amber-100' },
+    { label: 'Top Yield', value: `${Number(marketSummary?.topYield || 0).toFixed(2)}%`, tone: 'bg-blue-50 text-blue-700 border-blue-100' },
+    { label: 'Claimable Yield', value: claimableYieldDisplay, tone: 'bg-purple-50 text-purple-700 border-purple-100' },
+  ];
+  const typeBreakdown = marketSummary?.typeBreakdown || {
+    real_estate: assets.filter((asset) => asset.type === 'real_estate').length,
+    vehicle: assets.filter((asset) => asset.type === 'vehicle').length,
+    commodity: assets.filter((asset) => asset.type === 'commodity').length,
+  };
+  const topOpportunities = marketSummary?.highlights?.topOpportunities || [];
+  const auctionsClosingSoon = marketSummary?.highlights?.auctionsClosingSoon || [];
 
   return (
     <div className="p-4 sm:p-8 max-w-[1600px] mx-auto space-y-8">
@@ -547,17 +570,109 @@ export default function Marketplace() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {[
-          { label: 'Productive Twins', value: String(assets.length), color: 'text-primary' },
-          { label: 'Live Auctions', value: String(liveAuctions), color: 'text-purple-600' },
-          { label: 'Claimable Yield', value: `${totalYield.toFixed(2)} USDC`, color: 'text-secondary' },
-        ].map((item) => (
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {discoveryStats.map((item) => (
           <div key={item.label} className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
             <p className="text-[10px] font-label uppercase tracking-widest text-slate-400 mb-1">{item.label}</p>
             <p className={`text-2xl font-headline font-black ${item.color}`}>{item.value}</p>
           </div>
         ))}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Market Pulse</p>
+              <p className="mt-1 text-sm text-slate-600">Free discovery signals before you pay for analysis or place a bid.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(typeBreakdown).map(([type, count]) => (
+                <span
+                  key={type}
+                  className="rounded-full bg-slate-50 border border-slate-100 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-500"
+                >
+                  {TYPE_META[type as keyof typeof TYPE_META]?.label || type} · {String(count)}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {marketPulse.map((item) => (
+              <div key={item.label} className={`rounded-xl border px-3 py-3 ${item.tone}`}>
+                <p className="text-[9px] font-label uppercase tracking-widest opacity-70">{item.label}</p>
+                <p className="mt-1 text-sm font-bold">{item.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-3">
+          <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Closing Soon</p>
+          {(auctionsClosingSoon || []).length ? (
+            auctionsClosingSoon.map((auction: any) => (
+              <div key={auction.auctionId} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">{auction.title}</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Auction #{auction.auctionId} · {formatCountdown(auction.endTime)}
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-purple-600">
+                    {auction.uniqueBidderCount || 0} bidders
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  Reserve {auction.reservePrice || 'n/a'} USDC · Next bid {auction.minimumNextBid || 'n/a'} USDC
+                </p>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-slate-400">No live auctions are nearing close yet.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-3">
+          <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Top Opportunities</p>
+          {(topOpportunities || []).length ? (
+            topOpportunities.map((entry: any, index: number) => (
+              <div key={entry.tokenId} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">#{index + 1} · {entry.name}</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {(TYPE_META[entry.assetType as keyof typeof TYPE_META]?.label || entry.assetType)} · {entry.verificationStatus}
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-primary">
+                    score {Number(entry.score || 0).toFixed(0)}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  Yield {Number(entry.yieldRate || 0).toFixed(2)}% · Risk {Number(entry.riskScore || 0).toFixed(0)}/100
+                </p>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-slate-400">Not enough market history yet to rank opportunities.</p>
+          )}
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-3">
+          <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Discovery Notes</p>
+          <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+            Verified share and sector mix update from the live market response, not local UI guesses.
+          </div>
+          <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+            Free browse stays open. Paid calls start when you request premium analysis or bid placement.
+          </div>
+          <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+            Market rankings are yield- and risk-aware so the agent sees a useful shortlist before spending.
+          </div>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm flex flex-wrap gap-3 items-center">

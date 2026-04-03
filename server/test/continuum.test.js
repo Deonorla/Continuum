@@ -439,6 +439,12 @@ describe("Continuum API Integration", function () {
         expect(response.body.assets).to.have.length(1);
         expect(response.body.assets[0].publicMetadata.name).to.equal("Warehouse Alpha");
         expect(response.body.assets[0].market.hasActiveAuction).to.equal(true);
+        expect(response.body.summary.totalProductiveTwins).to.equal(1);
+        expect(response.body.summary.liveAuctions).to.equal(1);
+        expect(response.body.summary.verifiedSharePct).to.equal(100);
+        expect(response.body.summary.typeBreakdown.real_estate).to.equal(1);
+        expect(response.body.summary.highlights.topOpportunities).to.have.length(1);
+        expect(response.body.summary.highlights.auctionsClosingSoon).to.have.length(1);
     });
 
     it("returns 402 for premium analysis without a payment session", async () => {

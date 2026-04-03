@@ -343,6 +343,93 @@ function buildWalletReadinessSummary(wallet = {}, { paymentAssetCode = "USDC", p
     };
 }
 
+function buildReservationExposureEntry(reservation, auction) {
+    const reservedAmount = BigInt(reservation?.reservedAmount || "0");
+    const highestBidAmount = BigInt(auction?.highestBid?.amountStroops || "0");
+    const minimumNextBidAmount = BigInt(auction?.minimumNextBidStroops || "0");
+    const now = nowSeconds();
+    const ended = Boolean(auction && Number(auction.endTime || 0) <= now);
+    const isLeading = Boolean(auction && Number(auction.highestBid?.bidId || 0) === Number(reservation?.bidId || 0));
+    const readyToSettle = Boolean(ended && isLeading);
+    const nextBidGap = auction && !isLeading && minimumNextBidAmount > reservedAmount
+        ? minimumNextBidAmount - reservedAmount
+        : 0n;
+    const status = !auction
+        ? "auction_unavailable"
+        : readyToSettle
+            ? "ready_to_settle"
+            : ended
+                ? "closed_outbid"
+                : isLeading
+                    ? "leading"
+                    : "outbid";
+    const statusLabel = status === "ready_to_settle"
+        ? "Leading · ready to settle"
+        : status === "leading"
+            ? "Leading"
+            : status === "outbid"
+                ? "Outbid"
+                : status === "closed_outbid"
+                    ? "Closed · lost lead"
+                    : "Auction snapshot unavailable";
+
+    return {
+        bidId: Number(reservation?.bidId || 0),
+        auctionId: Number(reservation?.auctionId || 0),
+        assetId: Number(reservation?.assetId || 0),
+        issuer: reservation?.issuer || "",
+        reservedAmount: reservedAmount.toString(),
+        reservedAmountDisplay: formatStellarAmount(reservedAmount),
+        status,
+        statusLabel,
+        isLeading,
+        readyToSettle,
+        highestBidDisplay: auction?.highestBidDisplay || "0.0000000",
+        minimumNextBidDisplay: auction?.minimumNextBidDisplay || auction?.minimumNextBid || "0.0000000",
+        nextBidGap: nextBidGap.toString(),
+        nextBidGapDisplay: formatStellarAmount(nextBidGap),
+        endTime: Number(auction?.endTime || 0),
+        timeRemainingSeconds: auction
+            ? Math.max(0, Number(auction.endTime || 0) - now)
+            : 0,
+        title: auction?.title || `Auction #${Number(reservation?.auctionId || 0)}`,
+        auction: auction
+            ? {
+                auctionId: Number(auction.auctionId || 0),
+                assetId: Number(auction.assetId || 0),
+                title: auction.title || "",
+                status: auction.status || "unknown",
+                highestBidDisplay: auction.highestBidDisplay || "0.0000000",
+                minimumNextBidDisplay: auction.minimumNextBidDisplay || auction.minimumNextBid || "0.0000000",
+                endTime: Number(auction.endTime || 0),
+                reservePriceDisplay: auction.reservePriceDisplay || auction.reservePrice || "0.0000000",
+            }
+            : null,
+    };
+}
+
+async function buildReservationExposure(services, reservations = []) {
+    if (!Array.isArray(reservations) || reservations.length === 0) {
+        return [];
+    }
+    const auctionIds = Array.from(new Set(
+        reservations
+            .map((reservation) => Number(reservation?.auctionId || 0))
+            .filter((auctionId) => Number.isFinite(auctionId) && auctionId > 0),
+    ));
+    const auctionsById = new Map(await Promise.all(
+        auctionIds.map(async (auctionId) => [
+            auctionId,
+            enrichAuction(await services.auctionEngine.getAuction(auctionId)),
+        ]),
+    ));
+
+    return reservations.map((reservation) => buildReservationExposureEntry(
+        reservation,
+        auctionsById.get(Number(reservation?.auctionId || 0)) || null,
+    ));
+}
+
 function summarizeActivity(activity = []) {
     return activity
         .slice(-5)
@@ -786,6 +873,7 @@ router.get("/market/positions", requireJwt, asyncHandler(async (req, res) => {
         assetCode: "USDC",
         assetIssuer: services.chainService.runtime?.paymentAssetIssuer || "",
     });
+    const reservationExposure = await buildReservationExposure(services, reservations);
     res.json({
         code: "market_positions_loaded",
         agentId,
@@ -794,6 +882,7 @@ router.get("/market/positions", requireJwt, asyncHandler(async (req, res) => {
             sessions,
             treasury,
             reservations,
+            reservationExposure,
             performance,
             liquidity,
         },
@@ -912,6 +1001,7 @@ router.get("/agents/:agentId/state", requireJwt, asyncHandler(async (req, res) =
         assetCode: "USDC",
         assetIssuer: services.chainService.runtime?.paymentAssetIssuer || "",
     });
+    const reservationExposure = await buildReservationExposure(services, reservations);
     res.json({
         code: "agent_state_loaded",
         agentId,
@@ -922,6 +1012,7 @@ router.get("/agents/:agentId/state", requireJwt, asyncHandler(async (req, res) =
             performance,
             treasury,
             reservations,
+            reservationExposure,
             savedScreens,
             watchlist,
             decisionLog,

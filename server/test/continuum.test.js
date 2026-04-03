@@ -538,6 +538,22 @@ describe("Continuum API Integration", function () {
     });
 
     it("loads live market positions for the managed agent wallet", async () => {
+        auctionState = {
+            ...auctionState,
+            bids: [{
+                bidId: 91,
+                auctionId: 3,
+                assetId: 7,
+                bidder: agentKeypair.publicKey(),
+                amountDisplay: "12.5",
+                amountStroops: "125000000",
+                placedAt: Math.floor(Date.now() / 1000),
+                status: "active",
+            }],
+        };
+        auctionState.highestBid = auctionState.bids[0];
+        auctionState.highestBidDisplay = "12.5";
+        auctionState.reserveMet = false;
         await agentState.upsertReservation(agentId, {
             bidId: 91,
             auctionId: 3,
@@ -575,6 +591,9 @@ describe("Continuum API Integration", function () {
         expect(response.body.positions.sessions).to.have.length(1);
         expect(response.body.positions.sessions[0].id).to.equal(77);
         expect(response.body.positions.reservations).to.have.length(1);
+        expect(response.body.positions.reservationExposure).to.have.length(1);
+        expect(response.body.positions.reservationExposure[0].status).to.equal("leading");
+        expect(response.body.positions.reservationExposure[0].reservedAmountDisplay).to.equal("12.5");
         expect(response.body.positions.treasury.positions).to.have.length(1);
         expect(response.body.positions.performance.realizedYield).to.equal("0");
         expect(response.body.positions.liquidity.walletBalanceDisplay).to.equal("425");
@@ -665,6 +684,7 @@ describe("Continuum API Integration", function () {
         expect(response.body.state.wallet.publicKey).to.equal(agentKeypair.publicKey());
         expect(response.body.state.liquidity.walletBalanceDisplay).to.equal("425");
         expect(response.body.state.liquidity.targetReserveAmountDisplay).to.equal("200");
+        expect(response.body.state.reservationExposure).to.deep.equal([]);
         expect(response.body.state.positions.assets).to.have.length(1);
         expect(response.body.state.runtime.status).to.equal("idle");
         expect(response.body.state.savedScreens).to.deep.equal([]);

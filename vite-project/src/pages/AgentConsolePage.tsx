@@ -22,7 +22,6 @@ import { useWallet } from '../context/WalletContext';
 import { useAgentWallet } from '../hooks/useAgentWallet';
 import {
   claimMarketYield,
-  fetchAuction,
   fetchAgentMandate,
   fetchAgentState,
   fetchAgentWalletState,
@@ -121,7 +120,6 @@ export default function AgentConsolePage() {
   const [showFundModal, setShowFundModal] = useState(false);
   const [state, setState] = useState<any>(null);
   const [walletSnapshot, setWalletSnapshot] = useState<any>(null);
-  const [reservationAuctions, setReservationAuctions] = useState<Record<string, any>>({});
   const [marketAssets, setMarketAssets] = useState<any[]>([]);
   const [mandateDraft, setMandateDraft] = useState<MandateDraft>({
     targetReturnMinPct: '8',
@@ -154,7 +152,6 @@ export default function AgentConsolePage() {
     if (!agentPublicKey) {
       setState(null);
       setWalletSnapshot(null);
-      setReservationAuctions({});
       return;
     }
     try {
@@ -167,24 +164,6 @@ export default function AgentConsolePage() {
       setState(agentState);
       setWalletSnapshot(wallet);
       setMarketAssets(assets || []);
-      const auctionIds = Array.from(new Set(
-        (agentState?.reservations || [])
-          .map((reservation: any) => Number(reservation.auctionId))
-          .filter((auctionId: number) => Number.isFinite(auctionId) && auctionId > 0),
-      ));
-      if (auctionIds.length) {
-        const snapshots = await Promise.all(auctionIds.map(async (auctionId) => {
-          try {
-            const auction = await fetchAuction(auctionId);
-            return [String(auctionId), auction];
-          } catch {
-            return [String(auctionId), null];
-          }
-        }));
-        setReservationAuctions(Object.fromEntries(snapshots));
-      } else {
-        setReservationAuctions({});
-      }
       if (mandate) {
         setMandateDraft({
           targetReturnMinPct: String(mandate.targetReturnMinPct ?? 8),
@@ -386,6 +365,7 @@ export default function AgentConsolePage() {
   const treasuryHealth = treasurySummary.health || {};
   const treasuryOptimization = treasury.optimization || null;
   const reservations = state?.reservations || [];
+  const reservationExposure = Array.isArray(state?.reservationExposure) ? state.reservationExposure : [];
   const liquidity = state?.liquidity || null;
   const savedScreens = state?.savedScreens || [];
   const watchlist = state?.watchlist || [];
@@ -402,47 +382,10 @@ export default function AgentConsolePage() {
       : 'Idle';
   const totalAssets = Number(positions.assets?.length || 0);
   const totalReservations = reservations.reduce((sum: number, reservation: any) => sum + Number(reservation.reservedAmount || 0) / 1e7, 0);
-  const reservationExposure = useMemo(() => {
-    return reservations.map((reservation: any) => {
-      const auction = reservationAuctions[String(reservation.auctionId)] || null;
-      const reservedUsdc = Number(reservation.reservedAmount || 0) / 1e7;
-      const isLeading = Boolean(auction && Number(auction.highestBid?.bidId || 0) === Number(reservation.bidId));
-      const readyToSettle = Boolean(auction && Number(auction.endTime || 0) <= Math.floor(Date.now() / 1000));
-      const nextBidGapUsdc = auction && !isLeading
-        ? Math.max(0, Number(auction.minimumNextBidDisplay || auction.minimumNextBid || 0) - reservedUsdc)
-        : 0;
-      const status = !auction
-        ? 'unavailable'
-        : readyToSettle
-          ? (isLeading ? 'ready_to_settle' : 'closing')
-          : isLeading
-            ? 'leading'
-            : 'outbid';
-      const statusLabel = status === 'ready_to_settle'
-        ? 'Leading · ready to settle'
-        : status === 'leading'
-          ? 'Leading'
-          : status === 'outbid'
-            ? 'Outbid'
-            : status === 'closing'
-              ? 'Closing soon'
-              : 'Auction snapshot unavailable';
-      return {
-        reservation,
-        auction,
-        reservedUsdc,
-        isLeading,
-        readyToSettle,
-        nextBidGapUsdc,
-        status,
-        statusLabel,
-      };
-    });
-  }, [reservationAuctions, reservations]);
   const reservationSummary = useMemo(() => ({
-    leading: reservationExposure.filter((entry) => entry.isLeading).length,
+    leading: reservationExposure.filter((entry: any) => entry.isLeading).length,
     outbid: reservationExposure.filter((entry) => entry.status === 'outbid').length,
-    readyToSettle: reservationExposure.filter((entry) => entry.readyToSettle && entry.isLeading).length,
+    readyToSettle: reservationExposure.filter((entry: any) => entry.readyToSettle && entry.isLeading).length,
   }), [reservationExposure]);
 
   return (
@@ -1009,37 +952,37 @@ export default function AgentConsolePage() {
                     </div>
                   ))}
                 </div>
-                {reservationExposure.map(({ reservation, auction, reservedUsdc, statusLabel, status, nextBidGapUsdc, readyToSettle }: any) => (
-                  <div key={reservation.bidId} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                {reservationExposure.map((entry: any) => (
+                  <div key={entry.bidId} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-sm font-bold text-slate-800">Auction #{reservation.auctionId}</p>
-                        <p className="text-xs text-slate-500 mt-1">Bid #{reservation.bidId} · issuer {formatShortAddress(reservation.issuer)}</p>
+                        <p className="text-sm font-bold text-slate-800">{entry.title || `Auction #${entry.auctionId}`}</p>
+                        <p className="text-xs text-slate-500 mt-1">Bid #{entry.bidId} · issuer {formatShortAddress(entry.issuer)}</p>
                       </div>
                       <div className="text-right">
-                        <span className="text-xs font-bold text-purple-600">{formatMoney(reservedUsdc)}</span>
+                        <span className="text-xs font-bold text-purple-600">{formatMoney(Number(entry.reservedAmount || 0) / 1e7)}</span>
                         <p className={cn(
                           'mt-1 text-[10px] font-bold uppercase tracking-widest',
-                          status === 'ready_to_settle'
+                          entry.status === 'ready_to_settle'
                             ? 'text-primary'
-                            : status === 'leading'
+                            : entry.status === 'leading'
                               ? 'text-secondary'
-                              : status === 'outbid' || status === 'closing'
+                              : entry.status === 'outbid' || entry.status === 'closed_outbid'
                                 ? 'text-amber-600'
                                 : 'text-slate-400',
                         )}>
-                          {statusLabel}
+                          {entry.statusLabel}
                         </p>
                       </div>
                     </div>
-                    {auction ? (
+                    {entry.auction ? (
                       <div className="mt-3 space-y-3">
                         <div className="grid grid-cols-2 gap-2">
                           {[
-                            { label: 'Top Bid', value: `${auction.highestBidDisplay || '0.00'} USDC` },
-                            { label: 'Next Valid Bid', value: `${auction.minimumNextBidDisplay || auction.minimumNextBid || '0.00'} USDC` },
-                            { label: 'Time Left', value: formatCountdown(auction.endTime) },
-                            { label: 'Gap To Relead', value: nextBidGapUsdc > 0 ? formatMoney(nextBidGapUsdc) : '0.00 USDC' },
+                            { label: 'Top Bid', value: `${entry.highestBidDisplay || '0.00'} USDC` },
+                            { label: 'Next Valid Bid', value: `${entry.minimumNextBidDisplay || '0.00'} USDC` },
+                            { label: 'Time Left', value: formatCountdown(entry.endTime) },
+                            { label: 'Gap To Relead', value: Number(entry.nextBidGap || 0) > 0 ? formatMoney(Number(entry.nextBidGap || 0) / 1e7) : '0.00 USDC' },
                           ].map((item) => (
                             <div key={item.label} className="rounded-xl border border-slate-100 bg-white px-3 py-2">
                               <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">{item.label}</p>
@@ -1047,24 +990,24 @@ export default function AgentConsolePage() {
                             </div>
                           ))}
                         </div>
-                        {readyToSettle && (
+                        {entry.readyToSettle && (
                           <button
-                            onClick={() => void settleReservedAuction(Number(reservation.auctionId))}
-                            disabled={settlePendingAuctionId === Number(reservation.auctionId) || rebidPendingAuctionId === Number(reservation.auctionId)}
+                            onClick={() => void settleReservedAuction(Number(entry.auctionId))}
+                            disabled={settlePendingAuctionId === Number(entry.auctionId) || rebidPendingAuctionId === Number(entry.auctionId)}
                             className="w-full rounded-xl border border-primary bg-white px-3 py-2.5 text-xs font-bold uppercase tracking-widest text-primary hover:bg-blue-50 disabled:opacity-50"
                           >
-                            {settlePendingAuctionId === Number(reservation.auctionId) ? 'Settling...' : 'Settle Now'}
+                            {settlePendingAuctionId === Number(entry.auctionId) ? 'Settling...' : 'Settle Now'}
                           </button>
                         )}
-                        {status === 'outbid' && auction && (
+                        {entry.status === 'outbid' && entry.auction && (
                           <button
-                            onClick={() => void rebidReservedAuction(Number(reservation.auctionId), String(auction.minimumNextBidDisplay || auction.minimumNextBid || '0'))}
-                            disabled={rebidPendingAuctionId === Number(reservation.auctionId) || settlePendingAuctionId === Number(reservation.auctionId)}
+                            onClick={() => void rebidReservedAuction(Number(entry.auctionId), String(entry.minimumNextBidDisplay || '0'))}
+                            disabled={rebidPendingAuctionId === Number(entry.auctionId) || settlePendingAuctionId === Number(entry.auctionId)}
                             className="w-full rounded-xl border border-purple-200 bg-white px-3 py-2.5 text-xs font-bold uppercase tracking-widest text-purple-700 hover:bg-purple-50 disabled:opacity-50"
                           >
-                            {rebidPendingAuctionId === Number(reservation.auctionId)
+                            {rebidPendingAuctionId === Number(entry.auctionId)
                               ? 'Rebidding...'
-                              : `Rebid ${auction.minimumNextBidDisplay || auction.minimumNextBid || '0'} USDC`}
+                              : `Rebid ${entry.minimumNextBidDisplay || '0'} USDC`}
                           </button>
                         )}
                       </div>

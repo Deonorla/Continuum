@@ -19,6 +19,7 @@ import RentalSessionComposer from '../components/RentalSessionComposer';
 import Select from '../components/ui/Select';
 import { useWallet } from '../context/WalletContext';
 import { useAgentWallet } from '../hooks/useAgentWallet';
+import { paymentTokenSymbol, settlementRecipientAddress } from '../contactInfo.js';
 import {
   addAgentWatchAsset,
   createMarketAuction,
@@ -119,6 +120,8 @@ function MarketActions({
   mandate,
   liquidity,
   reservations,
+  sharedSessionId,
+  onSharedSessionIdChange,
   isWatched,
   watchPending,
   onToggleWatch,
@@ -129,6 +132,8 @@ function MarketActions({
   mandate: any;
   liquidity: any;
   reservations: any[];
+  sharedSessionId: string;
+  onSharedSessionIdChange: (value: string) => void;
   isWatched: boolean;
   watchPending: boolean;
   onToggleWatch: (asset: any) => Promise<void>;
@@ -143,7 +148,6 @@ function MarketActions({
   const [reservePrice, setReservePrice] = useState('250');
   const [durationHours, setDurationHours] = useState('24');
   const [bidAmount, setBidAmount] = useState('');
-  const [sessionId, setSessionId] = useState('');
   const isOwner = Boolean(agentPublicKey && asset.currentOwner && String(agentPublicKey).toUpperCase() === String(asset.currentOwner).toUpperCase());
 
   const loadDetails = useCallback(async () => {
@@ -230,7 +234,7 @@ function MarketActions({
   const handleFetchAnalytics = async () => {
     setAnalyticsStatus('loading');
     try {
-      const response = await fetchMarketAnalytics(asset.tokenId, sessionId || undefined);
+      const response = await fetchMarketAnalytics(asset.tokenId, sharedSessionId || undefined);
       setAnalytics(response.analytics);
       setAnalyticsStatus('ok');
     } catch (error: any) {
@@ -249,7 +253,7 @@ function MarketActions({
     try {
       await placeAuctionBid(activeAuction.auctionId, {
         amount: bidAmount,
-        sessionId: sessionId || undefined,
+        sessionId: sharedSessionId || undefined,
       });
       setBidStatus('ok');
       setBidAmount('');
@@ -318,15 +322,18 @@ function MarketActions({
           </button>
         </div>
         <input
-          value={sessionId}
-          onChange={(event) => setSessionId(event.target.value)}
-          placeholder="Optional Continuum payment session ID"
+          value={sharedSessionId}
+          onChange={(event) => onSharedSessionIdChange(event.target.value)}
+          placeholder="Reuse the selected Marketplace payment session"
           className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
         />
+        <p className="text-xs text-slate-500">
+          Premium analysis and paid bids both reuse the shared Continuum session rail from the Marketplace surface.
+        </p>
         {analyticsStatus === '402' && (
           <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5 text-xs text-amber-700">
             <AlertCircle size={13} className="shrink-0 mt-0.5" />
-            Open a Continuum payment session first, then retry the paid analysis call.
+            Open or select a Continuum payment session from the Marketplace rail, then retry the paid analysis call.
           </div>
         )}
         {analyticsStatus === 'err' && <p className="text-xs text-red-500">Could not load premium analysis.</p>}
@@ -582,6 +589,7 @@ function MarketActions({
                   </button>
                 </div>
                 {bidStatus === '402' && <p className="text-xs text-amber-700">Bid placement is paid. Reuse or enter a valid Continuum payment session ID first.</p>}
+                {bidStatus === '402' && <p className="text-xs text-slate-500">The shared Marketplace session rail above the market book can be reused across analysis and bids.</p>}
                 {bidStatus === 'err' && <p className="text-xs text-red-500">{bidError || 'Bid failed. Check your mandate, liquidity floor, and payment session.'}</p>}
                 {bidStatus === 'ok' && <p className="text-xs text-secondary">Bid placed and principal reserved successfully.</p>}
                 {!canBidNow && (
@@ -640,7 +648,7 @@ function MarketActions({
 }
 
 export default function Marketplace() {
-  const { walletAddress } = useWallet();
+  const { walletAddress, createStream, outgoingStreams, refreshStreams } = useWallet();
   const { agentPublicKey, activate } = useAgentWallet(walletAddress);
   const [assets, setAssets] = useState<any[]>([]);
   const [agentState, setAgentState] = useState<any>(null);
@@ -664,6 +672,10 @@ export default function Marketplace() {
   const [saveScreenError, setSaveScreenError] = useState('');
   const [watchActionError, setWatchActionError] = useState('');
   const [watchPendingTokenId, setWatchPendingTokenId] = useState<number | null>(null);
+  const [marketSessionId, setMarketSessionId] = useState('');
+  const [marketSessionBudget, setMarketSessionBudget] = useState('5');
+  const [marketSessionStatus, setMarketSessionStatus] = useState<'idle' | 'loading' | 'ok' | 'err'>('idle');
+  const [marketSessionError, setMarketSessionError] = useState('');
   const deferredSearch = useDeferredValue(search);
   const deferredGoal = useDeferredValue(goal);
 
@@ -714,6 +726,18 @@ export default function Marketplace() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!marketplaceSessions.length) {
+      if (marketSessionId) {
+        setMarketSessionId('');
+      }
+      return;
+    }
+    if (!marketSessionId || !marketplaceSessions.some((session: any) => String(session.id) === String(marketSessionId))) {
+      setMarketSessionId(String(marketplaceSessions[0].id));
+    }
+  }, [marketSessionId, marketplaceSessions]);
+
   const runtimeSummary = agentState?.runtime?.lastSummary || {};
   const performance = agentPerformance || agentState?.performance || {};
   const performanceAttribution = performance.attribution || {};
@@ -725,6 +749,18 @@ export default function Marketplace() {
   const watchedTokenIds = useMemo(
     () => new Set((watchlist || []).map((entry: any) => Number(entry.tokenId))),
     [watchlist],
+  );
+  const marketplaceSessions = useMemo(
+    () => (Array.isArray(outgoingStreams) ? outgoingStreams : []).filter((session: any) => {
+      const sessionRecipient = String(session?.recipient || '').toUpperCase();
+      const targetRecipient = String(settlementRecipientAddress || '').toUpperCase();
+      return Boolean(targetRecipient) && sessionRecipient === targetRecipient && Boolean(session?.isActive);
+    }),
+    [outgoingStreams],
+  );
+  const selectedMarketSession = useMemo(
+    () => marketplaceSessions.find((session: any) => String(session.id) === String(marketSessionId)) || null,
+    [marketSessionId, marketplaceSessions],
   );
   const screenHighlightTokenIds = useMemo(
     () => new Set(
@@ -790,6 +826,11 @@ export default function Marketplace() {
     leading: marketReservationExposure.filter((entry: any) => entry.isLeading).length,
     outbid: marketReservationExposure.filter((entry: any) => entry.status === 'outbid').length,
     ready: marketReservationExposure.filter((entry: any) => entry.readyToSettle && entry.isLeading).length,
+  };
+  const marketSessionSummary = {
+    active: marketplaceSessions.length,
+    refundable: marketplaceSessions.reduce((sum: number, session: any) => sum + (Number(session?.refundableAmount || 0) / 1e7), 0),
+    claimable: marketplaceSessions.reduce((sum: number, session: any) => sum + (Number(session?.claimableInitial || 0) / 1e7), 0),
   };
   const screeningPills = [
     { label: browseState.search ? `Search: ${browseState.search}` : '', active: Boolean(browseState.search) },
@@ -894,6 +935,37 @@ export default function Marketplace() {
       setWatchPendingTokenId(null);
     }
   }, [agentPublicKey, load, watchedTokenIds]);
+
+  const handleOpenMarketSession = useCallback(async () => {
+    if (!settlementRecipientAddress) {
+      setMarketSessionStatus('err');
+      setMarketSessionError('Marketplace payment recipient is not configured for this environment.');
+      return;
+    }
+    setMarketSessionStatus('loading');
+    setMarketSessionError('');
+    try {
+      const streamId = await createStream(
+        settlementRecipientAddress,
+        3 * 60 * 60,
+        marketSessionBudget || '5',
+        {
+          lane: 'continuum_marketplace',
+          purpose: 'paid_market_actions',
+          product: 'continuum',
+        },
+      );
+      if (!streamId) {
+        throw new Error('Marketplace payment session could not be opened.');
+      }
+      await refreshStreams();
+      setMarketSessionId(String(streamId));
+      setMarketSessionStatus('ok');
+    } catch (sessionError: any) {
+      setMarketSessionStatus('err');
+      setMarketSessionError(sessionError?.message || 'Could not open the Marketplace payment session.');
+    }
+  }, [createStream, marketSessionBudget, refreshStreams]);
 
   return (
     <div className="p-4 sm:p-8 max-w-[1600px] mx-auto space-y-8">
@@ -1021,6 +1093,90 @@ export default function Marketplace() {
                     <p className="mt-1 text-sm font-bold text-slate-800">{item.value}</p>
                   </div>
                 ))}
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Continuum Session Rail</p>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    {selectedMarketSession ? `Using #${selectedMarketSession.id}` : marketplaceSessions.length ? 'Select session' : 'Open session'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: 'Active Sessions', value: String(marketSessionSummary.active), tone: 'text-primary' },
+                    { label: 'Refundable', value: formatUsdcMetric(marketSessionSummary.refundable), tone: 'text-secondary' },
+                    { label: 'Claimable', value: formatUsdcMetric(marketSessionSummary.claimable), tone: 'text-purple-600' },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-xl border border-slate-100 bg-white px-3 py-3">
+                      <p className="text-[9px] font-label uppercase tracking-widest text-slate-400">{item.label}</p>
+                      <p className={`mt-1 text-sm font-bold ${item.tone}`}>{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-2 md:flex-row">
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={marketSessionBudget}
+                    onChange={(event) => setMarketSessionBudget(event.target.value)}
+                    placeholder="Session budget"
+                    className="w-full md:w-[9rem] bg-white border border-slate-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                  <button
+                    onClick={() => void handleOpenMarketSession()}
+                    disabled={marketSessionStatus === 'loading' || !walletAddress}
+                    className="rounded-xl bg-primary px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-white disabled:opacity-50"
+                  >
+                    {marketSessionStatus === 'loading' ? 'Opening...' : `Open ${paymentTokenSymbol} Session`}
+                  </button>
+                  <button
+                    onClick={() => void refreshStreams()}
+                    disabled={!walletAddress}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Refresh Sessions
+                  </button>
+                </div>
+                <input
+                  value={marketSessionId}
+                  onChange={(event) => setMarketSessionId(event.target.value)}
+                  placeholder="Selected Marketplace session ID"
+                  className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+                />
+                <p className="text-xs text-slate-500">
+                  Premium analysis and paid bids reuse this selected session. Sessions are opened against the Continuum service recipient {formatShortAddress(settlementRecipientAddress)}.
+                </p>
+                {marketSessionStatus === 'err' && <p className="text-xs text-red-500">{marketSessionError || 'Could not open the Marketplace session rail.'}</p>}
+                {marketSessionStatus === 'ok' && <p className="text-xs text-secondary">Marketplace payment session opened and selected for reuse.</p>}
+                <div className="space-y-2">
+                  {marketplaceSessions.slice(0, 3).map((session: any) => (
+                    <button
+                      key={session.id}
+                      onClick={() => setMarketSessionId(String(session.id))}
+                      className={`w-full rounded-xl border px-3 py-3 text-left transition-all ${
+                        String(session.id) === String(marketSessionId)
+                          ? 'border-blue-200 bg-blue-50'
+                          : 'border-slate-100 bg-white hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">Session #{session.id}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Refundable {formatUsdcMetric(Number(session?.refundableAmount || 0) / 1e7)} · Claimable {formatUsdcMetric(Number(session?.claimableInitial || 0) / 1e7)}
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-secondary">
+                          {String(session.id) === String(marketSessionId) ? 'selected' : 'active'}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                  {marketplaceSessions.length === 0 && (
+                    <p className="text-sm text-slate-400">Open one shared session here, then reuse it across premium analysis and paid bids in the Marketplace drawer.</p>
+                  )}
+                </div>
               </div>
               <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 space-y-3">
                 <div className="flex items-center justify-between gap-3">
@@ -1536,6 +1692,8 @@ export default function Marketplace() {
             mandate={agentState?.mandate || null}
             liquidity={marketLiquidity}
             reservations={managedReservations}
+            sharedSessionId={marketSessionId}
+            onSharedSessionIdChange={setMarketSessionId}
             isWatched={watchedTokenIds.has(Number(asset.tokenId))}
             watchPending={watchPendingTokenId === Number(asset.tokenId)}
             onToggleWatch={handleToggleWatch}

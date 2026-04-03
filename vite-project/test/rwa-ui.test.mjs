@@ -98,6 +98,8 @@ test("Marketplace source surfaces autonomous attention and bid guardrails", asyn
   assert.match(source, /Agent Outcome Snapshot/);
   assert.match(source, /Recent Market Outcomes/);
   assert.match(source, /Recent Decisions/);
+  assert.match(source, /Continuum Session Rail/);
+  assert.match(source, /Open .* Session/);
   assert.match(source, /Current Bid Focus/);
   assert.match(source, /live shortlist hits, watchlist signals, and current bid focus/i);
   assert.match(source, /Bid Guardrails/);

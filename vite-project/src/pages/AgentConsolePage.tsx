@@ -277,6 +277,7 @@ export default function AgentConsolePage() {
   const treasuryHealth = treasurySummary.health || {};
   const treasuryOptimization = treasury.optimization || null;
   const reservations = state?.reservations || [];
+  const liquidity = state?.liquidity || null;
   const savedScreens = state?.savedScreens || [];
   const watchlist = state?.watchlist || [];
   const positions = state?.positions || { assets: [], sessions: [] };
@@ -423,6 +424,36 @@ export default function AgentConsolePage() {
             <div className="flex items-center gap-2 mb-4">
               <Wallet size={16} className="text-primary" />
               <h3 className="text-sm font-headline font-bold uppercase tracking-widest text-slate-700">Wallet And Treasury</h3>
+            </div>
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 mb-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Liquidity Runway</p>
+                <span className={`text-[10px] font-bold uppercase tracking-widest ${
+                  liquidity?.status === 'below_floor'
+                    ? 'text-rose-600'
+                    : liquidity?.status === 'near_floor'
+                      ? 'text-amber-600'
+                      : 'text-secondary'
+                }`}>
+                  {liquidity?.statusLabel || 'Waiting for agent'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                {[
+                  { label: 'Liquid USDC', value: `${liquidity?.walletBalanceDisplay || '0'} USDC` },
+                  { label: 'Bid Headroom', value: `${liquidity?.immediateBidHeadroomDisplay || '0'} USDC` },
+                  { label: 'Reserve Floor', value: `${liquidity?.liquidityFloorAmountDisplay || '0'} USDC` },
+                  { label: 'Treasury Deployed', value: `${liquidity?.treasuryDeployedDisplay || '0'} USDC` },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-xl border border-slate-100 bg-white px-3 py-3">
+                    <p className="text-[9px] font-label uppercase tracking-widest text-slate-400">{item.label}</p>
+                    <p className="mt-1 text-sm font-bold text-slate-800">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500">
+                Open bid reserves stay committed, and treasury recall can expand bidding room when the runtime needs more liquid USDC.
+              </p>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 space-y-3">

@@ -2,7 +2,7 @@ const express = require("express");
 const { ethers } = require("ethers");
 const { generateDueDiligence, aggregateMarketIntel } = require("../services/assetIntelligence");
 const { screenAssets, parseGoal } = require("../services/assetScreener");
-const { formatStellarAmount } = require("../services/stellarAnchorService");
+const { formatStellarAmount, normalizeStellarAmount } = require("../services/stellarAnchorService");
 
 const router = express.Router();
 
@@ -220,6 +220,87 @@ function applyMarketBrowseFilters(assets = [], browseFilters = {}) {
             screening: rankedByTokenId.get(Number(asset.tokenId)) || null,
         })),
         rankedAssets,
+    };
+}
+
+function findWalletBalance(walletState = {}, assetCode = "USDC", assetIssuer = "") {
+    const normalizedCode = String(assetCode || "USDC").toUpperCase();
+    const normalizedIssuer = String(assetIssuer || "");
+    return (walletState.balances || []).find((balance) => {
+        if (normalizedCode === "XLM") {
+            return String(balance.assetCode || "XLM").toUpperCase() === "XLM";
+        }
+        return (
+            String(balance.assetCode || "").toUpperCase() === normalizedCode
+            && String(balance.assetIssuer || "") === normalizedIssuer
+        );
+    }) || null;
+}
+
+function liquidityStatusLabel(status) {
+    if (status === "below_floor") return "Below floor";
+    if (status === "near_floor") return "Near floor";
+    return "Healthy";
+}
+
+function buildLiquiditySummary({
+    walletState = {},
+    mandate = {},
+    reservations = [],
+    treasury = {},
+    assetCode = "USDC",
+    assetIssuer = "",
+}) {
+    const reservePolicy = mandate.reservePolicy || {};
+    const capitalBase = normalizeStellarAmount(mandate.capitalBase || "0");
+    const liquidityFloorPct = Number(mandate.liquidityFloorPct ?? reservePolicy.minLiquidPct ?? 10);
+    const targetLiquidPct = Number(reservePolicy.targetLiquidPct ?? 20);
+    const walletBalanceRecord = findWalletBalance(walletState, assetCode, assetIssuer);
+    const walletBalance = walletBalanceRecord
+        ? normalizeStellarAmount(walletBalanceRecord.balance || "0")
+        : 0n;
+    const reservedCapital = sumStringAmounts(
+        (reservations || []).map((reservation) => reservation.reservedAmount || "0"),
+    );
+    const treasuryDeployed = BigInt(
+        treasury?.summary?.deployed
+        || sumStringAmounts((treasury?.positions || []).map((position) => position.allocatedAmount || "0"))
+    );
+    const liquidityFloorAmount = capitalBase > 0n
+        ? (capitalBase * BigInt(Math.max(0, Math.round(liquidityFloorPct)))) / 100n
+        : 0n;
+    const targetReserveAmount = capitalBase > 0n
+        ? (capitalBase * BigInt(Math.max(0, Math.round(targetLiquidPct)))) / 100n
+        : 0n;
+    const immediateBidHeadroom = walletBalance > liquidityFloorAmount
+        ? walletBalance - liquidityFloorAmount
+        : 0n;
+    const status = walletBalance < liquidityFloorAmount
+        ? "below_floor"
+        : walletBalance < targetReserveAmount
+            ? "near_floor"
+            : "healthy";
+
+    return {
+        assetCode: String(assetCode || "USDC").toUpperCase(),
+        assetIssuer: String(assetIssuer || ""),
+        walletBalance: walletBalance.toString(),
+        walletBalanceDisplay: formatStellarAmount(walletBalance),
+        reservedCapital: reservedCapital.toString(),
+        reservedCapitalDisplay: formatStellarAmount(reservedCapital),
+        treasuryDeployed: treasuryDeployed.toString(),
+        treasuryDeployedDisplay: formatStellarAmount(treasuryDeployed),
+        liquidityFloorAmount: liquidityFloorAmount.toString(),
+        liquidityFloorAmountDisplay: formatStellarAmount(liquidityFloorAmount),
+        targetReserveAmount: targetReserveAmount.toString(),
+        targetReserveAmountDisplay: formatStellarAmount(targetReserveAmount),
+        immediateBidHeadroom: immediateBidHeadroom.toString(),
+        immediateBidHeadroomDisplay: formatStellarAmount(immediateBidHeadroom),
+        liquidityFloorPct,
+        targetLiquidPct,
+        canRecallFromTreasury: treasuryDeployed > 0n,
+        status,
+        statusLabel: liquidityStatusLabel(status),
     };
 }
 
@@ -648,14 +729,24 @@ router.post("/market/auctions/:auctionId/settle", requireJwt, asyncHandler(async
 }));
 
 router.get("/market/positions", requireJwt, asyncHandler(async (req, res) => {
-    const { services, agentId, agentPublicKey } = await resolveAgentContext(req);
-    const [assets, sessions, treasury, reservations, performance] = await Promise.all([
+    const { services, agentId, agentPublicKey, ownerPublicKey } = await resolveAgentContext(req);
+    const [assets, sessions, walletState, mandate, treasury, reservations, performance] = await Promise.all([
         services.chainService.listAssetSnapshots({ owner: agentPublicKey }),
         services.chainService.listSessions({ owner: agentPublicKey }),
+        services.agentWallet.getBalances({ owner: ownerPublicKey }),
+        services.agentState.getMandate(agentId),
         services.agentState.getTreasury(agentId),
         services.agentState.listOpenReservations(agentId),
         services.agentState.getPerformance(agentId),
     ]);
+    const liquidity = buildLiquiditySummary({
+        walletState,
+        mandate,
+        reservations,
+        treasury,
+        assetCode: "USDC",
+        assetIssuer: services.chainService.runtime?.paymentAssetIssuer || "",
+    });
     res.json({
         code: "market_positions_loaded",
         agentId,
@@ -665,6 +756,7 @@ router.get("/market/positions", requireJwt, asyncHandler(async (req, res) => {
             treasury,
             reservations,
             performance,
+            liquidity,
         },
     });
 }));
@@ -768,12 +860,21 @@ router.get("/agents/:agentId/state", requireJwt, asyncHandler(async (req, res) =
         services.agentState.getSavedScreens(agentId),
         services.agentState.getWatchlist(agentId),
     ]);
+    const liquidity = buildLiquiditySummary({
+        walletState,
+        mandate,
+        reservations,
+        treasury,
+        assetCode: "USDC",
+        assetIssuer: services.chainService.runtime?.paymentAssetIssuer || "",
+    });
     res.json({
         code: "agent_state_loaded",
         agentId,
         state: {
             wallet: walletState,
             mandate,
+            liquidity,
             performance,
             treasury,
             reservations,

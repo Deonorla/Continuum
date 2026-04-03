@@ -577,6 +577,9 @@ describe("Continuum API Integration", function () {
         expect(response.body.positions.reservations).to.have.length(1);
         expect(response.body.positions.treasury.positions).to.have.length(1);
         expect(response.body.positions.performance.realizedYield).to.equal("0");
+        expect(response.body.positions.liquidity.walletBalanceDisplay).to.equal("425");
+        expect(response.body.positions.liquidity.immediateBidHeadroomDisplay).to.equal("325");
+        expect(response.body.positions.liquidity.status).to.equal("healthy");
     });
 
     it("returns 402 for paid yield routing without a payment session", async () => {
@@ -624,6 +627,8 @@ describe("Continuum API Integration", function () {
         expect(response.body.code).to.equal("agent_state_loaded");
         expect(response.body.agentId).to.equal(agentId);
         expect(response.body.state.wallet.publicKey).to.equal(agentKeypair.publicKey());
+        expect(response.body.state.liquidity.walletBalanceDisplay).to.equal("425");
+        expect(response.body.state.liquidity.targetReserveAmountDisplay).to.equal("200");
         expect(response.body.state.positions.assets).to.have.length(1);
         expect(response.body.state.runtime.status).to.equal("idle");
         expect(response.body.state.savedScreens).to.deep.equal([]);

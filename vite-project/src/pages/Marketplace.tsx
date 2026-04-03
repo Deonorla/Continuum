@@ -666,6 +666,7 @@ export default function Marketplace() {
   const managedSessions = Array.isArray(marketPositions?.sessions) ? marketPositions.sessions : [];
   const managedReservations = Array.isArray(marketPositions?.reservations) ? marketPositions.reservations : [];
   const marketTreasury = marketPositions?.treasury || null;
+  const marketLiquidity = marketPositions?.liquidity || null;
   const screeningPills = [
     { label: browseState.search ? `Search: ${browseState.search}` : '', active: Boolean(browseState.search) },
     { label: browseState.type ? `${TYPE_META[browseState.type as keyof typeof TYPE_META]?.label || browseState.type}` : '', active: Boolean(browseState.type) },
@@ -896,6 +897,36 @@ export default function Marketplace() {
                     <p className="mt-1 text-sm font-bold text-slate-800">{item.value}</p>
                   </div>
                 ))}
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Liquidity Runway</p>
+                  <span className={`text-[10px] font-bold uppercase tracking-widest ${
+                    marketLiquidity?.status === 'below_floor'
+                      ? 'text-rose-600'
+                      : marketLiquidity?.status === 'near_floor'
+                        ? 'text-amber-600'
+                        : 'text-secondary'
+                  }`}>
+                    {marketLiquidity?.statusLabel || 'Waiting for wallet'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {[
+                    { label: 'Liquid USDC', value: `${marketLiquidity?.walletBalanceDisplay || '0'} USDC` },
+                    { label: 'Bid Headroom', value: `${marketLiquidity?.immediateBidHeadroomDisplay || '0'} USDC` },
+                    { label: 'Reserve Floor', value: `${marketLiquidity?.liquidityFloorAmountDisplay || '0'} USDC` },
+                    { label: 'Treasury Deployed', value: `${marketLiquidity?.treasuryDeployedDisplay || '0'} USDC` },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-xl border border-slate-100 bg-white px-3 py-3">
+                      <p className="text-[9px] font-label uppercase tracking-widest text-slate-400">{item.label}</p>
+                      <p className="mt-1 text-sm font-bold text-slate-800">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-500">
+                  Bid reserves stay committed off-wallet, and treasury recall can reopen headroom when auction pressure rises.
+                </p>
               </div>
               <div className="space-y-2">
                 {ownedMarketAssets.slice(0, 3).map((asset: any) => (

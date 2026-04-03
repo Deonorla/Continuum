@@ -582,6 +582,42 @@ describe("Continuum API Integration", function () {
         expect(response.body.positions.liquidity.status).to.equal("healthy");
     });
 
+    it("returns 402 for paid yield claim without a payment session", async () => {
+        const response = await request(app)
+            .post("/api/market/yield/claim")
+            .set("Authorization", `Bearer ${token}`)
+            .send({ tokenId: 7 })
+            .expect(402);
+
+        expect(response.body.message).to.equal("Payment Required");
+        expect(response.headers["x-stream-rate"]).to.equal("0.01");
+        expect(response.headers["x-payment-currency"]).to.equal("USDC");
+    });
+
+    it("claims yield through the paid market path once a valid session is supplied", async () => {
+        const response = await request(app)
+            .post("/api/market/yield/claim")
+            .set("Authorization", `Bearer ${token}`)
+            .set("x-stream-stream-id", "77")
+            .send({ tokenId: 7 })
+            .expect(200);
+
+        expect(response.body.code).to.equal("market_yield_claimed");
+        expect(response.body.amount).to.equal("3500000");
+        expect(response.body.paidVia.mode).to.equal("streaming");
+        expect(response.body.paidVia.streamId).to.equal("77");
+
+        const stateResponse = await request(app)
+            .get(`/api/agents/${agentId}/state`)
+            .set("Authorization", `Bearer ${token}`)
+            .expect(200);
+
+        expect(stateResponse.body.state.performance.realizedYield).to.equal("3500000");
+        expect(stateResponse.body.state.performance.paidActionFees).to.equal("100000");
+        expect(stateResponse.body.state.performance.recentEvents.some((event) => event.category === "yield")).to.equal(true);
+        expect(stateResponse.body.state.performance.recentEvents.some((event) => event.category === "fee")).to.equal(true);
+    });
+
     it("returns 402 for paid yield routing without a payment session", async () => {
         const response = await request(app)
             .post("/api/market/yield/route")

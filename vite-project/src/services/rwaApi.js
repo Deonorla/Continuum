@@ -232,10 +232,13 @@ export async function fetchMarketPositions() {
   return response.positions || null;
 }
 
-export async function claimMarketYield(tokenId) {
+export async function claimMarketYield(tokenId, sessionId) {
   return request('/api/market/yield/claim', {
     method: 'POST',
-    headers: agentHeaders(),
+    headers: {
+      ...agentHeaders(),
+      ...(sessionId ? { 'x-stream-stream-id': String(sessionId) } : {}),
+    },
     body: JSON.stringify({ tokenId }),
   });
 }

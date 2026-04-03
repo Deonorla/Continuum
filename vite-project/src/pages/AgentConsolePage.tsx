@@ -21,6 +21,7 @@ import { cn } from '../lib/cn';
 import { useWallet } from '../context/WalletContext';
 import { useAgentWallet } from '../hooks/useAgentWallet';
 import {
+  claimMarketYield,
   fetchAgentMandate,
   fetchAgentState,
   fetchMarketAssets,
@@ -118,6 +119,8 @@ export default function AgentConsolePage() {
   const [treasuryActionStatus, setTreasuryActionStatus] = useState<'idle' | 'loading' | 'ok' | '402' | 'err'>('idle');
   const [treasuryActionError, setTreasuryActionError] = useState('');
   const [yieldRouteTokenId, setYieldRouteTokenId] = useState('');
+  const [yieldClaimStatus, setYieldClaimStatus] = useState<'idle' | 'loading' | 'ok' | '402' | 'err'>('idle');
+  const [yieldClaimError, setYieldClaimError] = useState('');
   const [yieldRouteStatus, setYieldRouteStatus] = useState<'idle' | 'loading' | 'ok' | '402' | 'err'>('idle');
   const [yieldRouteError, setYieldRouteError] = useState('');
   const runtime = state?.runtime || {};
@@ -254,6 +257,25 @@ export default function AgentConsolePage() {
         setYieldRouteStatus('402');
       } else {
         setYieldRouteStatus('err');
+      }
+    }
+  }, [agentPublicKey, refreshState, treasurySessionId, yieldRouteTokenId]);
+
+  const claimYieldDirect = useCallback(async () => {
+    if (!agentPublicKey || !yieldRouteTokenId) return;
+    setYieldClaimStatus('loading');
+    setYieldClaimError('');
+    try {
+      await claimMarketYield(Number(yieldRouteTokenId), treasurySessionId || undefined);
+      setYieldClaimStatus('ok');
+      await refreshState();
+    } catch (claimError: any) {
+      const message = claimError?.message || 'Yield claim failed.';
+      setYieldClaimError(message);
+      if (String(message).includes('402') || String(message).includes('Payment')) {
+        setYieldClaimStatus('402');
+      } else {
+        setYieldClaimStatus('err');
       }
     }
   }, [agentPublicKey, refreshState, treasurySessionId, yieldRouteTokenId]);
@@ -501,9 +523,16 @@ export default function AgentConsolePage() {
                     step="1"
                     value={yieldRouteTokenId}
                     onChange={(event) => setYieldRouteTokenId(event.target.value)}
-                    placeholder="Optional token ID to claim + route"
+                    placeholder="Token ID to claim or route"
                     className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
                   />
+                  <button
+                    onClick={() => void claimYieldDirect()}
+                    disabled={!agentPublicKey || !yieldRouteTokenId || yieldClaimStatus === 'loading'}
+                    className="w-full py-2.5 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-bold hover:bg-emerald-50 disabled:opacity-50"
+                  >
+                    {yieldClaimStatus === 'loading' ? 'Claiming Yield...' : 'Claim Yield · 0.01 USDC'}
+                  </button>
                   <button
                     onClick={() => void routeYieldIntoTreasury()}
                     disabled={!agentPublicKey || yieldRouteStatus === 'loading'}
@@ -519,6 +548,15 @@ export default function AgentConsolePage() {
                   )}
                   {treasuryActionStatus === 'ok' && (
                     <p className="text-xs text-secondary">Treasury optimization completed and refreshed the live state.</p>
+                  )}
+                  {yieldClaimStatus === '402' && (
+                    <p className="text-xs text-amber-700">Yield claim is paid too. Reuse or enter a valid Continuum payment session first.</p>
+                  )}
+                  {yieldClaimStatus === 'err' && (
+                    <p className="text-xs text-red-500">{yieldClaimError || 'Yield claim failed.'}</p>
+                  )}
+                  {yieldClaimStatus === 'ok' && (
+                    <p className="text-xs text-secondary">Claimable yield was withdrawn into the managed wallet.</p>
                   )}
                   {yieldRouteStatus === '402' && (
                     <p className="text-xs text-amber-700">Yield routing is paid too. Reuse or enter a valid Continuum payment session first.</p>

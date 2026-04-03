@@ -761,7 +761,7 @@ router.get("/market/positions", requireJwt, asyncHandler(async (req, res) => {
     });
 }));
 
-router.post("/market/yield/claim", requireJwt, asyncHandler(async (req, res) => {
+router.post("/market/yield/claim", requirePaidAction("0.01", "Yield claim"), requireJwt, asyncHandler(async (req, res) => {
     const { services, ownerPublicKey, agentId } = await resolveAgentContext(req);
     const result = await services.agentWallet.claimYield({
         owner: ownerPublicKey,
@@ -771,11 +771,16 @@ router.post("/market/yield/claim", requireJwt, asyncHandler(async (req, res) => 
         message: `Yield claimed on asset #${Number(req.body?.tokenId)}`,
         detail: `Transaction ${String(result.txHash || "").slice(0, 12)}...`,
     });
+    await services.agentState.recordPaidActionFee(agentId, req.streamEngineActionFee, {
+        action: "yield_claim",
+        tokenId: req.body?.tokenId ? Number(req.body.tokenId) : null,
+    });
     res.json({
         code: "market_yield_claimed",
         action: "claimYield",
         txHash: result.txHash,
         amount: result.amount || "0",
+        paidVia: req.streamEngine || null,
     });
 }));
 

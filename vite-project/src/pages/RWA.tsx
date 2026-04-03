@@ -1361,8 +1361,8 @@ export default function RWA() {
                 </span>
                 <h3 className={`text-5xl font-headline font-light ${item.color}`}>{item.value}</h3>
                 <div className="mt-1 flex items-center gap-1">
-                  {item.pulse && <span className="h-2 w-2 animate-pulse rounded-full bg-secondary" />}
-                  <p className={`text-xs font-medium ${item.subColor}`}>{item.sub}</p>
+                  {/* {item.pulse && <span className="h-2 w-2 animate-pulse rounded-full bg-secondary" />} */}
+                  <p className={`text-xs font-medium m-0 ${item.subColor}`}>{item.sub}</p>
                 </div>
               </div>
             ))}

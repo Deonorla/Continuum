@@ -76,6 +76,27 @@ function parseSorobanArgs(args = [], context = {}) {
     });
 }
 
+function sumAllocated(positions = []) {
+    return positions.reduce(
+        (sum, position) => sum + BigInt(position?.allocatedAmount || "0"),
+        0n
+    );
+}
+
+function amountToPct(amount, capitalBase) {
+    const base = BigInt(capitalBase || "0");
+    if (base <= 0n) {
+        return 0;
+    }
+    return Number((BigInt(amount || "0") * 10000n) / base) / 100;
+}
+
+function projectedAnnualReturnForPosition(position) {
+    const amount = BigInt(position?.allocatedAmount || "0");
+    const bps = BigInt(Math.round(Number(position?.projectedNetApy || 0) * 100));
+    return (amount * bps) / 10000n;
+}
+
 class TreasuryManager {
     constructor(config = {}) {
         this.chainService = config.chainService;
@@ -112,19 +133,77 @@ class TreasuryManager {
 
     healthCheck() {
         const catalog = this.getVenueCatalog();
+        const safeYield = {
+            ok: catalog.safe_yield.length > 0,
+            venues: catalog.safe_yield.map((venue) => venue.id || venue.label || "safe-yield"),
+        };
+        const blendLending = {
+            ok: catalog.blend_lending.length > 0,
+            venues: catalog.blend_lending.map((venue) => venue.id || venue.contractId || "blend"),
+        };
+        const stellarAmm = {
+            ok: catalog.stellar_amm.length > 0,
+            venues: catalog.stellar_amm.map((venue) => venue.id || venue.liquidityPoolId || "amm"),
+        };
         return {
-            safeYield: {
-                ok: catalog.safe_yield.length > 0,
-                venues: catalog.safe_yield.map((venue) => venue.id || venue.label || "safe-yield"),
-            },
-            blendLending: {
-                ok: catalog.blend_lending.length > 0,
-                venues: catalog.blend_lending.map((venue) => venue.id || venue.contractId || "blend"),
-            },
-            stellarAmm: {
-                ok: catalog.stellar_amm.length > 0,
-                venues: catalog.stellar_amm.map((venue) => venue.id || venue.liquidityPoolId || "amm"),
-            },
+            ok: safeYield.ok && blendLending.ok && stellarAmm.ok,
+            configuredFamilies: [
+                safeYield.ok ? "safe_yield" : null,
+                blendLending.ok ? "blend_lending" : null,
+                stellarAmm.ok ? "stellar_amm" : null,
+            ].filter(Boolean),
+            safeYield,
+            blendLending,
+            stellarAmm,
+        };
+    }
+
+    buildSummary({
+        positions = [],
+        liquidBalance = "0",
+        reserved = "0",
+        targetReserve = "0",
+        capitalBase = "0",
+    }) {
+        const openPositions = positions.filter((position) => position?.status !== "closed");
+        const deployed = sumAllocated(openPositions);
+        const projectedAnnualReturn = openPositions.reduce(
+            (sum, position) => sum + projectedAnnualReturnForPosition(position),
+            0n
+        );
+        const allocationsByFamily = openPositions.reduce((acc, position) => {
+            const family = String(position.strategyFamily || "unknown");
+            const current = acc[family] || {
+                allocatedAmount: "0",
+                projectedAnnualReturn: "0",
+                positionCount: 0,
+            };
+            const nextAllocated = BigInt(current.allocatedAmount) + BigInt(position.allocatedAmount || "0");
+            const nextProjected = BigInt(current.projectedAnnualReturn) + projectedAnnualReturnForPosition(position);
+            acc[family] = {
+                allocatedAmount: nextAllocated.toString(),
+                projectedAnnualReturn: nextProjected.toString(),
+                allocationPct: amountToPct(nextAllocated, capitalBase),
+                positionCount: Number(current.positionCount || 0) + 1,
+            };
+            return acc;
+        }, {});
+        const weightedProjectedNetApy = deployed > 0n
+            ? Number((projectedAnnualReturn * 10000n) / deployed) / 100
+            : 0;
+
+        return {
+            liquidBalance: String(liquidBalance),
+            reserved: String(reserved),
+            targetReserve: String(targetReserve),
+            deployed: deployed.toString(),
+            deployedPct: amountToPct(deployed, capitalBase),
+            liquidPct: amountToPct(BigInt(liquidBalance || "0"), capitalBase),
+            projectedAnnualReturn: projectedAnnualReturn.toString(),
+            weightedProjectedNetApy,
+            openPositions: openPositions.length,
+            allocationsByFamily,
+            health: this.healthCheck(),
         };
     }
 
@@ -133,6 +212,7 @@ class TreasuryManager {
         const treasury = await this.agentState.getTreasury(agentId);
         const allowed = new Set(mandate.allowedTreasuryStrategies || []);
         const catalog = this.getVenueCatalog();
+        const currentPositions = (treasury.positions || []).filter((position) => position?.status !== "closed");
         const liquidBalance = toBigIntAmount(await this.agentWallet.getBalanceForAsset({
             owner: ownerPublicKey,
             assetCode: "USDC",
@@ -145,32 +225,55 @@ class TreasuryManager {
         );
         const capitalBase = toBigIntAmount(mandate.capitalBase || "1000");
         const targetReserve = (capitalBase * BigInt(mandate.reservePolicy?.targetLiquidPct || 20)) / 100n;
-        const deployable = liquidBalance > reserved + targetReserve
+        const currentDeployed = sumAllocated(currentPositions);
+        const liquidDeployable = liquidBalance > reserved + targetReserve
             ? liquidBalance - reserved - targetReserve
             : 0n;
+        const capitalDeployable = capitalBase > currentDeployed + reserved + targetReserve
+            ? capitalBase - currentDeployed - reserved - targetReserve
+            : 0n;
+        const deployable = liquidDeployable < capitalDeployable
+            ? liquidDeployable
+            : capitalDeployable;
 
         if (deployable <= 0n) {
-            const summary = {
-                liquidBalance: liquidBalance.toString(),
-                reserved: reserved.toString(),
-                targetReserve: targetReserve.toString(),
-                deployed: "0",
-            };
             return this.agentState.setTreasury(agentId, {
-                ...treasury,
-                summary,
+                positions: treasury.positions || [],
+                reservePolicy: mandate.reservePolicy,
+                summary: this.buildSummary({
+                    positions: treasury.positions || [],
+                    liquidBalance: liquidBalance.toString(),
+                    reserved: reserved.toString(),
+                    targetReserve: targetReserve.toString(),
+                    capitalBase: capitalBase.toString(),
+                }),
             });
         }
 
         const familyPlans = [];
+        const familyAllocated = currentPositions.reduce((acc, position) => {
+            const family = String(position.strategyFamily || "");
+            acc[family] = (acc[family] || 0n) + BigInt(position.allocatedAmount || "0");
+            return acc;
+        }, {});
         for (const [family, venues] of Object.entries(catalog)) {
             if (!allowed.has(family) || venues.length === 0) {
+                continue;
+            }
+            const capPct = BigInt(Number(venues[0].capPct || DEFAULT_CAPS[family] || 0));
+            const capAmount = (capitalBase * capPct) / 100n;
+            const currentFamilyAllocated = BigInt(familyAllocated[family] || 0n);
+            const remainingCap = capAmount > currentFamilyAllocated
+                ? capAmount - currentFamilyAllocated
+                : 0n;
+            if (remainingCap <= 0n) {
                 continue;
             }
             familyPlans.push({
                 family,
                 venue: venues[0],
                 projectedNetApy: Number(venues[0].projectedNetApy || 0),
+                remainingCap,
             });
         }
         familyPlans.sort((left, right) => Number(right.projectedNetApy) - Number(left.projectedNetApy));
@@ -181,9 +284,7 @@ class TreasuryManager {
             if (remaining <= 0n) {
                 break;
             }
-            const capPct = BigInt(Number(plan.venue.capPct || DEFAULT_CAPS[plan.family] || 0));
-            const capAmount = (capitalBase * capPct) / 100n;
-            const allocation = remaining > capAmount ? capAmount : remaining;
+            const allocation = remaining > plan.remainingCap ? plan.remainingCap : remaining;
             if (allocation <= 0n) {
                 continue;
             }
@@ -198,18 +299,17 @@ class TreasuryManager {
             remaining -= allocation;
         }
 
+        const allPositions = [...(treasury.positions || []), ...nextPositions];
         return this.agentState.setTreasury(agentId, {
-            positions: [...(treasury.positions || []), ...nextPositions],
+            positions: allPositions,
             reservePolicy: mandate.reservePolicy,
-            summary: {
+            summary: this.buildSummary({
+                positions: allPositions,
                 liquidBalance: liquidBalance.toString(),
                 reserved: reserved.toString(),
                 targetReserve: targetReserve.toString(),
-                deployed: nextPositions.reduce(
-                    (sum, position) => sum + BigInt(position.allocatedAmount || "0"),
-                    0n
-                ).toString(),
-            },
+                capitalBase: capitalBase.toString(),
+            }),
         });
     }
 
@@ -257,7 +357,13 @@ class TreasuryManager {
         await this.agentState.setTreasury(agentId, {
             positions: nextPositions,
             reservePolicy: treasury.reservePolicy,
-            summary: treasury.summary,
+            summary: this.buildSummary({
+                positions: nextPositions,
+                liquidBalance: treasury.summary?.liquidBalance || "0",
+                reserved: treasury.summary?.reserved || "0",
+                targetReserve: treasury.summary?.targetReserve || "0",
+                capitalBase: String((await this.agentState.getMandate(agentId)).capitalBase || "0"),
+            }),
         });
 
         return {

@@ -1,10 +1,7 @@
 const express = require("express");
-const jwt = require("jsonwebtoken");
 const { ethers } = require("ethers");
 
 const router = express.Router();
-
-const JWT_SECRET = process.env.AGENT_JWT_SECRET || process.env.AGENT_ENCRYPTION_KEY || "change-me";
 
 function asyncHandler(fn) {
     return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -18,18 +15,18 @@ function normalizeAddress(value = "") {
     return String(value || "").trim().toUpperCase();
 }
 
-function requireJwt(req, res, next) {
-    const auth = req.headers.authorization || "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
-    if (!token) {
-        return res.status(401).json({ error: "Missing agent session token." });
-    }
-    try {
-        req.agentSession = jwt.verify(token, JWT_SECRET);
-        next();
-    } catch {
-        res.status(401).json({ error: "Invalid or expired agent session token." });
-    }
+async function getAgentAuth(req) {
+    const services = await req.app.locals.ready;
+    return req.app.locals.agentAuth || services.agentAuth;
+}
+
+const requireJwt = asyncHandler(async (req, _res, next) => {
+    req.agentSession = await (await getAgentAuth(req)).verifyRequest(req);
+    next();
+});
+
+async function resolveOwner(req, { requireAuth = false } = {}) {
+    return (await getAgentAuth(req)).resolveOwnerPublicKey(req, { requireAuth });
 }
 
 async function resolveAgentContext(req) {
@@ -375,19 +372,21 @@ router.post("/market/treasury/rebalance", requirePaidAction("0.02", "Treasury op
 
 router.post("/agents", asyncHandler(async (req, res) => {
     const services = await req.app.locals.ready;
-    const ownerPublicKey = req.body?.ownerPublicKey;
-    if (!ownerPublicKey) {
-        return res.status(400).json({ error: "ownerPublicKey is required.", code: "owner_public_key_required" });
-    }
+    const { ownerPublicKey, session } = await resolveOwner(req);
     const wallet = await services.agentWallet.getOrCreateWallet(ownerPublicKey);
     const profile = await services.agentState.ensureAgentProfile({
         ownerPublicKey,
         agentPublicKey: wallet.publicKey,
     });
-    const token = jwt.sign({ ownerPublicKey }, JWT_SECRET, { expiresIn: "7d" });
+    const token = (await getAgentAuth(req)).signLocalSession({
+        ownerPublicKey,
+        authProvider: session?.authProvider || "local",
+        authSubject: session?.authSubject || "",
+    });
     res.status(201).json({
         code: "agent_ready",
         token,
+        authProvider: session?.authProvider || "local",
         agent: profile,
     });
 }));
@@ -397,7 +396,7 @@ router.get("/agents/:agentId/state", requireJwt, asyncHandler(async (req, res) =
     if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
         return res.status(403).json({ error: "Cannot inspect another agent state.", code: "agent_scope_forbidden" });
     }
-    const [walletState, mandate, performance, treasury, reservations, decisionLog, assets, sessions] = await Promise.all([
+    const [walletState, mandate, performance, treasury, reservations, decisionLog, assets, sessions, runtime] = await Promise.all([
         services.agentWallet.getBalances({ owner: ownerPublicKey }),
         services.agentState.getMandate(agentId),
         services.agentState.getPerformance(agentId),
@@ -406,6 +405,7 @@ router.get("/agents/:agentId/state", requireJwt, asyncHandler(async (req, res) =
         services.agentState.getDecisionLog(agentId, 50),
         services.chainService.listAssetSnapshots({ owner: agentPublicKey }),
         services.chainService.listSessions({ owner: agentPublicKey }),
+        services.agentRuntime.getState({ agentId }),
     ]);
     res.json({
         code: "agent_state_loaded",
@@ -417,11 +417,73 @@ router.get("/agents/:agentId/state", requireJwt, asyncHandler(async (req, res) =
             treasury,
             reservations,
             decisionLog,
+            runtime,
             positions: {
                 assets,
                 sessions,
             },
         },
+    });
+}));
+
+router.get("/agents/:agentId/runtime", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot inspect another agent runtime.", code: "agent_scope_forbidden" });
+    }
+    const runtime = await services.agentRuntime.getState({ agentId });
+    res.json({
+        code: "agent_runtime_loaded",
+        agentId,
+        runtime,
+    });
+}));
+
+router.post("/agents/:agentId/runtime/start", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId, ownerPublicKey } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot start another agent runtime.", code: "agent_scope_forbidden" });
+    }
+    const result = await services.agentRuntime.start({
+        agentId,
+        ownerPublicKey,
+        executeTreasury: req.body?.executeTreasury !== false,
+        executeClaims: req.body?.executeClaims !== false,
+    });
+    res.json({
+        code: "agent_runtime_started",
+        agentId,
+        ...result,
+    });
+}));
+
+router.post("/agents/:agentId/runtime/pause", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot pause another agent runtime.", code: "agent_scope_forbidden" });
+    }
+    const runtime = await services.agentRuntime.pause({ agentId });
+    res.json({
+        code: "agent_runtime_paused",
+        agentId,
+        runtime,
+    });
+}));
+
+router.post("/agents/:agentId/runtime/tick", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId, ownerPublicKey } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot tick another agent runtime.", code: "agent_scope_forbidden" });
+    }
+    const result = await services.agentRuntime.tick({
+        agentId,
+        ownerPublicKey,
+        reason: "manual",
+    });
+    res.json({
+        code: "agent_runtime_ticked",
+        agentId,
+        ...result,
     });
 }));
 

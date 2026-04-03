@@ -20,6 +20,7 @@
 - **Auction quote asset:** USDC via SAC
 - **Runtime assets:** USDC + XLM
 - **Wallet:** Freighter
+- **Managed agent auth:** local agent JWTs or Auth0 bearer tokens bound to a Stellar owner key
 - **Payment model:** x402 negotiation + reusable session settlement
 - **Exchange model:** timed English auction
 - **RWA model:** productive twin + private evidence + attestations + policy controls
@@ -96,6 +97,19 @@ npm run install:all
 ```bash
 cp .env.example .env
 ```
+
+If you want the managed-agent path protected by Auth0, fill:
+
+- `AUTH0_DOMAIN`
+- `AUTH0_AUDIENCE`
+- `AUTH0_ISSUER`
+- `AUTH0_OWNER_PUBLIC_KEY_CLAIM`
+
+For the live Continuum treasury loop, also fill:
+
+- `CONTINUUM_SAFE_YIELD_VENUES`
+- `CONTINUUM_BLEND_VENUES`
+- `CONTINUUM_AMM_VENUES`
 
 ### 3. Run the stack
 

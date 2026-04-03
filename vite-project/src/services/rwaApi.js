@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from './apiBase';
+import { getPreferredAgentAuthToken } from '../lib/agentAuthStorage';
 
 const DEFAULT_RWA_API_URL = getApiBaseUrl();
 
@@ -33,11 +34,7 @@ async function request(path, options = {}, query) {
 }
 
 function getAgentToken() {
-  try {
-    return localStorage.getItem('agent_session_token');
-  } catch {
-    return null;
-  }
+  return getPreferredAgentAuthToken();
 }
 
 function agentHeaders() {
@@ -260,6 +257,7 @@ export async function rebalanceMarketTreasury(sessionId) {
 export async function ensureManagedAgent(ownerPublicKey) {
   return request('/api/agents', {
     method: 'POST',
+    headers: agentHeaders(),
     body: JSON.stringify({ ownerPublicKey }),
   });
 }
@@ -270,6 +268,14 @@ export async function fetchAgentState(agentId) {
     headers: agentHeaders(),
   });
   return response.state || null;
+}
+
+export async function fetchAgentRuntime(agentId) {
+  const response = await request(`/api/agents/${agentId}/runtime`, {
+    method: 'GET',
+    headers: agentHeaders(),
+  });
+  return response.runtime || null;
 }
 
 export async function fetchAgentPerformance(agentId) {
@@ -303,4 +309,31 @@ export async function fetchAgentWalletState(agentId) {
     headers: agentHeaders(),
   });
   return response.wallet || null;
+}
+
+export async function startAgentRuntime(agentId, payload = {}) {
+  const response = await request(`/api/agents/${agentId}/runtime/start`, {
+    method: 'POST',
+    headers: agentHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return response.runtime || null;
+}
+
+export async function pauseAgentRuntime(agentId) {
+  const response = await request(`/api/agents/${agentId}/runtime/pause`, {
+    method: 'POST',
+    headers: agentHeaders(),
+    body: JSON.stringify({}),
+  });
+  return response.runtime || null;
+}
+
+export async function tickAgentRuntime(agentId) {
+  const response = await request(`/api/agents/${agentId}/runtime/tick`, {
+    method: 'POST',
+    headers: agentHeaders(),
+    body: JSON.stringify({}),
+  });
+  return response.runtime || null;
 }

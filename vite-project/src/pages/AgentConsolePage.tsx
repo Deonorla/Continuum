@@ -20,15 +20,26 @@ import { motion } from 'motion/react';
 import { cn } from '../lib/cn';
 import { useWallet } from '../context/WalletContext';
 import { useAgentWallet } from '../hooks/useAgentWallet';
-import { useAgentLoop, makeLogEntry, type LogEntry } from '../hooks/useAgentLoop';
 import {
   fetchAgentMandate,
   fetchAgentState,
   fetchMarketAssets,
+  pauseAgentRuntime,
   saveAgentMandate,
+  startAgentRuntime,
+  tickAgentRuntime,
 } from '../services/rwaApi.js';
 
 type AgentStatus = 'running' | 'paused' | 'idle';
+
+type LogEntry = {
+  id: number | string;
+  ts: number;
+  type: 'action' | 'decision' | 'info' | 'error' | 'profit';
+  message: string;
+  detail?: string;
+  amount?: string;
+};
 
 type MandateDraft = {
   targetReturnMinPct: string;
@@ -36,14 +47,6 @@ type MandateDraft = {
   liquidityFloorPct: string;
   rebalanceCadenceMinutes: string;
 };
-
-function toRuleSet(draft: MandateDraft) {
-  return [
-    { id: 'min_yield', enabled: true, value: draft.targetReturnMinPct },
-    { id: 'max_budget', enabled: true, value: draft.approvalThreshold },
-    { id: 'auto_claim', enabled: true, value: '1' },
-  ];
-}
 
 function formatShortAddress(value?: string | null) {
   if (!value) return 'Not connected';
@@ -96,20 +99,11 @@ function StatCard({ label, value, color = 'text-slate-900' }: { label: string; v
 export default function AgentConsolePage() {
   const { walletAddress } = useWallet();
   const { agentPublicKey, loading, error, activate } = useAgentWallet(walletAddress);
-  const { start: startLoop, stop: stopLoop } = useAgentLoop(agentPublicKey);
 
-  const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle');
   const [showSettings, setShowSettings] = useState(false);
   const [showFundModal, setShowFundModal] = useState(false);
   const [state, setState] = useState<any>(null);
   const [marketAssets, setMarketAssets] = useState<any[]>([]);
-  const [runtimeLogs, setRuntimeLogs] = useState<LogEntry[]>([
-    makeLogEntry({
-      type: 'info',
-      message: 'Continuum agent control plane ready.',
-      detail: 'Server-backed mandate, treasury, reservations, and performance are live.',
-    }),
-  ]);
   const [mandateDraft, setMandateDraft] = useState<MandateDraft>({
     targetReturnMinPct: '8',
     approvalThreshold: '250',
@@ -117,6 +111,13 @@ export default function AgentConsolePage() {
     rebalanceCadenceMinutes: '60',
   });
   const [savingMandate, setSavingMandate] = useState(false);
+  const [runtimeActionError, setRuntimeActionError] = useState('');
+  const runtime = state?.runtime || {};
+  const agentStatus: AgentStatus = runtime?.running
+    ? 'running'
+    : runtime?.status === 'paused'
+      ? 'paused'
+      : 'idle';
 
   const refreshState = useCallback(async () => {
     if (!agentPublicKey) {
@@ -156,34 +157,41 @@ export default function AgentConsolePage() {
     return () => clearInterval(interval);
   }, [agentPublicKey, agentStatus, refreshState]);
 
-  useEffect(() => () => stopLoop(), [stopLoop]);
-
-  const appendRuntimeLog = useCallback((entry: Omit<LogEntry, 'id' | 'ts'>) => {
-    setRuntimeLogs((current) => [...current.slice(-49), makeLogEntry(entry)]);
-  }, []);
-
-  const startAgent = useCallback(() => {
+  const startAgent = useCallback(async () => {
     if (!agentPublicKey) return;
-    setAgentStatus('running');
-    appendRuntimeLog({
-      type: 'info',
-      message: 'Autonomous Continuum loop started',
-      detail: `Min return ${mandateDraft.targetReturnMinPct}% · approval threshold ${mandateDraft.approvalThreshold} USDC`,
-    });
-    startLoop(toRuleSet(mandateDraft), appendRuntimeLog, () => {
-      void refreshState();
-    });
-  }, [agentPublicKey, appendRuntimeLog, mandateDraft, refreshState, startLoop]);
+    setRuntimeActionError('');
+    try {
+      await startAgentRuntime(agentPublicKey, {
+        executeTreasury: true,
+        executeClaims: true,
+      });
+      await refreshState();
+    } catch (runtimeError: any) {
+      setRuntimeActionError(runtimeError.message || 'Failed to start the managed runtime.');
+    }
+  }, [agentPublicKey, mandateDraft, refreshState]);
 
-  const pauseAgent = useCallback(() => {
-    stopLoop();
-    setAgentStatus('paused');
-    appendRuntimeLog({
-      type: 'info',
-      message: 'Autonomous Continuum loop paused',
-      detail: 'Server-backed state remains live while execution is paused.',
-    });
-  }, [appendRuntimeLog, stopLoop]);
+  const pauseAgent = useCallback(async () => {
+    if (!agentPublicKey) return;
+    setRuntimeActionError('');
+    try {
+      await pauseAgentRuntime(agentPublicKey);
+      await refreshState();
+    } catch (runtimeError: any) {
+      setRuntimeActionError(runtimeError.message || 'Failed to pause the managed runtime.');
+    }
+  }, [agentPublicKey, refreshState]);
+
+  const runSingleTick = useCallback(async () => {
+    if (!agentPublicKey) return;
+    setRuntimeActionError('');
+    try {
+      await tickAgentRuntime(agentPublicKey);
+      await refreshState();
+    } catch (runtimeError: any) {
+      setRuntimeActionError(runtimeError.message || 'Failed to run a managed tick.');
+    }
+  }, [agentPublicKey, refreshState]);
 
   const saveMandate = useCallback(async () => {
     if (!agentPublicKey) return;
@@ -195,36 +203,35 @@ export default function AgentConsolePage() {
         liquidityFloorPct: Number(mandateDraft.liquidityFloorPct || 10),
         rebalanceCadenceMinutes: Number(mandateDraft.rebalanceCadenceMinutes || 60),
       });
-      appendRuntimeLog({
-        type: 'decision',
-        message: 'Mandate saved to Continuum',
-        detail: `Liquidity floor ${mandateDraft.liquidityFloorPct}% · rebalance cadence ${mandateDraft.rebalanceCadenceMinutes} min`,
-      });
       await refreshState();
     } finally {
       setSavingMandate(false);
     }
-  }, [agentPublicKey, appendRuntimeLog, mandateDraft, refreshState]);
+  }, [agentPublicKey, mandateDraft, refreshState]);
 
-  const mergedLogs = useMemo(() => {
-    const serverLogs = Array.isArray(state?.decisionLog) ? state.decisionLog.map((entry: any) => ({
+  const mergedLogs = useMemo<LogEntry[]>(() => (
+    Array.isArray(state?.decisionLog) ? state.decisionLog.map((entry: any) => ({
       id: entry.id,
       ts: entry.ts,
       type: entry.type,
       message: entry.message,
       detail: entry.detail,
       amount: entry.amount,
-    })) : [];
-    return [...serverLogs, ...runtimeLogs]
-      .sort((left, right) => Number(right.ts) - Number(left.ts))
-      .slice(0, 50);
-  }, [runtimeLogs, state?.decisionLog]);
+    })) : []
+  ), [state?.decisionLog]);
 
   const performance = state?.performance || {};
   const treasury = state?.treasury || { positions: [], summary: {} };
+  const treasurySummary = treasury.summary || {};
+  const treasuryHealth = treasurySummary.health || {};
   const reservations = state?.reservations || [];
   const positions = state?.positions || { assets: [], sessions: [] };
   const walletState = state?.wallet || { balances: [] };
+  const runtimeStatusLabel = agentStatus === 'running'
+    ? 'Running'
+    : agentStatus === 'paused'
+      ? 'Paused'
+      : 'Idle';
   const totalAssets = Number(positions.assets?.length || 0);
   const totalReservations = reservations.reduce((sum: number, reservation: any) => sum + Number(reservation.reservedAmount || 0) / 1e7, 0);
 
@@ -245,6 +252,14 @@ export default function AgentConsolePage() {
           >
             <RefreshCw size={16} />
           </button>
+          {agentPublicKey && (
+            <button
+              onClick={() => void runSingleTick()}
+              className="px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50"
+            >
+              Run Tick
+            </button>
+          )}
           {!agentPublicKey ? (
             <button
               onClick={activate}
@@ -266,6 +281,12 @@ export default function AgentConsolePage() {
           )}
         </div>
       </div>
+
+      {runtimeActionError && (
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {runtimeActionError}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <StatCard label="Managed Wallet" value={formatShortAddress(agentPublicKey)} color="text-primary" />
@@ -371,6 +392,35 @@ export default function AgentConsolePage() {
 
               <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 space-y-3">
                 <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Treasury Positions</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Deployed', value: formatMoney(Number(treasurySummary.deployed || 0) / 1e7) },
+                    { label: 'Projected Return', value: formatMoney(Number(treasurySummary.projectedAnnualReturn || 0) / 1e7) },
+                    { label: 'Weighted APY', value: `${Number(treasurySummary.weightedProjectedNetApy || 0).toFixed(2)}%` },
+                    { label: 'Liquid Balance', value: formatMoney(Number(treasurySummary.liquidBalance || 0) / 1e7) },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-xl border border-slate-100 bg-white px-3 py-2">
+                      <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">{item.label}</p>
+                      <p className="text-xs font-bold text-slate-800">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: 'Safe Yield', ok: Boolean(treasuryHealth.safeYield?.ok) },
+                    { label: 'Blend', ok: Boolean(treasuryHealth.blendLending?.ok) },
+                    { label: 'Stellar AMM', ok: Boolean(treasuryHealth.stellarAmm?.ok) },
+                  ].map((entry) => (
+                    <span
+                      key={entry.label}
+                      className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${
+                        entry.ok ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-700'
+                      }`}
+                    >
+                      {entry.label}
+                    </span>
+                  ))}
+                </div>
                 {(treasury.positions || []).length === 0 ? (
                   <p className="text-sm text-slate-400">No treasury deployments yet. Rebalance from the Marketplace flow after opening a payment session.</p>
                 ) : (
@@ -395,7 +445,11 @@ export default function AgentConsolePage() {
               <h3 className="text-sm font-headline font-bold uppercase tracking-widest text-slate-700">Decision Log</h3>
             </div>
             <div className="max-h-[30rem] overflow-y-auto">
-              {mergedLogs.map((entry) => <LogRow key={`${entry.id}-${entry.ts}`} entry={entry} />)}
+              {mergedLogs.length === 0 ? (
+                <p className="text-sm text-slate-400">The managed runtime hasn’t made any decisions yet.</p>
+              ) : (
+                mergedLogs.map((entry) => <LogRow key={`${entry.id}-${entry.ts}`} entry={entry} />)
+              )}
             </div>
           </div>
         </div>
@@ -409,11 +463,35 @@ export default function AgentConsolePage() {
               </div>
               <span className={cn(
                 'rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest',
-                agentStatus === 'running' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500',
+                agentStatus === 'running'
+                  ? 'bg-emerald-50 text-emerald-600'
+                  : agentStatus === 'paused'
+                    ? 'bg-amber-50 text-amber-600'
+                    : 'bg-slate-100 text-slate-500',
               )}>
-                {agentStatus === 'running' ? 'Running' : 'Idle'}
+                {runtimeStatusLabel}
               </span>
             </div>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">Last Tick</p>
+                <p className="text-sm font-bold text-slate-800">
+                  {runtime.lastTickAt ? new Date(Number(runtime.lastTickAt) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Not yet'}
+                </p>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">Heartbeat</p>
+                <p className="text-sm font-bold text-slate-800">{String(runtime.heartbeatCount || 0)}</p>
+              </div>
+            </div>
+            <div className="mb-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+              Last loop: {String(runtime.lastSummary?.opportunities || 0)} opportunities · {String(runtime.lastSummary?.autoBids || 0)} auto bids · {String(runtime.lastSummary?.settledAuctions || 0)} settlements
+            </div>
+            {runtime.lastError && (
+              <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">
+                {runtime.lastError}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               {[
                 { label: 'Net P&L', value: formatMoney(performance.netPnL ? Number(performance.netPnL) / 1e7 : 0), color: 'text-secondary' },
@@ -507,10 +585,12 @@ export default function AgentConsolePage() {
               {(positions.assets || []).slice(0, 4).map((asset: any) => (
                 <div key={asset.tokenId} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-bold text-slate-800">Twin #{asset.tokenId}</p>
-                    <span className="text-xs font-bold text-secondary">{formatMoney(Number(asset.claimableYield || 0) / 1e7)}</span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1">{asset.verificationStatusLabel || asset.verificationStatus}</p>
+                  <p className="text-sm font-bold text-slate-800">Twin #{asset.tokenId}</p>
+                  <span className="text-xs font-bold text-secondary">{formatMoney(Number(asset.claimableYield || 0) / 1e7)}</span>
+                </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {(asset.verificationStatusLabel || asset.verificationStatus)} · platform/economic ownership only
+                  </p>
                 </div>
               ))}
               {totalAssets === 0 && <p className="text-sm text-slate-400">No asset twins acquired yet.</p>}

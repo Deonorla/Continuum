@@ -380,9 +380,14 @@ describe("Continuum API Integration", function () {
                 if (winningBid?.bidder) {
                     const winnerProfile = await agentState.getAgentProfile(String(winningBid.bidder).toUpperCase());
                     if (winnerProfile) {
-                        const performance = await agentState.getPerformance(winnerProfile.agentId);
-                        await agentState.updatePerformance(winnerProfile.agentId, {
-                            auctionWins: Number(performance.auctionWins || 0) + 1,
+                        await agentState.recordAuctionOutcome(winnerProfile.agentId, {
+                            outcome: "win",
+                            amount: winningBid.amountStroops,
+                            metadata: {
+                                auctionId: Number(auctionId),
+                                assetId: Number(targetAuction.assetId),
+                                winningBidAmount: winningBid.amountStroops,
+                            },
                         });
                         await agentState.resolveReservation(winnerProfile.agentId, winningBid.bidId, {
                             status: "settled",
@@ -530,6 +535,9 @@ describe("Continuum API Integration", function () {
 
         expect(stateResponse.body.state.runtime.running).to.equal(true);
         expect(stateResponse.body.state.performance.realizedYield).to.equal("7000000");
+        expect(stateResponse.body.state.performance.attribution.yieldContribution).to.equal("7000000");
+        expect(stateResponse.body.state.performance.attribution.grossPositivePnL).to.equal("7000000");
+        expect(stateResponse.body.state.performance.recentEvents.some((event) => event.category === "yield")).to.equal(true);
         expect(stateResponse.body.state.treasury.positions).to.have.length(1);
 
         const pauseResponse = await request(app)
@@ -615,6 +623,9 @@ describe("Continuum API Integration", function () {
             .expect(200);
 
         expect(stateResponse.body.state.performance.auctionWins).to.equal(1);
+        expect(stateResponse.body.state.performance.attribution.auctionWins).to.equal(1);
+        expect(stateResponse.body.state.performance.attribution.winRatePct).to.equal(100);
+        expect(stateResponse.body.state.performance.recentEvents.some((event) => event.category === "auction")).to.equal(true);
         expect(stateResponse.body.state.performance.paidActionFees).to.equal("500000");
         expect(stateResponse.body.state.reservations).to.have.length(0);
         expect(stateResponse.body.state.positions.assets.map((asset) => Number(asset.tokenId))).to.include(8);
@@ -660,6 +671,8 @@ describe("Continuum API Integration", function () {
             .expect(200);
 
         expect(stateResponse.body.state.performance.paidActionFees).to.equal("500000");
+        expect(stateResponse.body.state.performance.attribution.feeDrag).to.equal("500000");
+        expect(stateResponse.body.state.performance.recentEvents.some((event) => event.category === "fee")).to.equal(true);
         expect(stateResponse.body.state.reservations).to.have.length(1);
         expect(stateResponse.body.state.reservations[0].reservedAmount).to.equal("2750000000");
     });

@@ -244,6 +244,8 @@ export default function AgentConsolePage() {
   ), [state?.decisionLog]);
 
   const performance = state?.performance || {};
+  const performanceAttribution = performance.attribution || {};
+  const performanceEvents = Array.isArray(performance.recentEvents) ? [...performance.recentEvents].reverse() : [];
   const treasury = state?.treasury || { positions: [], summary: {} };
   const treasurySummary = treasury.summary || {};
   const treasuryHealth = treasurySummary.health || {};
@@ -615,15 +617,74 @@ export default function AgentConsolePage() {
             <div className="grid grid-cols-2 gap-3">
               {[
                 { label: 'Net P&L', value: formatMoney(performance.netPnL ? Number(performance.netPnL) / 1e7 : 0), color: 'text-secondary' },
+                { label: 'Gross Positive', value: formatMoney(performanceAttribution.grossPositivePnL ? Number(performanceAttribution.grossPositivePnL) / 1e7 : 0), color: 'text-primary' },
                 { label: 'Fees Paid', value: formatMoney(performance.paidActionFees ? Number(performance.paidActionFees) / 1e7 : 0), color: 'text-amber-600' },
+                { label: 'Realized Yield', value: formatMoney(performance.realizedYield ? Number(performance.realizedYield) / 1e7 : 0), color: 'text-secondary' },
                 { label: 'Treasury Return', value: formatMoney(performance.treasuryReturn ? Number(performance.treasuryReturn) / 1e7 : 0), color: 'text-purple-600' },
-                { label: 'Auction Losses', value: String(performance.auctionLosses || 0), color: 'text-slate-700' },
+                { label: 'Auction Win Rate', value: `${Number(performanceAttribution.winRatePct || 0).toFixed(1)}%`, color: 'text-slate-700' },
               ].map((item) => (
                 <div key={item.label} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
                   <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">{item.label}</p>
                   <p className={`text-lg font-bold ${item.color}`}>{item.value}</p>
                 </div>
               ))}
+            </div>
+            <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-slate-400">Attribution</p>
+                  <p className="text-sm font-bold text-slate-800">How yield, treasury, fees, and auctions are shaping this book</p>
+                </div>
+                <span className="rounded-full bg-white border border-slate-100 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                  {String(performanceAttribution.totalAuctionOutcomes || 0)} outcomes
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: 'Yield Contribution', value: formatMoney(performanceAttribution.yieldContribution ? Number(performanceAttribution.yieldContribution) / 1e7 : 0) },
+                  { label: 'Treasury Contribution', value: formatMoney(performanceAttribution.treasuryContribution ? Number(performanceAttribution.treasuryContribution) / 1e7 : 0) },
+                  { label: 'Fee Drag', value: formatMoney(performanceAttribution.feeDrag ? Number(performanceAttribution.feeDrag) / 1e7 : 0) },
+                  { label: 'Auction Record', value: `${String(performanceAttribution.auctionWins || 0)}W / ${String(performanceAttribution.auctionLosses || 0)}L` },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-xl border border-slate-100 bg-white px-3 py-2">
+                    <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">{item.label}</p>
+                    <p className="text-xs font-bold text-slate-800">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-2">Recent Performance Events</p>
+                <div className="space-y-2">
+                  {performanceEvents.length === 0 ? (
+                    <p className="text-sm text-slate-400">No realized performance events yet.</p>
+                  ) : (
+                    performanceEvents.slice(0, 6).map((event: any) => (
+                      <div key={event.id} className="rounded-xl border border-slate-100 bg-white px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">{event.label}</p>
+                            <p className="text-xs text-slate-500 mt-1">{String(event.category || 'event').toUpperCase()}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className={`text-xs font-bold ${
+                              event.direction === 'inflow'
+                                ? 'text-secondary'
+                                : event.direction === 'outflow'
+                                  ? 'text-amber-600'
+                                  : 'text-slate-600'
+                            }`}>
+                              {event.amount ? formatMoney(Number(event.amount || 0) / 1e7) : 'Tracked'}
+                            </p>
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              {event.ts ? new Date(Number(event.ts)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 

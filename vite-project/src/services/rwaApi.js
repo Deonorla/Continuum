@@ -173,9 +173,13 @@ export async function syncPaymentSessionMetadata(sessionId, payload) {
   return response.session || null;
 }
 
-export async function fetchMarketAssets() {
-  const response = await request('/api/market/assets', { method: 'GET' });
+export async function fetchMarketAssets(query = {}) {
+  const response = await request('/api/market/assets', { method: 'GET' }, query);
   return response.assets || [];
+}
+
+export async function fetchMarketCatalog(query = {}) {
+  return request('/api/market/assets', { method: 'GET' }, query);
 }
 
 export async function fetchMarketAsset(assetId) {
@@ -198,7 +202,8 @@ export async function createMarketAuction(assetId, payload) {
 }
 
 export async function fetchAuction(auctionId) {
-  return request(`/api/market/auctions/${auctionId}`, { method: 'GET' });
+  const response = await request(`/api/market/auctions/${auctionId}`, { method: 'GET' });
+  return response.auction || null;
 }
 
 export async function placeAuctionBid(auctionId, payload) {
@@ -221,24 +226,31 @@ export async function settleAuction(auctionId) {
 }
 
 export async function fetchMarketPositions() {
-  return request('/api/market/positions', {
+  const response = await request('/api/market/positions', {
     method: 'GET',
     headers: agentHeaders(),
   });
+  return response.positions || null;
 }
 
-export async function claimMarketYield(tokenId) {
+export async function claimMarketYield(tokenId, sessionId) {
   return request('/api/market/yield/claim', {
     method: 'POST',
-    headers: agentHeaders(),
+    headers: {
+      ...agentHeaders(),
+      ...(sessionId ? { 'x-stream-stream-id': String(sessionId) } : {}),
+    },
     body: JSON.stringify({ tokenId }),
   });
 }
 
-export async function routeMarketYield(payload = {}) {
+export async function routeMarketYield(payload = {}, sessionId) {
   return request('/api/market/yield/route', {
     method: 'POST',
-    headers: agentHeaders(),
+    headers: {
+      ...agentHeaders(),
+      ...(sessionId ? { 'x-stream-stream-id': String(sessionId) } : {}),
+    },
     body: JSON.stringify(payload),
   });
 }
@@ -268,6 +280,22 @@ export async function fetchAgentState(agentId) {
     headers: agentHeaders(),
   });
   return response.state || null;
+}
+
+export async function openAgentPaymentSession(agentId, payload) {
+  return request(`/api/agents/${agentId}/sessions`, {
+    method: 'POST',
+    headers: agentHeaders(),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function cancelAgentPaymentSession(agentId, sessionId) {
+  return request(`/api/agents/${agentId}/sessions/${sessionId}/cancel`, {
+    method: 'POST',
+    headers: agentHeaders(),
+    body: JSON.stringify({}),
+  });
 }
 
 export async function fetchAgentRuntime(agentId) {
@@ -309,6 +337,54 @@ export async function fetchAgentWalletState(agentId) {
     headers: agentHeaders(),
   });
   return response.wallet || null;
+}
+
+export async function fetchAgentScreens(agentId) {
+  const response = await request(`/api/agents/${agentId}/screens`, {
+    method: 'GET',
+    headers: agentHeaders(),
+  });
+  return response.screens || [];
+}
+
+export async function saveAgentScreen(agentId, payload) {
+  const response = await request(`/api/agents/${agentId}/screens`, {
+    method: 'POST',
+    headers: agentHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return response.screen || null;
+}
+
+export async function deleteAgentScreen(agentId, screenId) {
+  return request(`/api/agents/${agentId}/screens/${screenId}`, {
+    method: 'DELETE',
+    headers: agentHeaders(),
+  });
+}
+
+export async function fetchAgentWatchlist(agentId) {
+  const response = await request(`/api/agents/${agentId}/watchlist`, {
+    method: 'GET',
+    headers: agentHeaders(),
+  });
+  return response.watchlist || [];
+}
+
+export async function addAgentWatchAsset(agentId, payload) {
+  const response = await request(`/api/agents/${agentId}/watchlist`, {
+    method: 'POST',
+    headers: agentHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return response.asset || null;
+}
+
+export async function removeAgentWatchAsset(agentId, assetId) {
+  return request(`/api/agents/${agentId}/watchlist/${assetId}`, {
+    method: 'DELETE',
+    headers: agentHeaders(),
+  });
 }
 
 export async function startAgentRuntime(agentId, payload = {}) {

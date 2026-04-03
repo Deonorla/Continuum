@@ -32,11 +32,18 @@ function defaultRuntime(agentId = "") {
             autoBids: 0,
             settledAuctions: 0,
             treasuryExecuted: false,
+            screenMatches: 0,
+            watchlistSignals: 0,
+            screenHighlights: [],
+            watchlistHighlights: [],
+            bidFocus: null,
         },
         fingerprints: {
             opportunities: "",
             risks: "",
             rebalance: "",
+            screens: "",
+            watchlist: "",
         },
         updatedAt: nowSeconds(),
     };
@@ -194,6 +201,22 @@ function defaultMandate(agentId = "") {
     };
 }
 
+function defaultSavedScreens(agentId = "") {
+    return {
+        agentId: String(agentId).toUpperCase(),
+        screens: [],
+        updatedAt: nowSeconds(),
+    };
+}
+
+function defaultWatchlist(agentId = "") {
+    return {
+        agentId: String(agentId).toUpperCase(),
+        assets: [],
+        updatedAt: nowSeconds(),
+    };
+}
+
 function mergeMandate(agentId, payload = {}, current = defaultMandate(agentId)) {
     const next = {
         ...current,
@@ -294,6 +317,8 @@ class AgentStateService {
             reservePolicy: mandate.reservePolicy,
             updatedAt: nowSeconds(),
         });
+        await this.store.upsertRecord(agentKey(agentId, "screens"), defaultSavedScreens(agentId));
+        await this.store.upsertRecord(agentKey(agentId, "watchlist"), defaultWatchlist(agentId));
         await this.store.upsertRecord(agentKey(agentId, "runtime"), defaultRuntime(agentId));
         return profile;
     }
@@ -313,6 +338,110 @@ class AgentStateService {
     async getMandate(agentId) {
         const mandate = await this.store.getRecord(agentKey(agentId, "mandate"));
         return mandate || defaultMandate(agentId);
+    }
+
+    async getSavedScreens(agentId) {
+        const record = await this.store.getRecord(agentKey(agentId, "screens"));
+        const screens = Array.isArray(record?.screens) ? record.screens : [];
+        return screens
+            .map((screen) => ({ ...screen }))
+            .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0));
+    }
+
+    async saveScreen(agentId, payload = {}) {
+        const record = await this.store.getRecord(agentKey(agentId, "screens")) || defaultSavedScreens(agentId);
+        const screens = Array.isArray(record.screens) ? record.screens : [];
+        const now = nowSeconds();
+        const screenId = String(payload.screenId || `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`);
+        const nextScreen = {
+            screenId,
+            name: String(payload.name || "Saved Screen").trim() || "Saved Screen",
+            description: String(payload.description || "").trim(),
+            filters: { ...(payload.filters || {}) },
+            summary: { ...(payload.summary || {}) },
+            createdAt: Number(payload.createdAt || now),
+            updatedAt: now,
+        };
+        const index = screens.findIndex((screen) => String(screen.screenId) === screenId);
+        if (index >= 0) {
+            screens[index] = {
+                ...screens[index],
+                ...nextScreen,
+                createdAt: Number(screens[index].createdAt || now),
+            };
+        } else {
+            screens.push(nextScreen);
+        }
+        record.agentId = String(agentId).toUpperCase();
+        record.screens = screens.slice(-20);
+        record.updatedAt = now;
+        await this.store.upsertRecord(agentKey(agentId, "screens"), record);
+        return nextScreen;
+    }
+
+    async deleteSavedScreen(agentId, screenId) {
+        const record = await this.store.getRecord(agentKey(agentId, "screens")) || defaultSavedScreens(agentId);
+        const screens = Array.isArray(record.screens) ? record.screens : [];
+        const nextScreens = screens.filter((screen) => String(screen.screenId) !== String(screenId));
+        record.agentId = String(agentId).toUpperCase();
+        record.screens = nextScreens;
+        record.updatedAt = nowSeconds();
+        await this.store.upsertRecord(agentKey(agentId, "screens"), record);
+        return nextScreens;
+    }
+
+    async getWatchlist(agentId) {
+        const record = await this.store.getRecord(agentKey(agentId, "watchlist"));
+        const assets = Array.isArray(record?.assets) ? record.assets : [];
+        return assets
+            .map((asset) => ({ ...asset }))
+            .sort((left, right) => Number(right.watchedAt || 0) - Number(left.watchedAt || 0));
+    }
+
+    async watchAsset(agentId, payload = {}) {
+        const record = await this.store.getRecord(agentKey(agentId, "watchlist")) || defaultWatchlist(agentId);
+        const assets = Array.isArray(record.assets) ? record.assets : [];
+        const tokenId = Number(payload.tokenId);
+        if (!Number.isFinite(tokenId) || tokenId <= 0) {
+            throw Object.assign(new Error("tokenId is required"), { status: 400, code: "watch_asset_invalid" });
+        }
+        const now = nowSeconds();
+        const nextAsset = {
+            tokenId,
+            name: String(payload.name || `Twin #${tokenId}`).trim() || `Twin #${tokenId}`,
+            assetType: String(payload.assetType || "").trim(),
+            verificationStatus: String(payload.verificationStatus || "").trim(),
+            yieldRate: Number(payload.yieldRate || 0),
+            riskScore: Number(payload.riskScore || 0),
+            watchedAt: now,
+            note: String(payload.note || "").trim(),
+        };
+        const index = assets.findIndex((asset) => Number(asset.tokenId) === tokenId);
+        if (index >= 0) {
+            assets[index] = {
+                ...assets[index],
+                ...nextAsset,
+                watchedAt: Number(assets[index].watchedAt || now),
+            };
+        } else {
+            assets.push(nextAsset);
+        }
+        record.agentId = String(agentId).toUpperCase();
+        record.assets = assets.slice(-50);
+        record.updatedAt = now;
+        await this.store.upsertRecord(agentKey(agentId, "watchlist"), record);
+        return nextAsset;
+    }
+
+    async unwatchAsset(agentId, tokenId) {
+        const record = await this.store.getRecord(agentKey(agentId, "watchlist")) || defaultWatchlist(agentId);
+        const assets = Array.isArray(record.assets) ? record.assets : [];
+        const nextAssets = assets.filter((asset) => Number(asset.tokenId) !== Number(tokenId));
+        record.agentId = String(agentId).toUpperCase();
+        record.assets = nextAssets;
+        record.updatedAt = nowSeconds();
+        await this.store.upsertRecord(agentKey(agentId, "watchlist"), record);
+        return nextAssets;
     }
 
     async setMandate(agentId, payload = {}) {

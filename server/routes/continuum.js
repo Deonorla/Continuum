@@ -1,7 +1,8 @@
 const express = require("express");
 const { ethers } = require("ethers");
 const { generateDueDiligence, aggregateMarketIntel } = require("../services/assetIntelligence");
-const { screenAssets } = require("../services/assetScreener");
+const { screenAssets, parseGoal } = require("../services/assetScreener");
+const { formatStellarAmount, normalizeStellarAmount } = require("../services/stellarAnchorService");
 
 const router = express.Router();
 
@@ -77,6 +78,19 @@ function productiveOnly(asset) {
     return [1, 2, 3].includes(Number(asset?.assetType || 0));
 }
 
+const MARKET_TYPE_TO_CHAIN_ASSET_TYPE = {
+    real_estate: 1,
+    vehicle: 2,
+    commodity: 3,
+};
+
+function assetTypeKey(assetType) {
+    const numericType = Number(assetType || 0);
+    if (numericType === 1) return "real_estate";
+    if (numericType === 2) return "vehicle";
+    return "commodity";
+}
+
 function marketAssetSummary(asset, auction) {
     return {
         ...asset,
@@ -92,6 +106,330 @@ function percentage(part, total) {
     return Number(((Number(part || 0) / Number(total)) * 100).toFixed(1));
 }
 
+function sumStringAmounts(values = []) {
+    return values.reduce((sum, value) => sum + BigInt(value || "0"), 0n);
+}
+
+function normalizeText(value = "") {
+    return String(value || "").trim().toLowerCase();
+}
+
+function parseBooleanQuery(value) {
+    if (value === undefined || value === null || value === "") return false;
+    return ["1", "true", "yes", "on"].includes(String(value).trim().toLowerCase());
+}
+
+function parseOptionalNumber(value) {
+    if (value === undefined || value === null || value === "") return undefined;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function buildMarketBrowseFilters(query = {}) {
+    const search = String(query.search || "").trim();
+    const goal = String(query.goal || "").trim();
+    const type = String(query.type || "").trim();
+    const criteria = goal ? { ...parseGoal(goal) } : {};
+    const mappedType = MARKET_TYPE_TO_CHAIN_ASSET_TYPE[type];
+    const minYield = parseOptionalNumber(query.minYield);
+    const maxYield = parseOptionalNumber(query.maxYield);
+    const maxRisk = parseOptionalNumber(query.maxRisk);
+    const verifiedOnly = parseBooleanQuery(query.verifiedOnly);
+    const rentalReady = parseBooleanQuery(query.rentalReady);
+    const hasAuction = parseBooleanQuery(query.hasAuction);
+    const limit = parseOptionalNumber(query.limit);
+
+    if (mappedType) criteria.assetTypes = [mappedType];
+    if (minYield !== undefined) criteria.minYield = minYield;
+    if (maxYield !== undefined) criteria.maxYield = maxYield;
+    if (maxRisk !== undefined) criteria.maxRisk = maxRisk;
+    if (verifiedOnly) criteria.verifiedOnly = true;
+    if (rentalReady) criteria.rentalReadyOnly = true;
+    if (limit !== undefined) criteria.limit = limit;
+
+    const appliedFilters = {
+        search: search || null,
+        goal: goal || null,
+        type: type || null,
+        minYield: minYield ?? null,
+        maxYield: maxYield ?? null,
+        maxRisk: maxRisk ?? null,
+        verifiedOnly,
+        rentalReady,
+        hasAuction,
+        limit: limit ?? null,
+    };
+
+    return {
+        search,
+        goal,
+        hasAuction,
+        criteria,
+        appliedFilters,
+        activeFilterCount: Object.values(appliedFilters).filter((value) => {
+            if (value === null || value === undefined || value === false) return false;
+            if (typeof value === "string") return Boolean(value.trim());
+            return true;
+        }).length,
+    };
+}
+
+function assetMatchesSearch(asset, search = "") {
+    const query = normalizeText(search);
+    if (!query) return true;
+    const haystack = [
+        asset?.publicMetadata?.name,
+        asset?.publicMetadata?.description,
+        asset?.publicMetadata?.location,
+        asset?.publicMetadataURI,
+        asset?.metadataURI,
+        asset?.name,
+        asset?.description,
+        asset?.location,
+        asset?.jurisdiction,
+        asset?.issuer,
+    ]
+        .filter(Boolean)
+        .map((value) => normalizeText(value))
+        .join(" ");
+    return haystack.includes(query);
+}
+
+function applyMarketBrowseFilters(assets = [], browseFilters = {}) {
+    const baseFiltered = assets.filter((asset) => {
+        if (!assetMatchesSearch(asset, browseFilters.search)) return false;
+        if (browseFilters.hasAuction && !asset.market?.hasActiveAuction) return false;
+        return true;
+    });
+
+    const rankedAssets = screenAssets(baseFiltered, {
+        ...browseFilters.criteria,
+        limit: baseFiltered.length,
+    });
+    const rankedByTokenId = new Map(
+        rankedAssets.map(({ asset: _asset, ...entry }) => [Number(entry.tokenId), entry]),
+    );
+    const requiresScreening = Object.keys(browseFilters.criteria || {}).length > 0;
+    const filteredAssets = requiresScreening
+        ? baseFiltered.filter((asset) => rankedByTokenId.has(Number(asset.tokenId)))
+        : baseFiltered;
+
+    return {
+        assets: filteredAssets.map((asset) => ({
+            ...asset,
+            screening: rankedByTokenId.get(Number(asset.tokenId)) || null,
+        })),
+        rankedAssets,
+    };
+}
+
+function findWalletBalance(walletState = {}, assetCode = "USDC", assetIssuer = "") {
+    const normalizedCode = String(assetCode || "USDC").toUpperCase();
+    const normalizedIssuer = String(assetIssuer || "");
+    return (walletState.balances || []).find((balance) => {
+        if (normalizedCode === "XLM") {
+            return String(balance.assetCode || "XLM").toUpperCase() === "XLM";
+        }
+        return (
+            String(balance.assetCode || "").toUpperCase() === normalizedCode
+            && String(balance.assetIssuer || "") === normalizedIssuer
+        );
+    }) || null;
+}
+
+function liquidityStatusLabel(status) {
+    if (status === "below_floor") return "Below floor";
+    if (status === "near_floor") return "Near floor";
+    return "Healthy";
+}
+
+function buildLiquiditySummary({
+    walletState = {},
+    mandate = {},
+    reservations = [],
+    treasury = {},
+    assetCode = "USDC",
+    assetIssuer = "",
+}) {
+    const reservePolicy = mandate.reservePolicy || {};
+    const capitalBase = normalizeStellarAmount(mandate.capitalBase || "0");
+    const liquidityFloorPct = Number(mandate.liquidityFloorPct ?? reservePolicy.minLiquidPct ?? 10);
+    const targetLiquidPct = Number(reservePolicy.targetLiquidPct ?? 20);
+    const walletBalanceRecord = findWalletBalance(walletState, assetCode, assetIssuer);
+    const walletBalance = walletBalanceRecord
+        ? normalizeStellarAmount(walletBalanceRecord.balance || "0")
+        : 0n;
+    const reservedCapital = sumStringAmounts(
+        (reservations || []).map((reservation) => reservation.reservedAmount || "0"),
+    );
+    const treasuryDeployed = BigInt(
+        treasury?.summary?.deployed
+        || sumStringAmounts((treasury?.positions || []).map((position) => position.allocatedAmount || "0"))
+    );
+    const liquidityFloorAmount = capitalBase > 0n
+        ? (capitalBase * BigInt(Math.max(0, Math.round(liquidityFloorPct)))) / 100n
+        : 0n;
+    const targetReserveAmount = capitalBase > 0n
+        ? (capitalBase * BigInt(Math.max(0, Math.round(targetLiquidPct)))) / 100n
+        : 0n;
+    const immediateBidHeadroom = walletBalance > liquidityFloorAmount
+        ? walletBalance - liquidityFloorAmount
+        : 0n;
+    const status = walletBalance < liquidityFloorAmount
+        ? "below_floor"
+        : walletBalance < targetReserveAmount
+            ? "near_floor"
+            : "healthy";
+
+    return {
+        assetCode: String(assetCode || "USDC").toUpperCase(),
+        assetIssuer: String(assetIssuer || ""),
+        walletBalance: walletBalance.toString(),
+        walletBalanceDisplay: formatStellarAmount(walletBalance),
+        reservedCapital: reservedCapital.toString(),
+        reservedCapitalDisplay: formatStellarAmount(reservedCapital),
+        treasuryDeployed: treasuryDeployed.toString(),
+        treasuryDeployedDisplay: formatStellarAmount(treasuryDeployed),
+        liquidityFloorAmount: liquidityFloorAmount.toString(),
+        liquidityFloorAmountDisplay: formatStellarAmount(liquidityFloorAmount),
+        targetReserveAmount: targetReserveAmount.toString(),
+        targetReserveAmountDisplay: formatStellarAmount(targetReserveAmount),
+        immediateBidHeadroom: immediateBidHeadroom.toString(),
+        immediateBidHeadroomDisplay: formatStellarAmount(immediateBidHeadroom),
+        liquidityFloorPct,
+        targetLiquidPct,
+        canRecallFromTreasury: treasuryDeployed > 0n,
+        status,
+        statusLabel: liquidityStatusLabel(status),
+    };
+}
+
+function buildWalletReadinessSummary(wallet = {}, { paymentAssetCode = "USDC", paymentAssetIssuer = "" } = {}) {
+    const nativeBalance = findWalletBalance(wallet, "XLM", "");
+    const paymentBalance = findWalletBalance(wallet, paymentAssetCode, paymentAssetIssuer);
+    const nativeAmount = nativeBalance
+        ? normalizeStellarAmount(nativeBalance.balance || "0")
+        : 0n;
+    const paymentAmount = paymentBalance
+        ? normalizeStellarAmount(paymentBalance.balance || "0")
+        : 0n;
+    const funded = nativeAmount > 0n;
+    const hasPaymentTrustline = Boolean(paymentBalance);
+    const paymentReady = funded && hasPaymentTrustline;
+    const status = paymentReady
+        ? "ready"
+        : !funded
+            ? "unfunded"
+            : "needs_trustline";
+    const statusLabel = paymentReady
+        ? "Ready for paid actions"
+        : !funded
+            ? "Needs XLM funding"
+            : "Needs USDC trustline";
+
+    return {
+        funded,
+        hasPaymentTrustline,
+        paymentReady,
+        status,
+        statusLabel,
+        balanceCount: Array.isArray(wallet.balances) ? wallet.balances.length : 0,
+        nativeBalance: nativeAmount.toString(),
+        nativeBalanceDisplay: formatStellarAmount(nativeAmount),
+        paymentAssetCode: String(paymentAssetCode || "USDC").toUpperCase(),
+        paymentAssetIssuer: String(paymentAssetIssuer || ""),
+        paymentBalance: paymentAmount.toString(),
+        paymentBalanceDisplay: formatStellarAmount(paymentAmount),
+    };
+}
+
+function buildReservationExposureEntry(reservation, auction) {
+    const reservedAmount = BigInt(reservation?.reservedAmount || "0");
+    const highestBidAmount = BigInt(auction?.highestBid?.amountStroops || "0");
+    const minimumNextBidAmount = BigInt(auction?.minimumNextBidStroops || "0");
+    const now = nowSeconds();
+    const ended = Boolean(auction && Number(auction.endTime || 0) <= now);
+    const isLeading = Boolean(auction && Number(auction.highestBid?.bidId || 0) === Number(reservation?.bidId || 0));
+    const readyToSettle = Boolean(ended && isLeading);
+    const nextBidGap = auction && !isLeading && minimumNextBidAmount > reservedAmount
+        ? minimumNextBidAmount - reservedAmount
+        : 0n;
+    const status = !auction
+        ? "auction_unavailable"
+        : readyToSettle
+            ? "ready_to_settle"
+            : ended
+                ? "closed_outbid"
+                : isLeading
+                    ? "leading"
+                    : "outbid";
+    const statusLabel = status === "ready_to_settle"
+        ? "Leading · ready to settle"
+        : status === "leading"
+            ? "Leading"
+            : status === "outbid"
+                ? "Outbid"
+                : status === "closed_outbid"
+                    ? "Closed · lost lead"
+                    : "Auction snapshot unavailable";
+
+    return {
+        bidId: Number(reservation?.bidId || 0),
+        auctionId: Number(reservation?.auctionId || 0),
+        assetId: Number(reservation?.assetId || 0),
+        issuer: reservation?.issuer || "",
+        reservedAmount: reservedAmount.toString(),
+        reservedAmountDisplay: formatStellarAmount(reservedAmount),
+        status,
+        statusLabel,
+        isLeading,
+        readyToSettle,
+        highestBidDisplay: auction?.highestBidDisplay || "0.0000000",
+        minimumNextBidDisplay: auction?.minimumNextBidDisplay || auction?.minimumNextBid || "0.0000000",
+        nextBidGap: nextBidGap.toString(),
+        nextBidGapDisplay: formatStellarAmount(nextBidGap),
+        endTime: Number(auction?.endTime || 0),
+        timeRemainingSeconds: auction
+            ? Math.max(0, Number(auction.endTime || 0) - now)
+            : 0,
+        title: auction?.title || `Auction #${Number(reservation?.auctionId || 0)}`,
+        auction: auction
+            ? {
+                auctionId: Number(auction.auctionId || 0),
+                assetId: Number(auction.assetId || 0),
+                title: auction.title || "",
+                status: auction.status || "unknown",
+                highestBidDisplay: auction.highestBidDisplay || "0.0000000",
+                minimumNextBidDisplay: auction.minimumNextBidDisplay || auction.minimumNextBid || "0.0000000",
+                endTime: Number(auction.endTime || 0),
+                reservePriceDisplay: auction.reservePriceDisplay || auction.reservePrice || "0.0000000",
+            }
+            : null,
+    };
+}
+
+async function buildReservationExposure(services, reservations = []) {
+    if (!Array.isArray(reservations) || reservations.length === 0) {
+        return [];
+    }
+    const auctionIds = Array.from(new Set(
+        reservations
+            .map((reservation) => Number(reservation?.auctionId || 0))
+            .filter((auctionId) => Number.isFinite(auctionId) && auctionId > 0),
+    ));
+    const auctionsById = new Map(await Promise.all(
+        auctionIds.map(async (auctionId) => [
+            auctionId,
+            enrichAuction(await services.auctionEngine.getAuction(auctionId)),
+        ]),
+    ));
+
+    return reservations.map((reservation) => buildReservationExposureEntry(
+        reservation,
+        auctionsById.get(Number(reservation?.auctionId || 0)) || null,
+    ));
+}
+
 function summarizeActivity(activity = []) {
     return activity
         .slice(-5)
@@ -102,6 +440,147 @@ function summarizeActivity(activity = []) {
             blockNumber: entry.blockNumber,
             occurredAt: entry.occurredAt || null,
         }));
+}
+
+function sortBidsByAmountAndTime(bids = []) {
+    return [...bids].sort((left, right) => {
+        const amountDelta = BigInt(right.amountStroops || "0") - BigInt(left.amountStroops || "0");
+        if (amountDelta !== 0n) {
+            return amountDelta > 0n ? 1 : -1;
+        }
+        return Number(left.placedAt || 0) - Number(right.placedAt || 0);
+    });
+}
+
+function sortBidsByRecent(bids = []) {
+    return [...bids].sort((left, right) => Number(right.placedAt || 0) - Number(left.placedAt || 0));
+}
+
+function buildBidSummary(bid, { isLeading = false } = {}) {
+    return {
+        bidId: bid.bidId,
+        bidder: bid.bidder,
+        amountStroops: bid.amountStroops,
+        amountDisplay: bid.amountDisplay || ethers.formatUnits(BigInt(bid.amountStroops || "0"), 7),
+        placedAt: Number(bid.placedAt || 0),
+        status: bid.status || "active",
+        isLeading,
+        txHash: bid.txHash || "",
+    };
+}
+
+function enrichAuction(auction) {
+    if (!auction) return null;
+    const bids = Array.isArray(auction.bids) ? auction.bids : [];
+    const activeBids = bids.filter((bid) => bid.status === "active");
+    const rankedActiveBids = sortBidsByAmountAndTime(activeBids);
+    const highestBid = auction.highestBid || rankedActiveBids[0] || null;
+    const highestAmount = BigInt(highestBid?.amountStroops || "0");
+    const reserveAmount = BigInt(auction.reservePrice || "0");
+    const bidIncrement = 10_000_000n;
+    const minimumNextBid = highestBid
+        ? highestAmount + bidIncrement
+        : reserveAmount;
+    const uniqueBidderCount = new Set(
+        activeBids.map((bid) => normalizeAddress(bid.bidder)),
+    ).size;
+
+    return {
+        ...auction,
+        bids,
+        highestBid,
+        highestBidDisplay: highestBid ? formatStellarAmount(highestBid.amountStroops) : null,
+        reserveMet: highestBid ? highestAmount >= reserveAmount : false,
+        bidCount: bids.length,
+        activeBidCount: activeBids.length,
+        uniqueBidderCount,
+        minimumNextBidStroops: minimumNextBid.toString(),
+        minimumNextBid: formatStellarAmount(minimumNextBid),
+        minimumNextBidDisplay: formatStellarAmount(minimumNextBid),
+        recentBids: sortBidsByRecent(activeBids).slice(0, 5).map((bid) => buildBidSummary(bid, {
+            isLeading: Number(bid.bidId) === Number(highestBid?.bidId),
+        })),
+        bidLadder: rankedActiveBids.slice(0, 5).map((bid) => buildBidSummary(bid, {
+            isLeading: Number(bid.bidId) === Number(highestBid?.bidId),
+        })),
+        marketDepth: {
+            reservePrice: formatStellarAmount(reserveAmount),
+            highestBid: highestBid ? formatStellarAmount(highestBid.amountStroops) : null,
+            minimumNextBid: formatStellarAmount(minimumNextBid),
+            spreadToReserve: highestBid ? formatStellarAmount(highestAmount - reserveAmount) : "0.0000000",
+            uniqueBidderCount,
+            activeBidCount: activeBids.length,
+        },
+    };
+}
+
+function buildMarketSummary(assets = [], activeAuctions = [], rankedAssets = [], browseFilters = {}, universeCount = assets.length) {
+    const marketIntel = aggregateMarketIntel(assets);
+    const totalClaimableYield = sumStringAmounts(assets.map((asset) => asset.claimableYield || "0"));
+    const typeBreakdown = {
+        real_estate: Number(marketIntel.sectorBreakdown?.[1] || 0),
+        vehicle: Number(marketIntel.sectorBreakdown?.[2] || 0),
+        commodity: Number(marketIntel.sectorBreakdown?.[3] || 0),
+    };
+    const topOpportunities = (rankedAssets.length ? rankedAssets : (marketIntel.topPerformers || [])).slice(0, 3).map((entry) => ({
+        tokenId: entry.tokenId,
+        name: entry.name || `Asset #${entry.tokenId}`,
+        assetType: assetTypeKey(entry.assetType),
+        yieldRate: Number(entry.yieldRate || 0),
+        riskScore: Number(entry.riskScore || 0),
+        score: Number(entry.score || 0),
+        verificationStatus: entry.verificationStatus || "unknown",
+    }));
+    const auctionsClosingSoon = [...activeAuctions]
+        .sort((left, right) => Number(left.endTime || 0) - Number(right.endTime || 0))
+        .slice(0, 3)
+        .map((auction) => ({
+            auctionId: auction.auctionId,
+            assetId: auction.assetId,
+            title: auction.title || `Twin #${auction.assetId}`,
+            endTime: Number(auction.endTime || 0),
+            reservePrice: auction.reservePriceDisplay || auction.marketDepth?.reservePrice || null,
+            highestBid: auction.highestBidDisplay || null,
+            uniqueBidderCount: Number(auction.uniqueBidderCount || 0),
+            minimumNextBid: auction.minimumNextBidDisplay || auction.marketDepth?.minimumNextBid || null,
+        }));
+
+    return {
+        totalProductiveTwins: assets.length,
+        universeProductiveTwins: universeCount,
+        liveAuctions: activeAuctions.length,
+        verifiedCount: Number(marketIntel.verifiedCount || 0),
+        verifiedSharePct: percentage(marketIntel.verifiedCount, marketIntel.totalAssets),
+        rentalReadyCount: Number(marketIntel.rentalReadyCount || 0),
+        rentalReadySharePct: percentage(marketIntel.rentalReadyCount, marketIntel.totalAssets),
+        avgYield: Number(marketIntel.avgYield || 0),
+        avgRisk: Number(marketIntel.avgRisk || 0),
+        topYield: Number(marketIntel.maxYield || 0),
+        totalClaimableYield: totalClaimableYield.toString(),
+        totalClaimableYieldDisplay: formatStellarAmount(totalClaimableYield),
+        typeBreakdown,
+        activeFilterCount: Number(browseFilters.activeFilterCount || 0),
+        browse: browseFilters.appliedFilters || {},
+        highlights: {
+            topOpportunities,
+            auctionsClosingSoon,
+        },
+    };
+}
+
+function defaultSavedScreenName(filters = {}, summary = {}) {
+    const parts = [];
+    if (filters.type && filters.type !== "all") {
+        parts.push(assetTypeKey(MARKET_TYPE_TO_CHAIN_ASSET_TYPE[filters.type] || filters.type).replace("_", " "));
+    }
+    if (filters.verifiedOnly) parts.push("verified");
+    if (filters.rentalReady) parts.push("rental ready");
+    if (filters.hasAuction) parts.push("live auctions");
+    if (filters.minYield != null) parts.push(`${filters.minYield}%+ yield`);
+    if (filters.maxRisk != null) parts.push(`risk <= ${filters.maxRisk}`);
+    if (filters.goal) parts.push("goal screen");
+    const base = parts.filter(Boolean).slice(0, 3).join(" · ");
+    return base || `Market screen · ${Number(summary.totalProductiveTwins || 0)} twins`;
 }
 
 function send402Response(req, res, price, description) {
@@ -193,18 +672,28 @@ function requirePaidAction(price, description) {
 
 router.get("/market/assets", asyncHandler(async (req, res) => {
     const services = await req.app.locals.ready;
+    const browseFilters = buildMarketBrowseFilters(req.query || {});
     const rawAssets = services.chainService?.isConfigured?.()
         ? await services.chainService.listAssetSnapshots({ limit: 200 })
         : await services.store.listAssets();
     const productiveAssets = rawAssets.filter(productiveOnly);
-    const activeAuctions = await services.auctionEngine.listAuctions({ status: "active" });
+    const activeAuctions = (await services.auctionEngine.listAuctions({ status: "active" }))
+        .map((auction) => enrichAuction(auction));
     const assets = await Promise.all(productiveAssets.map(async (asset) => {
         const auction = activeAuctions.find((entry) => Number(entry.assetId) === Number(asset.tokenId)) || null;
         return marketAssetSummary(await hydrateAsset(services, asset), auction);
     }));
+    const browseResult = applyMarketBrowseFilters(assets, browseFilters);
     res.json({
         code: "market_assets_listed",
-        assets,
+        assets: browseResult.assets,
+        summary: buildMarketSummary(
+            browseResult.assets,
+            activeAuctions.filter((auction) => browseResult.assets.some((asset) => Number(asset.tokenId) === Number(auction.assetId))),
+            browseResult.rankedAssets,
+            browseFilters,
+            assets.length,
+        ),
     });
 }));
 
@@ -214,7 +703,8 @@ router.get("/market/assets/:assetId", asyncHandler(async (req, res) => {
     if (!asset) {
         return res.status(404).json({ error: "Asset not found.", code: "asset_not_found" });
     }
-    const auctions = await services.auctionEngine.listAuctions({ tokenId: Number(req.params.assetId) });
+    const auctions = (await services.auctionEngine.listAuctions({ tokenId: Number(req.params.assetId) }))
+        .map((auction) => enrichAuction(auction));
     res.json({
         code: "market_asset_loaded",
         asset: marketAssetSummary(await hydrateAsset(services, asset), auctions.find((entry) => entry.status === "active") || null),
@@ -321,7 +811,7 @@ router.post("/market/assets/:assetId/auctions", requireJwt, asyncHandler(async (
 
 router.get("/market/auctions/:auctionId", asyncHandler(async (req, res) => {
     const services = await req.app.locals.ready;
-    const auction = await services.auctionEngine.getAuction(Number(req.params.auctionId));
+    const auction = enrichAuction(await services.auctionEngine.getAuction(Number(req.params.auctionId)));
     if (!auction) {
         return res.status(404).json({ error: "Auction not found.", code: "auction_not_found" });
     }
@@ -365,27 +855,128 @@ router.post("/market/auctions/:auctionId/settle", requireJwt, asyncHandler(async
 }));
 
 router.get("/market/positions", requireJwt, asyncHandler(async (req, res) => {
-    const { services, agentId } = await resolveAgentContext(req);
-    const [assets, sessions, treasury, reservations, performance] = await Promise.all([
-        services.chainService.listAssetSnapshots({ owner: agentId }),
-        services.chainService.listSessions({ owner: agentId }),
+    const { services, agentId, agentPublicKey, ownerPublicKey } = await resolveAgentContext(req);
+    const [assets, sessions, walletState, mandate, treasury, reservations, performance] = await Promise.all([
+        services.chainService.listAssetSnapshots({ owner: agentPublicKey }),
+        services.chainService.listSessions({ owner: agentPublicKey }),
+        services.agentWallet.getBalances({ owner: ownerPublicKey }),
+        services.agentState.getMandate(agentId),
         services.agentState.getTreasury(agentId),
         services.agentState.listOpenReservations(agentId),
         services.agentState.getPerformance(agentId),
     ]);
+    const liquidity = buildLiquiditySummary({
+        walletState,
+        mandate,
+        reservations,
+        treasury,
+        assetCode: "USDC",
+        assetIssuer: services.chainService.runtime?.paymentAssetIssuer || "",
+    });
+    const reservationExposure = await buildReservationExposure(services, reservations);
     res.json({
         code: "market_positions_loaded",
+        agentId,
         positions: {
             ownedAssets: assets,
             sessions,
             treasury,
             reservations,
+            reservationExposure,
             performance,
+            liquidity,
         },
     });
 }));
 
-router.post("/market/yield/claim", requireJwt, asyncHandler(async (req, res) => {
+router.post("/agents/:agentId/sessions", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId, ownerPublicKey } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot open another agent payment session.", code: "agent_scope_forbidden" });
+    }
+
+    const config = req.app.locals.config || {};
+    const recipient = String(req.body?.recipient || config.recipientAddress || "").trim();
+    if (!recipient) {
+        return res.status(503).json({ error: "Continuum payment recipient is not configured.", code: "recipient_not_configured" });
+    }
+
+    const decimals = Number(config.tokenDecimals || 7);
+    const amountInput = String(req.body?.amount || req.body?.budget || "5").trim();
+    const durationSeconds = Math.max(300, Number(req.body?.durationSeconds || 3 * 60 * 60));
+    const metadata = typeof req.body?.metadata === "string"
+        ? req.body.metadata
+        : JSON.stringify({
+            lane: "continuum_marketplace",
+            purpose: "paid_market_actions",
+            scope: "managed_agent",
+            ...(req.body?.metadata || {}),
+        });
+
+    const result = await services.agentWallet.openSession({
+        owner: ownerPublicKey,
+        recipient,
+        totalAmount: ethers.parseUnits(amountInput, decimals).toString(),
+        durationSeconds,
+        metadata,
+        assetCode: services.chainService.runtime?.paymentAssetCode || config.tokenSymbol || "USDC",
+        assetIssuer: services.chainService.runtime?.paymentAssetIssuer || "",
+    });
+
+    await services.agentState.appendDecision(agentId, {
+        type: "action",
+        message: `Managed market session #${result.streamId} opened`,
+        detail: `${amountInput} ${(config.tokenSymbol || "USDC")} reserved for premium analysis, bidding, and treasury actions.`,
+    });
+
+    const session = await services.chainService.getSessionSnapshot(result.streamId);
+    res.status(201).json({
+        code: "agent_session_opened",
+        agentId,
+        action: "openPaymentSession",
+        session: session || {
+            id: Number(result.streamId),
+            sender: "",
+            recipient,
+            isActive: true,
+        },
+        txHash: result.txHash || "",
+    });
+}));
+
+router.post("/agents/:agentId/sessions/:sessionId/cancel", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId, ownerPublicKey } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot cancel another agent payment session.", code: "agent_scope_forbidden" });
+    }
+
+    const result = await services.agentWallet.cancelSession({
+        owner: ownerPublicKey,
+        sessionId: req.params.sessionId,
+    });
+
+    await services.agentState.appendDecision(agentId, {
+        type: "action",
+        message: `Managed market session #${Number(req.params.sessionId)} ended`,
+        detail: `${formatStellarAmount(result.refundableAmount || "0")} ${(req.app.locals.config?.tokenSymbol || "USDC")} refundable balance returned to the managed agent.`,
+    });
+
+    const session = await services.chainService.getSessionSnapshot(req.params.sessionId);
+    res.json({
+        code: "agent_session_cancelled",
+        agentId,
+        action: "cancelPaymentSession",
+        session: session || {
+            id: Number(req.params.sessionId),
+            isActive: false,
+        },
+        txHash: result.txHash || "",
+        refundableAmount: result.refundableAmount || "0",
+        claimableAmount: result.claimableAmount || "0",
+    });
+}));
+
+router.post("/market/yield/claim", requirePaidAction("0.01", "Yield claim"), requireJwt, asyncHandler(async (req, res) => {
     const { services, ownerPublicKey, agentId } = await resolveAgentContext(req);
     const result = await services.agentWallet.claimYield({
         owner: ownerPublicKey,
@@ -395,15 +986,20 @@ router.post("/market/yield/claim", requireJwt, asyncHandler(async (req, res) => 
         message: `Yield claimed on asset #${Number(req.body?.tokenId)}`,
         detail: `Transaction ${String(result.txHash || "").slice(0, 12)}...`,
     });
+    await services.agentState.recordPaidActionFee(agentId, req.streamEngineActionFee, {
+        action: "yield_claim",
+        tokenId: req.body?.tokenId ? Number(req.body.tokenId) : null,
+    });
     res.json({
         code: "market_yield_claimed",
         action: "claimYield",
         txHash: result.txHash,
         amount: result.amount || "0",
+        paidVia: req.streamEngine || null,
     });
 }));
 
-router.post("/market/yield/route", requireJwt, asyncHandler(async (req, res) => {
+router.post("/market/yield/route", requirePaidAction("0.03", "Yield routing"), requireJwt, asyncHandler(async (req, res) => {
     const { services, ownerPublicKey, agentId } = await resolveAgentContext(req);
     let claim = null;
     if (req.body?.tokenId) {
@@ -416,12 +1012,17 @@ router.post("/market/yield/route", requireJwt, asyncHandler(async (req, res) => 
         });
     }
     const treasury = await services.treasuryManager.rebalance({ ownerPublicKey, agentId });
+    await services.agentState.recordPaidActionFee(agentId, req.streamEngineActionFee, {
+        action: "yield_route",
+        tokenId: req.body?.tokenId ? Number(req.body.tokenId) : null,
+    });
     res.json({
         code: "yield_routed",
         action: "routeYield",
         claim,
         treasury,
         optimization: treasury.optimization || null,
+        paidVia: req.streamEngine || null,
     });
 }));
 
@@ -466,7 +1067,7 @@ router.get("/agents/:agentId/state", requireJwt, asyncHandler(async (req, res) =
     if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
         return res.status(403).json({ error: "Cannot inspect another agent state.", code: "agent_scope_forbidden" });
     }
-    const [walletState, mandate, performance, treasury, reservations, decisionLog, assets, sessions, runtime] = await Promise.all([
+    const [walletState, mandate, performance, treasury, reservations, decisionLog, assets, sessions, runtime, savedScreens, watchlist] = await Promise.all([
         services.agentWallet.getBalances({ owner: ownerPublicKey }),
         services.agentState.getMandate(agentId),
         services.agentState.getPerformance(agentId),
@@ -476,16 +1077,31 @@ router.get("/agents/:agentId/state", requireJwt, asyncHandler(async (req, res) =
         services.chainService.listAssetSnapshots({ owner: agentPublicKey }),
         services.chainService.listSessions({ owner: agentPublicKey }),
         services.agentRuntime.getState({ agentId }),
+        services.agentState.getSavedScreens(agentId),
+        services.agentState.getWatchlist(agentId),
     ]);
+    const liquidity = buildLiquiditySummary({
+        walletState,
+        mandate,
+        reservations,
+        treasury,
+        assetCode: "USDC",
+        assetIssuer: services.chainService.runtime?.paymentAssetIssuer || "",
+    });
+    const reservationExposure = await buildReservationExposure(services, reservations);
     res.json({
         code: "agent_state_loaded",
         agentId,
         state: {
             wallet: walletState,
             mandate,
+            liquidity,
             performance,
             treasury,
             reservations,
+            reservationExposure,
+            savedScreens,
+            watchlist,
             decisionLog,
             runtime,
             positions: {
@@ -557,6 +1173,109 @@ router.post("/agents/:agentId/runtime/tick", requireJwt, asyncHandler(async (req
     });
 }));
 
+router.get("/agents/:agentId/screens", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot inspect another agent screen set.", code: "agent_scope_forbidden" });
+    }
+    const screens = await services.agentState.getSavedScreens(agentId);
+    res.json({
+        code: "agent_screens_loaded",
+        agentId,
+        screens,
+    });
+}));
+
+router.post("/agents/:agentId/screens", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot update another agent screen set.", code: "agent_scope_forbidden" });
+    }
+    const filters = { ...(req.body?.filters || {}) };
+    const summary = { ...(req.body?.summary || {}) };
+    const screen = await services.agentState.saveScreen(agentId, {
+        screenId: req.body?.screenId,
+        name: req.body?.name || defaultSavedScreenName(filters, summary),
+        description: req.body?.description || "",
+        filters,
+        summary,
+    });
+    await services.agentState.appendDecision(agentId, {
+        type: "decision",
+        message: "Market screen saved",
+        detail: `${screen.name} · ${Number(summary.totalProductiveTwins || 0)} twins matched`,
+        metadata: {
+            screenId: screen.screenId,
+            activeFilterCount: Number(summary.activeFilterCount || 0),
+        },
+    });
+    res.status(201).json({
+        code: "agent_screen_saved",
+        agentId,
+        screen,
+    });
+}));
+
+router.delete("/agents/:agentId/screens/:screenId", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot update another agent screen set.", code: "agent_scope_forbidden" });
+    }
+    await services.agentState.deleteSavedScreen(agentId, req.params.screenId);
+    res.json({
+        code: "agent_screen_deleted",
+        agentId,
+        screenId: req.params.screenId,
+    });
+}));
+
+router.get("/agents/:agentId/watchlist", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot inspect another agent watchlist.", code: "agent_scope_forbidden" });
+    }
+    const watchlist = await services.agentState.getWatchlist(agentId);
+    res.json({
+        code: "agent_watchlist_loaded",
+        agentId,
+        watchlist,
+    });
+}));
+
+router.post("/agents/:agentId/watchlist", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot update another agent watchlist.", code: "agent_scope_forbidden" });
+    }
+    const asset = await services.agentState.watchAsset(agentId, req.body || {});
+    await services.agentState.appendDecision(agentId, {
+        type: "decision",
+        message: "Twin added to watchlist",
+        detail: `${asset.name} is now being monitored from the marketplace shortlist.`,
+        metadata: {
+            tokenId: asset.tokenId,
+        },
+    });
+    res.status(201).json({
+        code: "agent_watchlist_added",
+        agentId,
+        asset,
+    });
+}));
+
+router.delete("/agents/:agentId/watchlist/:assetId", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot update another agent watchlist.", code: "agent_scope_forbidden" });
+    }
+    await services.agentState.unwatchAsset(agentId, Number(req.params.assetId));
+    res.json({
+        code: "agent_watchlist_removed",
+        agentId,
+        assetId: Number(req.params.assetId),
+    });
+}));
+
 router.get("/agents/:agentId/performance", requireJwt, asyncHandler(async (req, res) => {
     const { services, agentId } = await resolveAgentContext(req);
     if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
@@ -607,10 +1326,17 @@ router.get("/agents/:agentId/wallet", requireJwt, asyncHandler(async (req, res) 
         return res.status(403).json({ error: "Cannot inspect another agent wallet.", code: "agent_scope_forbidden" });
     }
     const wallet = await services.agentWallet.getBalances({ owner: ownerPublicKey });
+    const summary = buildWalletReadinessSummary(wallet, {
+        paymentAssetCode: "USDC",
+        paymentAssetIssuer: services.chainService.runtime?.paymentAssetIssuer || "",
+    });
     res.json({
         code: "agent_wallet_loaded",
         agentId,
-        wallet,
+        wallet: {
+            ...wallet,
+            summary,
+        },
     });
 }));
 

@@ -24,6 +24,7 @@ import {
   claimMarketYield,
   fetchAgentMandate,
   fetchAgentState,
+  fetchAgentWalletState,
   fetchMarketAssets,
   pauseAgentRuntime,
   rebalanceMarketTreasury,
@@ -106,6 +107,7 @@ export default function AgentConsolePage() {
   const [showSettings, setShowSettings] = useState(false);
   const [showFundModal, setShowFundModal] = useState(false);
   const [state, setState] = useState<any>(null);
+  const [walletSnapshot, setWalletSnapshot] = useState<any>(null);
   const [marketAssets, setMarketAssets] = useState<any[]>([]);
   const [mandateDraft, setMandateDraft] = useState<MandateDraft>({
     targetReturnMinPct: '8',
@@ -133,15 +135,18 @@ export default function AgentConsolePage() {
   const refreshState = useCallback(async () => {
     if (!agentPublicKey) {
       setState(null);
+      setWalletSnapshot(null);
       return;
     }
     try {
-      const [agentState, assets, mandate] = await Promise.all([
+      const [agentState, assets, mandate, wallet] = await Promise.all([
         fetchAgentState(agentPublicKey),
         fetchMarketAssets(),
         fetchAgentMandate(agentPublicKey),
+        fetchAgentWalletState(agentPublicKey),
       ]);
       setState(agentState);
+      setWalletSnapshot(wallet);
       setMarketAssets(assets || []);
       if (mandate) {
         setMandateDraft({
@@ -303,7 +308,8 @@ export default function AgentConsolePage() {
   const savedScreens = state?.savedScreens || [];
   const watchlist = state?.watchlist || [];
   const positions = state?.positions || { assets: [], sessions: [] };
-  const walletState = state?.wallet || { balances: [] };
+  const walletState = walletSnapshot || state?.wallet || { balances: [] };
+  const walletSummary = walletSnapshot?.summary || null;
   const screenHighlights = Array.isArray(runtime.lastSummary?.screenHighlights) ? runtime.lastSummary.screenHighlights : [];
   const watchlistHighlights = Array.isArray(runtime.lastSummary?.watchlistHighlights) ? runtime.lastSummary.watchlistHighlights : [];
   const bidFocus = runtime.lastSummary?.bidFocus || null;
@@ -479,6 +485,36 @@ export default function AgentConsolePage() {
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Managed Wallet Readiness</p>
+                  <span className={`text-[10px] font-bold uppercase tracking-widest ${
+                    walletSummary?.status === 'ready'
+                      ? 'text-secondary'
+                      : walletSummary?.status === 'needs_trustline'
+                        ? 'text-amber-600'
+                        : 'text-rose-600'
+                  }`}>
+                    {walletSummary?.statusLabel || 'Waiting for wallet'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Managed Account', value: formatShortAddress(walletState.publicKey || agentPublicKey) },
+                    { label: 'Payment Asset', value: walletSummary?.paymentAssetCode || 'USDC' },
+                    { label: 'XLM', value: `${walletSummary?.nativeBalanceDisplay || '0'} XLM` },
+                    { label: 'USDC', value: `${walletSummary?.paymentBalanceDisplay || '0'} USDC` },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-xl border border-slate-100 bg-white px-3 py-3">
+                      <p className="text-[9px] font-label uppercase tracking-widest text-slate-400">{item.label}</p>
+                      <p className="mt-1 text-sm font-bold text-slate-800">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-500">
+                  {walletSummary?.paymentReady
+                    ? 'This managed wallet is ready for paid market actions and USDC auction bids.'
+                    : 'Fund the account with XLM and ensure the USDC trustline exists before expecting paid market actions to clear.'}
+                </p>
                 <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Wallet Balances</p>
                 {(walletState.balances || []).length === 0 ? (
                   <p className="text-sm text-slate-400">Activate the managed wallet to load live balances.</p>

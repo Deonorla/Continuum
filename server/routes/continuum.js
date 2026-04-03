@@ -304,6 +304,45 @@ function buildLiquiditySummary({
     };
 }
 
+function buildWalletReadinessSummary(wallet = {}, { paymentAssetCode = "USDC", paymentAssetIssuer = "" } = {}) {
+    const nativeBalance = findWalletBalance(wallet, "XLM", "");
+    const paymentBalance = findWalletBalance(wallet, paymentAssetCode, paymentAssetIssuer);
+    const nativeAmount = nativeBalance
+        ? normalizeStellarAmount(nativeBalance.balance || "0")
+        : 0n;
+    const paymentAmount = paymentBalance
+        ? normalizeStellarAmount(paymentBalance.balance || "0")
+        : 0n;
+    const funded = nativeAmount > 0n;
+    const hasPaymentTrustline = Boolean(paymentBalance);
+    const paymentReady = funded && hasPaymentTrustline;
+    const status = paymentReady
+        ? "ready"
+        : !funded
+            ? "unfunded"
+            : "needs_trustline";
+    const statusLabel = paymentReady
+        ? "Ready for paid actions"
+        : !funded
+            ? "Needs XLM funding"
+            : "Needs USDC trustline";
+
+    return {
+        funded,
+        hasPaymentTrustline,
+        paymentReady,
+        status,
+        statusLabel,
+        balanceCount: Array.isArray(wallet.balances) ? wallet.balances.length : 0,
+        nativeBalance: nativeAmount.toString(),
+        nativeBalanceDisplay: formatStellarAmount(nativeAmount),
+        paymentAssetCode: String(paymentAssetCode || "USDC").toUpperCase(),
+        paymentAssetIssuer: String(paymentAssetIssuer || ""),
+        paymentBalance: paymentAmount.toString(),
+        paymentBalanceDisplay: formatStellarAmount(paymentAmount),
+    };
+}
+
 function summarizeActivity(activity = []) {
     return activity
         .slice(-5)
@@ -1109,10 +1148,17 @@ router.get("/agents/:agentId/wallet", requireJwt, asyncHandler(async (req, res) 
         return res.status(403).json({ error: "Cannot inspect another agent wallet.", code: "agent_scope_forbidden" });
     }
     const wallet = await services.agentWallet.getBalances({ owner: ownerPublicKey });
+    const summary = buildWalletReadinessSummary(wallet, {
+        paymentAssetCode: "USDC",
+        paymentAssetIssuer: services.chainService.runtime?.paymentAssetIssuer || "",
+    });
     res.json({
         code: "agent_wallet_loaded",
         agentId,
-        wallet,
+        wallet: {
+            ...wallet,
+            summary,
+        },
     });
 }));
 

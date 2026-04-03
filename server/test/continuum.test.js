@@ -671,6 +671,22 @@ describe("Continuum API Integration", function () {
         expect(response.body.state.watchlist).to.deep.equal([]);
     });
 
+    it("loads the managed wallet readiness summary", async () => {
+        const response = await request(app)
+            .get(`/api/agents/${agentId}/wallet`)
+            .set("Authorization", `Bearer ${token}`)
+            .expect(200);
+
+        expect(response.body.code).to.equal("agent_wallet_loaded");
+        expect(response.body.wallet.publicKey).to.equal(agentKeypair.publicKey());
+        expect(response.body.wallet.summary.funded).to.equal(true);
+        expect(response.body.wallet.summary.hasPaymentTrustline).to.equal(true);
+        expect(response.body.wallet.summary.paymentReady).to.equal(true);
+        expect(response.body.wallet.summary.nativeBalanceDisplay).to.equal("80");
+        expect(response.body.wallet.summary.paymentBalanceDisplay).to.equal("425");
+        expect(response.body.wallet.summary.status).to.equal("ready");
+    });
+
     it("persists saved screens and watchlist entries for the managed agent", async () => {
         const screenResponse = await request(app)
             .post(`/api/agents/${agentId}/screens`)

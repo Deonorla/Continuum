@@ -51,11 +51,45 @@ type LogEntry = {
 };
 
 type MandateDraft = {
+  capitalBase: string;
+  approvedAssetClasses: string[];
+  issuerCapPct: string;
+  assetCapPct: string;
   targetReturnMinPct: string;
+  targetReturnMaxPct: string;
   approvalThreshold: string;
   liquidityFloorPct: string;
+  allowedTreasuryStrategies: string[];
+  maxDrawdownPct: string;
   rebalanceCadenceMinutes: string;
 };
+
+const ASSET_CLASS_OPTIONS = [
+  { value: 'real_estate', label: 'Real Estate' },
+  { value: 'vehicle', label: 'Vehicle' },
+  { value: 'commodity', label: 'Equipment' },
+];
+
+const TREASURY_STRATEGY_OPTIONS = [
+  { value: 'safe_yield', label: 'Safe Yield' },
+  { value: 'blend_lending', label: 'Blend Lending' },
+  { value: 'stellar_amm', label: 'Stellar AMM' },
+];
+
+function toggleListValue(current: string[], value: string) {
+  if (current.includes(value)) {
+    return current.length === 1 ? current : current.filter((entry) => entry !== value);
+  }
+  return [...current, value];
+}
+
+function formatOptionList(values: string[], options: { value: string; label: string }[]) {
+  if (!Array.isArray(values) || values.length === 0) return 'Not set';
+  const labels = values
+    .map((value) => options.find((option) => option.value === value)?.label || value)
+    .filter(Boolean);
+  return labels.join(' · ');
+}
 
 function formatShortAddress(value?: string | null) {
   if (!value) return 'Not connected';
@@ -125,9 +159,16 @@ export default function AgentConsolePage() {
   const [walletSnapshot, setWalletSnapshot] = useState<any>(null);
   const [marketAssets, setMarketAssets] = useState<any[]>([]);
   const [mandateDraft, setMandateDraft] = useState<MandateDraft>({
+    capitalBase: '1000',
+    approvedAssetClasses: ['real_estate', 'vehicle', 'commodity'],
+    issuerCapPct: '40',
+    assetCapPct: '25',
     targetReturnMinPct: '8',
+    targetReturnMaxPct: '18',
     approvalThreshold: '250',
     liquidityFloorPct: '10',
+    allowedTreasuryStrategies: ['safe_yield', 'blend_lending', 'stellar_amm'],
+    maxDrawdownPct: '20',
     rebalanceCadenceMinutes: '60',
   });
   const [savingMandate, setSavingMandate] = useState(false);
@@ -173,9 +214,20 @@ export default function AgentConsolePage() {
       setMarketAssets(assets || []);
       if (mandate) {
         setMandateDraft({
+          capitalBase: String(mandate.capitalBase ?? 1000),
+          approvedAssetClasses: Array.isArray(mandate.approvedAssetClasses) && mandate.approvedAssetClasses.length
+            ? mandate.approvedAssetClasses
+            : ['real_estate', 'vehicle', 'commodity'],
+          issuerCapPct: String(mandate.issuerCapPct ?? 40),
+          assetCapPct: String(mandate.assetCapPct ?? 25),
           targetReturnMinPct: String(mandate.targetReturnMinPct ?? 8),
+          targetReturnMaxPct: String(mandate.targetReturnMaxPct ?? 18),
           approvalThreshold: String(mandate.approvalThreshold ?? 250),
           liquidityFloorPct: String(mandate.liquidityFloorPct ?? 10),
+          allowedTreasuryStrategies: Array.isArray(mandate.allowedTreasuryStrategies) && mandate.allowedTreasuryStrategies.length
+            ? mandate.allowedTreasuryStrategies
+            : ['safe_yield', 'blend_lending', 'stellar_amm'],
+          maxDrawdownPct: String(mandate.maxDrawdownPct ?? 20),
           rebalanceCadenceMinutes: String(mandate.rebalanceCadenceMinutes ?? 60),
         });
       }
@@ -282,9 +334,16 @@ export default function AgentConsolePage() {
     setSavingMandate(true);
     try {
       await saveAgentMandate(agentPublicKey, {
+        capitalBase: mandateDraft.capitalBase,
+        approvedAssetClasses: mandateDraft.approvedAssetClasses,
+        issuerCapPct: Number(mandateDraft.issuerCapPct || 40),
+        assetCapPct: Number(mandateDraft.assetCapPct || 25),
         targetReturnMinPct: Number(mandateDraft.targetReturnMinPct || 8),
+        targetReturnMaxPct: Number(mandateDraft.targetReturnMaxPct || 18),
         approvalThreshold: mandateDraft.approvalThreshold,
         liquidityFloorPct: Number(mandateDraft.liquidityFloorPct || 10),
+        allowedTreasuryStrategies: mandateDraft.allowedTreasuryStrategies,
+        maxDrawdownPct: Number(mandateDraft.maxDrawdownPct || 20),
         rebalanceCadenceMinutes: Number(mandateDraft.rebalanceCadenceMinutes || 60),
       });
       await refreshState();
@@ -557,44 +616,130 @@ export default function AgentConsolePage() {
             </div>
 
             {showSettings && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                {[
-                  { id: 'targetReturnMinPct', label: 'Target Return Floor', unit: '%' },
-                  { id: 'approvalThreshold', label: 'Approval Threshold', unit: 'USDC' },
-                  { id: 'liquidityFloorPct', label: 'Liquidity Floor', unit: '%' },
-                  { id: 'rebalanceCadenceMinutes', label: 'Rebalance Cadence', unit: 'min' },
-                ].map((field) => (
-                  <div key={field.id} className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                    <p className="text-[10px] font-label uppercase tracking-widest text-slate-400 mb-2">{field.label}</p>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        value={mandateDraft[field.id as keyof MandateDraft]}
-                        onChange={(event) => setMandateDraft((current) => ({
-                          ...current,
-                          [field.id]: event.target.value,
-                        }))}
-                        className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                      />
-                      <span className="text-xs text-slate-400">{field.unit}</span>
+              <div className="space-y-4 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {[
+                    { id: 'capitalBase', label: 'Capital Base', unit: 'USDC' },
+                    { id: 'approvalThreshold', label: 'Approval Threshold', unit: 'USDC' },
+                    { id: 'issuerCapPct', label: 'Issuer Cap', unit: '%' },
+                    { id: 'assetCapPct', label: 'Asset Cap', unit: '%' },
+                    { id: 'liquidityFloorPct', label: 'Liquidity Floor', unit: '%' },
+                    { id: 'maxDrawdownPct', label: 'Max Drawdown', unit: '%' },
+                    { id: 'targetReturnMinPct', label: 'Target Return Floor', unit: '%' },
+                    { id: 'targetReturnMaxPct', label: 'Target Return Ceiling', unit: '%' },
+                    { id: 'rebalanceCadenceMinutes', label: 'Rebalance Cadence', unit: 'min' },
+                  ].map((field) => (
+                    <div key={field.id} className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                      <p className="text-[10px] font-label uppercase tracking-widest text-slate-400 mb-2">{field.label}</p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          value={mandateDraft[field.id as keyof MandateDraft] as string}
+                          onChange={(event) => setMandateDraft((current) => ({
+                            ...current,
+                            [field.id]: event.target.value,
+                          }))}
+                          className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        />
+                        <span className="text-xs text-slate-400">{field.unit}</span>
+                      </div>
                     </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                    <p className="text-[10px] font-label uppercase tracking-widest text-slate-400 mb-3">Approved Asset Classes</p>
+                    <div className="flex flex-wrap gap-2">
+                      {ASSET_CLASS_OPTIONS.map((option) => {
+                        const active = mandateDraft.approvedAssetClasses.includes(option.value);
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setMandateDraft((current) => ({
+                              ...current,
+                              approvedAssetClasses: toggleListValue(current.approvedAssetClasses, option.value),
+                            }))}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-bold transition-all ${
+                              active
+                                ? 'border-blue-200 bg-blue-50 text-primary'
+                                : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-100'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-3 text-xs text-slate-500">
+                      Productive twins stay limited to real estate, vehicles, and equipment for the v1 managed loop.
+                    </p>
                   </div>
-                ))}
+
+                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                    <p className="text-[10px] font-label uppercase tracking-widest text-slate-400 mb-3">Treasury Strategy Families</p>
+                    <div className="flex flex-wrap gap-2">
+                      {TREASURY_STRATEGY_OPTIONS.map((option) => {
+                        const active = mandateDraft.allowedTreasuryStrategies.includes(option.value);
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setMandateDraft((current) => ({
+                              ...current,
+                              allowedTreasuryStrategies: toggleListValue(current.allowedTreasuryStrategies, option.value),
+                            }))}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-bold transition-all ${
+                              active
+                                ? 'border-emerald-200 bg-emerald-50 text-secondary'
+                                : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-100'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-3 text-xs text-slate-500">
+                      Safe yield stays the lowest-risk lane, with Blend and AMM routes enabled only when the mandate allows them.
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {[
-                { label: 'Capital Base', value: `${state?.mandate?.capitalBase || '1000'} USDC` },
+                { label: 'Capital Base', value: `${state?.mandate?.capitalBase || mandateDraft.capitalBase} USDC` },
+                { label: 'Target Return', value: `${state?.mandate?.targetReturnMinPct || mandateDraft.targetReturnMinPct}% to ${state?.mandate?.targetReturnMaxPct || mandateDraft.targetReturnMaxPct}%` },
                 { label: 'Liquidity Floor', value: `${state?.mandate?.liquidityFloorPct || mandateDraft.liquidityFloorPct}%` },
                 { label: 'Approval Threshold', value: `${state?.mandate?.approvalThreshold || mandateDraft.approvalThreshold} USDC` },
                 { label: 'Rebalance', value: `${state?.mandate?.rebalanceCadenceMinutes || mandateDraft.rebalanceCadenceMinutes} min` },
+                { label: 'Issuer Cap', value: `${state?.mandate?.issuerCapPct || mandateDraft.issuerCapPct}%` },
+                { label: 'Asset Cap', value: `${state?.mandate?.assetCapPct || mandateDraft.assetCapPct}%` },
+                { label: 'Max Drawdown', value: `${state?.mandate?.maxDrawdownPct || mandateDraft.maxDrawdownPct}%` },
               ].map((item) => (
                 <div key={item.label} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
                   <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">{item.label}</p>
                   <p className="text-sm font-bold text-slate-800">{item.value}</p>
                 </div>
               ))}
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-2">Approved Asset Classes</p>
+                <p className="text-sm font-bold text-slate-800">
+                  {formatOptionList(state?.mandate?.approvedAssetClasses || mandateDraft.approvedAssetClasses, ASSET_CLASS_OPTIONS)}
+                </p>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-2">Treasury Strategy Families</p>
+                <p className="text-sm font-bold text-slate-800">
+                  {formatOptionList(state?.mandate?.allowedTreasuryStrategies || mandateDraft.allowedTreasuryStrategies, TREASURY_STRATEGY_OPTIONS)}
+                </p>
+              </div>
             </div>
           </div>
 

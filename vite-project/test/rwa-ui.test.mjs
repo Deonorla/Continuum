@@ -109,9 +109,18 @@ test("Marketplace source surfaces autonomous attention and bid guardrails", asyn
   assert.match(source, /Reserve Book/);
 });
 
-test("Agent Console source surfaces the managed session rail", async () => {
+test("Agent Console source surfaces the managed session rail and widened mandate controls", async () => {
   const source = await fs.readFile(agentConsolePagePath, "utf8");
 
+  assert.match(source, /Live Mandate/);
+  assert.match(source, /Capital Base/);
+  assert.match(source, /Issuer Cap/);
+  assert.match(source, /Asset Cap/);
+  assert.match(source, /Max Drawdown/);
+  assert.match(source, /Approved Asset Classes/);
+  assert.match(source, /Treasury Strategy Families/);
+  assert.match(source, /Equipment/);
+  assert.match(source, /Blend Lending/);
   assert.match(source, /Managed Session Rail/);
   assert.match(source, /Open .* Session/);
   assert.match(source, /End Session/);

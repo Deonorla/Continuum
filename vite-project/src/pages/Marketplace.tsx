@@ -22,6 +22,7 @@ import { useAgentWallet } from '../hooks/useAgentWallet';
 import { paymentTokenSymbol, settlementRecipientAddress } from '../contactInfo.js';
 import {
   addAgentWatchAsset,
+  cancelAgentPaymentSession,
   createMarketAuction,
   deleteAgentScreen,
   fetchAgentPerformance,
@@ -677,6 +678,7 @@ export default function Marketplace() {
   const [marketSessionBudget, setMarketSessionBudget] = useState('5');
   const [marketSessionStatus, setMarketSessionStatus] = useState<'idle' | 'loading' | 'ok' | 'err'>('idle');
   const [marketSessionError, setMarketSessionError] = useState('');
+  const [marketSessionMessage, setMarketSessionMessage] = useState('');
   const deferredSearch = useDeferredValue(search);
   const deferredGoal = useDeferredValue(goal);
 
@@ -940,15 +942,18 @@ export default function Marketplace() {
     if (!agentPublicKey) {
       setMarketSessionStatus('err');
       setMarketSessionError('Activate the managed agent first to open a shared payment session.');
+      setMarketSessionMessage('');
       return;
     }
     if (!settlementRecipientAddress) {
       setMarketSessionStatus('err');
       setMarketSessionError('Marketplace payment recipient is not configured for this environment.');
+      setMarketSessionMessage('');
       return;
     }
     setMarketSessionStatus('loading');
     setMarketSessionError('');
+    setMarketSessionMessage('');
     try {
       const response = await openAgentPaymentSession(agentPublicKey, {
         amount: marketSessionBudget || '5',
@@ -962,11 +967,29 @@ export default function Marketplace() {
       setMarketSessionId(String(response?.session?.id || ''));
       await load();
       setMarketSessionStatus('ok');
+      setMarketSessionMessage('Managed Marketplace session opened and selected for reuse.');
     } catch (sessionError: any) {
       setMarketSessionStatus('err');
       setMarketSessionError(sessionError?.message || 'Could not open the Marketplace payment session.');
     }
   }, [agentPublicKey, load, marketSessionBudget]);
+
+  const handleCancelMarketSession = useCallback(async (sessionId: string | number) => {
+    if (!agentPublicKey) return;
+    setMarketSessionStatus('loading');
+    setMarketSessionError('');
+    setMarketSessionMessage('');
+    try {
+      const response = await cancelAgentPaymentSession(agentPublicKey, sessionId);
+      await load();
+      setMarketSessionStatus('ok');
+      const refundable = Number(response?.refundableAmount || 0) / 1e7;
+      setMarketSessionMessage(`Managed Marketplace session #${sessionId} ended. ${formatUsdcMetric(refundable)} returned to the agent.`);
+    } catch (sessionError: any) {
+      setMarketSessionStatus('err');
+      setMarketSessionError(sessionError?.message || 'Could not end the selected Marketplace payment session.');
+    }
+  }, [agentPublicKey, load]);
 
   return (
     <div className="p-4 sm:p-8 max-w-[1600px] mx-auto space-y-8">
@@ -1132,11 +1155,18 @@ export default function Marketplace() {
                     {marketSessionStatus === 'loading' ? 'Opening...' : `Open ${paymentTokenSymbol} Session`}
                   </button>
                   <button
-                    onClick={() => void refreshStreams()}
-                    disabled={!walletAddress}
+                    onClick={() => void load()}
+                    disabled={marketSessionStatus === 'loading'}
                     className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                   >
-                    Refresh Sessions
+                    Refresh Rail
+                  </button>
+                  <button
+                    onClick={() => void handleCancelMarketSession(marketSessionId)}
+                    disabled={marketSessionStatus === 'loading' || !selectedMarketSession}
+                    className="rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                  >
+                    {marketSessionStatus === 'loading' ? 'Updating...' : 'End Session'}
                   </button>
                 </div>
                 <input
@@ -1149,7 +1179,7 @@ export default function Marketplace() {
                   Premium analysis and paid bids reuse this selected session. Sessions are opened against the Continuum service recipient {formatShortAddress(settlementRecipientAddress)}.
                 </p>
                 {marketSessionStatus === 'err' && <p className="text-xs text-red-500">{marketSessionError || 'Could not open the Marketplace session rail.'}</p>}
-                {marketSessionStatus === 'ok' && <p className="text-xs text-secondary">Marketplace payment session opened and selected for reuse.</p>}
+                {marketSessionStatus === 'ok' && <p className="text-xs text-secondary">{marketSessionMessage || 'Marketplace payment session rail updated.'}</p>}
                 <div className="space-y-2">
                   {marketplaceSessions.slice(0, 3).map((session: any) => (
                     <button

@@ -944,6 +944,38 @@ router.post("/agents/:agentId/sessions", requireJwt, asyncHandler(async (req, re
     });
 }));
 
+router.post("/agents/:agentId/sessions/:sessionId/cancel", requireJwt, asyncHandler(async (req, res) => {
+    const { services, agentId, ownerPublicKey } = await resolveAgentContext(req);
+    if (normalizeAddress(req.params.agentId) !== normalizeAddress(agentId)) {
+        return res.status(403).json({ error: "Cannot cancel another agent payment session.", code: "agent_scope_forbidden" });
+    }
+
+    const result = await services.agentWallet.cancelSession({
+        owner: ownerPublicKey,
+        sessionId: req.params.sessionId,
+    });
+
+    await services.agentState.appendDecision(agentId, {
+        type: "action",
+        message: `Managed market session #${Number(req.params.sessionId)} ended`,
+        detail: `${formatStellarAmount(result.refundableAmount || "0")} ${(req.app.locals.config?.tokenSymbol || "USDC")} refundable balance returned to the managed agent.`,
+    });
+
+    const session = await services.chainService.getSessionSnapshot(req.params.sessionId);
+    res.json({
+        code: "agent_session_cancelled",
+        agentId,
+        action: "cancelPaymentSession",
+        session: session || {
+            id: Number(req.params.sessionId),
+            isActive: false,
+        },
+        txHash: result.txHash || "",
+        refundableAmount: result.refundableAmount || "0",
+        claimableAmount: result.claimableAmount || "0",
+    });
+}));
+
 router.post("/market/yield/claim", requirePaidAction("0.01", "Yield claim"), requireJwt, asyncHandler(async (req, res) => {
     const { services, ownerPublicKey, agentId } = await resolveAgentContext(req);
     const result = await services.agentWallet.claimYield({

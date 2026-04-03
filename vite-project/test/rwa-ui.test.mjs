@@ -101,6 +101,7 @@ test("Marketplace source surfaces autonomous attention and bid guardrails", asyn
   assert.match(source, /Recent Decisions/);
   assert.match(source, /Continuum Session Rail/);
   assert.match(source, /Open .* Session/);
+  assert.match(source, /End Session/);
   assert.match(source, /Current Bid Focus/);
   assert.match(source, /live shortlist hits, watchlist signals, and current bid focus/i);
   assert.match(source, /Bid Guardrails/);
@@ -113,5 +114,6 @@ test("Agent Console source surfaces the managed session rail", async () => {
 
   assert.match(source, /Managed Session Rail/);
   assert.match(source, /Open .* Session/);
+  assert.match(source, /End Session/);
   assert.match(source, /Treasury optimization, yield claim, yield routing, and paid rebids reuse this managed Continuum session/i);
 });

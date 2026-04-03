@@ -22,6 +22,7 @@ import { useWallet } from '../context/WalletContext';
 import { useAgentWallet } from '../hooks/useAgentWallet';
 import { paymentTokenSymbol, settlementRecipientAddress } from '../contactInfo.js';
 import {
+  cancelAgentPaymentSession,
   claimMarketYield,
   fetchAgentMandate,
   fetchAgentState,
@@ -139,6 +140,7 @@ export default function AgentConsolePage() {
   const [managedSessionBudget, setManagedSessionBudget] = useState('5');
   const [managedSessionStatus, setManagedSessionStatus] = useState<'idle' | 'loading' | 'ok' | 'err'>('idle');
   const [managedSessionError, setManagedSessionError] = useState('');
+  const [managedSessionMessage, setManagedSessionMessage] = useState('');
   const [treasuryActionStatus, setTreasuryActionStatus] = useState<'idle' | 'loading' | 'ok' | '402' | 'err'>('idle');
   const [treasuryActionError, setTreasuryActionError] = useState('');
   const [yieldRouteTokenId, setYieldRouteTokenId] = useState('');
@@ -355,6 +357,7 @@ export default function AgentConsolePage() {
     if (!agentPublicKey) return;
     setManagedSessionStatus('loading');
     setManagedSessionError('');
+    setManagedSessionMessage('');
     try {
       const response = await openAgentPaymentSession(agentPublicKey, {
         amount: managedSessionBudget || '5',
@@ -370,11 +373,29 @@ export default function AgentConsolePage() {
         setTreasurySessionId(String(response.session.id));
       }
       await refreshState();
+      setManagedSessionMessage('Managed payment session opened and selected for reuse.');
     } catch (sessionError: any) {
       setManagedSessionStatus('err');
       setManagedSessionError(sessionError?.message || 'Could not open a managed payment session.');
     }
   }, [agentPublicKey, managedSessionBudget, refreshState]);
+
+  const cancelManagedSession = useCallback(async (sessionId: string | number) => {
+    if (!agentPublicKey) return;
+    setManagedSessionStatus('loading');
+    setManagedSessionError('');
+    setManagedSessionMessage('');
+    try {
+      const response = await cancelAgentPaymentSession(agentPublicKey, sessionId);
+      await refreshState();
+      setManagedSessionStatus('ok');
+      const refundable = Number(response?.refundableAmount || 0) / 1e7;
+      setManagedSessionMessage(`Managed payment session #${sessionId} ended. ${formatMoney(refundable)} returned to the agent.`);
+    } catch (sessionError: any) {
+      setManagedSessionStatus('err');
+      setManagedSessionError(sessionError?.message || 'Could not end the selected managed payment session.');
+    }
+  }, [agentPublicKey, refreshState]);
 
   const mergedLogs = useMemo<LogEntry[]>(() => (
     Array.isArray(state?.decisionLog) ? state.decisionLog.map((entry: any) => ({
@@ -704,6 +725,13 @@ export default function AgentConsolePage() {
                       >
                         {managedSessionStatus === 'loading' ? 'Opening...' : `Open ${paymentTokenSymbol} Session`}
                       </button>
+                      <button
+                        onClick={() => void cancelManagedSession(treasurySessionId)}
+                        disabled={!selectedManagedSession || managedSessionStatus === 'loading'}
+                        className="rounded-xl border border-rose-200 text-rose-600 text-xs font-bold hover:bg-rose-50 disabled:opacity-50 px-3 py-2"
+                      >
+                        {managedSessionStatus === 'loading' ? 'Updating...' : 'End Session'}
+                      </button>
                     </div>
                     <input
                       type="text"
@@ -719,7 +747,7 @@ export default function AgentConsolePage() {
                       <p className="text-xs text-red-500">{managedSessionError || 'Could not open the managed payment session.'}</p>
                     )}
                     {managedSessionStatus === 'ok' && (
-                      <p className="text-xs text-secondary">Managed payment session opened and selected for reuse.</p>
+                      <p className="text-xs text-secondary">{managedSessionMessage || 'Managed session rail updated.'}</p>
                     )}
                     <div className="space-y-2">
                       {managedPaymentSessions.slice(0, 3).map((session: any) => (

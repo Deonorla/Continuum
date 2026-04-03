@@ -217,6 +217,24 @@ describe("Continuum API Integration", function () {
                         txHash: `session-open-${session.id}`,
                     };
                 },
+                async cancelSession({ sessionId }) {
+                    const sessionIndex = managedSessionsState.findIndex((entry) => String(entry.id) === String(sessionId));
+                    if (sessionIndex === -1) {
+                        throw new Error("Session not found.");
+                    }
+                    const current = managedSessionsState[sessionIndex];
+                    const next = {
+                        ...current,
+                        isActive: false,
+                        sessionStatus: "cancelled",
+                    };
+                    managedSessionsState = managedSessionsState.map((entry, index) => (index === sessionIndex ? next : entry));
+                    return {
+                        txHash: `session-cancel-${sessionId}`,
+                        refundableAmount: current.refundableAmount || "0",
+                        claimableAmount: current.claimableInitial || "0",
+                    };
+                },
                 async claimYield() {
                     return {
                         txHash: "yield-tx-1",
@@ -645,6 +663,38 @@ describe("Continuum API Integration", function () {
             .expect(200);
 
         expect(positionsResponse.body.positions.sessions.some((session) => session.id === 78)).to.equal(true);
+    });
+
+    it("cancels a managed market payment session and returns refundable balance", async () => {
+        await request(app)
+            .post(`/api/agents/${agentId}/sessions`)
+            .set("Authorization", `Bearer ${token}`)
+            .send({
+                amount: "5",
+                durationSeconds: 7200,
+            })
+            .expect(201);
+
+        const response = await request(app)
+            .post(`/api/agents/${agentId}/sessions/78/cancel`)
+            .set("Authorization", `Bearer ${token}`)
+            .expect(200);
+
+        expect(response.body.code).to.equal("agent_session_cancelled");
+        expect(response.body.action).to.equal("cancelPaymentSession");
+        expect(response.body.session.id).to.equal(78);
+        expect(response.body.session.isActive).to.equal(false);
+        expect(response.body.txHash).to.equal("session-cancel-78");
+        expect(response.body.refundableAmount).to.equal("50000000");
+
+        const positionsResponse = await request(app)
+            .get("/api/market/positions")
+            .set("Authorization", `Bearer ${token}`)
+            .expect(200);
+
+        const cancelled = positionsResponse.body.positions.sessions.find((session) => session.id === 78);
+        expect(cancelled).to.exist;
+        expect(cancelled.isActive).to.equal(false);
     });
 
     it("returns 402 for paid yield claim without a payment session", async () => {

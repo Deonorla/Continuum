@@ -290,6 +290,14 @@ export async function openAgentPaymentSession(agentId, payload) {
   });
 }
 
+export async function cancelAgentPaymentSession(agentId, sessionId) {
+  return request(`/api/agents/${agentId}/sessions/${sessionId}/cancel`, {
+    method: 'POST',
+    headers: agentHeaders(),
+    body: JSON.stringify({}),
+  });
+}
+
 export async function fetchAgentRuntime(agentId) {
   const response = await request(`/api/agents/${agentId}/runtime`, {
     method: 'GET',

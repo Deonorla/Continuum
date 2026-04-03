@@ -9,7 +9,7 @@ import { cn } from '../lib/cn';
 import { useAgentWallet } from '../hooks/useAgentWallet';
 import AgentWalletPanel from '../components/AgentWalletPanel';
 import { useAgentBalances } from '../hooks/useAgentBalances';
-import { useAgentLoop, makeLogEntry, type LogEntry } from '../hooks/useAgentLoop';
+import { useAgentLoop, makeLogEntry, resolvePreferredToken, type LogEntry } from '../hooks/useAgentLoop';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +54,7 @@ export default function AgentConsolePage() {
   const { walletAddress, outgoingStreams, incomingStreams, refreshStreams } = useWallet();
   const { agentPublicKey } = useAgentWallet(walletAddress);
   const { xlm: agentXlm, usdc: agentUsdc } = useAgentBalances(agentPublicKey);
+  const preferredToken = resolvePreferredToken(agentXlm, agentUsdc);
   const isConnected = Boolean(walletAddress);
 
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle');
@@ -111,8 +112,8 @@ export default function AgentConsolePage() {
   const startAgent = useCallback(() => {
     if (!agentPublicKey) return;
     setAgentStatus('running');
-    addLog({ type: 'info', message: 'Autonomous agent started', detail: `Rules active: ${rules.filter(r => r.enabled).length}` });
-    startLoop(rules, addLog, setAgentSessions);
+    addLog({ type: 'info', message: 'Autonomous agent started', detail: `Rules active: ${rules.filter(r => r.enabled).length} · Token: ${preferredToken}` });
+    startLoop(rules, addLog, setAgentSessions, preferredToken);
   }, [agentPublicKey, rules, addLog, startLoop]);
 
   const pauseAgent = useCallback(() => {
@@ -161,10 +162,10 @@ export default function AgentConsolePage() {
 
         <div className="flex items-center gap-2 flex-wrap">
           {[
-            { icon: TrendingUp,    label: 'P&L',       value: `+${totalProfit.toFixed(2)} USDC`,    color: 'text-secondary' },
-            { icon: Zap,           label: 'Actions',   value: String(actionsCount),                  color: 'text-primary' },
-            { icon: ArrowUpRight,  label: 'Sessions',  value: String(activeStreams),                  color: 'text-primary' },
-            { icon: ArrowDownLeft, label: 'Claimable', value: `${totalClaimable.toFixed(4)} USDC`,   color: 'text-secondary' },
+            { icon: TrendingUp,    label: 'P&L',       value: `+${totalProfit.toFixed(2)} ${preferredToken}`,    color: 'text-secondary' },
+            { icon: Zap,           label: 'Actions',   value: String(actionsCount),                               color: 'text-primary' },
+            { icon: ArrowUpRight,  label: 'Sessions',  value: String(activeStreams),                               color: 'text-primary' },
+            { icon: ArrowDownLeft, label: 'Claimable', value: `${totalClaimable.toFixed(4)} ${preferredToken}`,   color: 'text-secondary' },
           ].map(({ icon: Icon, label, value, color }) => (
             <div key={label} className="flex items-center gap-2 bg-white border border-slate-100 rounded-xl px-3 py-2 shadow-sm">
               <Icon size={13} className={color} />
@@ -323,7 +324,7 @@ export default function AgentConsolePage() {
             <p className="text-[10px] font-label uppercase tracking-widest text-slate-400 mb-3">Session P&L</p>
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: 'Profit',    value: `+${totalProfit.toFixed(2)}`,  color: 'text-secondary' },
+                { label: 'Profit',    value: `+${totalProfit.toFixed(2)} ${preferredToken}`,  color: 'text-secondary' },
                 { label: 'Actions',   value: String(actionsCount),           color: 'text-primary' },
                 { label: 'Sessions',  value: String(activeStreams),           color: 'text-purple-600' },
               ].map(({ label, value, color }) => (

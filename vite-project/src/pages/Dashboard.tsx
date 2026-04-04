@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { TrendingUp, ArrowUpRight, ArrowDownLeft, Store, Plus, Zap, Bot, Activity, Layers, Target, AlertTriangle, RefreshCw, Play, Pause, Wallet, X, KeyRound, PlusCircle, Copy } from 'lucide-react';
+import { TrendingUp, ArrowUpRight, ArrowDownLeft, Store, Plus, Zap, Bot, Activity, Layers, Target, AlertTriangle, RefreshCw, Play, Pause, Wallet, X, KeyRound, PlusCircle, Copy, ShieldCheck, HelpCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/cn';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
@@ -7,11 +7,12 @@ import { useWallet } from '../context/WalletContext';
 import { useAppMode } from '../context/AppModeContext';
 import { paymentTokenSymbol } from '../contactInfo';
 import Select from '../components/ui/Select';
-import { useAgentWallet } from '../hooks/useAgentWallet';
+import { useAgentWallet, agentAuthHeaders } from '../hooks/useAgentWallet';
 import AgentWalletPanel from '../components/AgentWalletPanel';
 import { useAgentBalances } from '../hooks/useAgentBalances';
-import { fetchRwaAssets } from '../services/rwaApi.js';
+import { fetchMarketAssets } from '../services/rwaApi.js';
 import { useAgentLoopContext } from '../context/AgentLoopContext';
+import { getAssetImage } from '../components/AssetCard';
 
 // ─── Shared ───────────────────────────────────────────────────────────────────
 
@@ -88,6 +89,9 @@ export default function Dashboard() {
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [showFundModal, setShowFundModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [showTrustlineModal, setShowTrustlineModal] = useState(false);
+  const [trustlineBusy, setTrustlineBusy] = useState(false);
+  const [trustlineMsg, setTrustlineMsg] = useState('');
   const [withdrawAsset, setWithdrawAsset] = useState('USDC');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawBusy, setWithdrawBusy] = useState(false);
@@ -116,6 +120,21 @@ export default function Dashboard() {
     setWithdrawBusy(false);
   };
 
+  const handleSetupTrustline = async () => {
+    setTrustlineBusy(true); setTrustlineMsg('');
+    try {
+      const { getRwaApiBaseUrl, ACTIVE_NETWORK } = await import('../services/rwaApi.js').then(async m => ({ getRwaApiBaseUrl: m.getRwaApiBaseUrl, ACTIVE_NETWORK: (await import('../networkConfig.js')).ACTIVE_NETWORK }));
+      const res = await fetch(`${getRwaApiBaseUrl()}/api/agent/trustline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...agentAuthHeaders() },
+        body: JSON.stringify({ assetCode: ACTIVE_NETWORK.paymentAssetCode || 'USDC', assetIssuer: ACTIVE_NETWORK.paymentAssetIssuer || '' }),
+      });
+      const data = await res.json();
+      setTrustlineMsg(res.ok ? '✓ USDC trustline created successfully!' : (data.error || 'Failed'));
+    } catch { setTrustlineMsg('Request failed'); }
+    setTrustlineBusy(false);
+  };
+
   const agentProfit = agentLogs.filter(e => e.type === 'profit' && e.amount)
     .reduce((sum, e) => sum + (parseFloat(e.amount!.replace('+', '')) || 0), 0);
   const agentActions = agentLogs.filter(e => e.type === 'action').length;
@@ -124,8 +143,14 @@ export default function Dashboard() {
 
   useEffect(() => { logRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [agentLogs]);
   useEffect(() => {
-    fetchRwaAssets().then(r => setMarketAssets(r.slice(0, 3))).catch(() => {});
-  }, []);
+    fetchMarketAssets().then(r => {
+      const mine = new Set([walletAddress, agentPublicKey].filter(Boolean).map(k => String(k).trim().toUpperCase()));
+      const others = mine.size
+        ? r.filter(a => !mine.has(String(a.currentOwner || '').trim().toUpperCase()) && !mine.has(String(a.issuer || '').trim().toUpperCase()))
+        : r;
+      setMarketAssets(others.slice(0, 3));
+    }).catch(() => {});
+  }, [walletAddress, agentPublicKey]);
   // Sync shared agent state when wallet is known
   useEffect(() => { if (agentPublicKey) ctxRefresh(agentPublicKey); }, [agentPublicKey, ctxRefresh]);
 
@@ -195,6 +220,10 @@ export default function Dashboard() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-bold hover:bg-emerald-100 transition-all disabled:opacity-40">
                 <PlusCircle size={12} /> Fund Wallet
               </button>
+              <button onClick={() => { setShowTrustlineModal(true); setTrustlineMsg(''); }} disabled={!agentPublicKey}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-bold hover:bg-blue-100 transition-all disabled:opacity-40">
+                <ShieldCheck size={12} /> USDC Trustline
+              </button>
               <button onClick={() => { setShowWithdrawModal(true); setWithdrawMsg(''); }} disabled={!agentPublicKey}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-xs font-bold hover:bg-amber-100 transition-all disabled:opacity-40">
                 <ArrowUpRight size={12} /> Withdraw
@@ -224,7 +253,7 @@ export default function Dashboard() {
                 { icon: ArrowDownLeft, label: 'Incoming Streams', value: String(activeIn.length),  sub: 'Claimable now',  color: 'text-secondary', href: '/app/streams' },
                 { icon: Store,         label: 'Marketplace',      value: '→',                   sub: 'Browse assets',    color: 'text-purple-600',href: '/app/marketplace' },
               ].map((stat, i) => (
-                <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
+                <motion.div key={stat.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
                   className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex justify-between items-start mb-3">
                     <div className={cn('flex items-center gap-2', stat.color)}>
@@ -273,7 +302,7 @@ export default function Dashboard() {
                   { icon: Layers, label: 'RWA Studio',      sub: 'Mint · verify · manage assets', bg: 'bg-purple-50', border: 'border-purple-100', text: 'text-purple-600', href: '/app/rwa' },
                   { icon: Store,  label: 'Marketplace',     sub: 'Discover yield opportunities',  bg: 'bg-teal-50',   border: 'border-teal-100',   text: 'text-secondary',  href: '/app/marketplace' },
                 ].map((a, i) => (
-                  <Link key={i} to={a.href} className={cn('flex items-center justify-between p-4 rounded-xl border transition-colors group', a.bg, a.border)}>
+                  <Link key={a.label} to={a.href} className={cn('flex items-center justify-between p-4 rounded-xl border transition-colors group', a.bg, a.border)}>
                     <div className="flex items-center gap-3">
                       <a.icon className={a.text} size={16} />
                       <div>
@@ -301,7 +330,7 @@ export default function Dashboard() {
                 { label: 'Session P&L', value: `+${agentProfit.toFixed(2)}`,                 sub: 'profit',          color: 'text-secondary' },
                 { label: 'Actions',     value: String(agentActions),                          sub: 'Autonomous decisions', color: 'text-purple-600' },
               ].map((s, i) => (
-                <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
+                <motion.div key={s.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
                   className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm">
                   <p className="text-[10px] font-label uppercase tracking-widest text-slate-400 mb-2">{s.label}</p>
                   <p className={cn('text-2xl font-headline font-bold', s.color)}>{s.value}</p>
@@ -386,21 +415,23 @@ export default function Dashboard() {
                   <div className="space-y-2">
                     {marketAssets.length === 0 ? (
                       <p className="text-xs text-slate-400">No assets indexed yet.</p>
-                    ) : marketAssets.map(a => (
-                      <div key={a.id} className="flex items-center gap-3 py-1.5">
+                    ) : marketAssets.map(a => {
+                      const vs = a.verificationStatus || a.verificationStatusLabel || '';
+                      const vsColor = vs === 'verified' ? 'bg-emerald-50 text-emerald-600' : vs === 'verified_with_warnings' ? 'bg-yellow-50 text-yellow-600' : 'bg-amber-50 text-amber-600';
+                      const vsLabel = vs === 'verified' ? 'Verified' : vs === 'verified_with_warnings' ? 'Warnings' : 'Pending';
+                      return (
+                      <div key={a.id || a.tokenId} className="flex items-center gap-3 py-1.5">
                         <div className="w-8 h-8 rounded-lg bg-slate-100 overflow-hidden shrink-0">
-                          <img src={`https://picsum.photos/seed/${a.type}${a.id}/80/80`} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          <img src={a.publicMetadata?.image || a.imageUrl || getAssetImage(a.type || a.assetType, a.id || a.tokenId, 80, 80)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-bold text-slate-800 truncate">{a.name}</p>
-                          <p className="text-[10px] text-slate-400">${a.pricePerHour.toFixed(4)}/hr</p>
+                          <p className="text-[10px] text-slate-400">${(a.pricePerHour ?? 0).toFixed(4)}/hr</p>
                         </div>
-                        <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full',
-                          a.verificationStatus === 'verified' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600')}>
-                          {a.verificationStatusLabel || 'Pending'}
-                        </span>
+                        <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full', vsColor)}>{vsLabel}</span>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -513,6 +544,54 @@ export default function Dashboard() {
                   : <><ArrowUpRight size={16} /> Withdraw {withdrawAmount || '0'} {withdrawAsset}</>}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── USDC Trustline Modal ── */}
+      {showTrustlineModal && agentPublicKey && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={16} className="text-primary" />
+                <p className="text-sm font-bold text-slate-900">Setup USDC Trustline</p>
+              </div>
+              <button onClick={() => { setShowTrustlineModal(false); setTrustlineMsg(''); }} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
+            </div>
+
+            {/* Help box */}
+            <div className="flex gap-3 bg-blue-50 border border-blue-100 rounded-xl p-3">
+              <HelpCircle size={15} className="text-blue-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-blue-700">How to fund your agent with USDC</p>
+                <ol className="text-[11px] text-blue-600 space-y-1 list-decimal list-inside">
+                  <li>Click <strong>Fund Wallet</strong> → get free testnet XLM via Friendbot</li>
+                  <li>Wait a few seconds for the XLM to arrive</li>
+                  <li>Come back here and click <strong>Setup Trustline</strong> below</li>
+                  <li>Then send USDC from your Freighter wallet to the agent address</li>
+                </ol>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 rounded-xl border border-slate-100 p-3 space-y-1">
+              <p className="text-[9px] font-label uppercase tracking-widest text-slate-400">Agent Address</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-mono text-slate-700 truncate flex-1">{agentPublicKey}</p>
+                <button onClick={() => navigator.clipboard.writeText(agentPublicKey)} className="text-slate-400 hover:text-primary shrink-0"><Copy size={13} /></button>
+              </div>
+            </div>
+
+            {trustlineMsg && (
+              <p className={`text-xs font-medium ${trustlineMsg.startsWith('✓') ? 'text-emerald-600' : 'text-red-500'}`}>{trustlineMsg}</p>
+            )}
+
+            <button onClick={handleSetupTrustline} disabled={trustlineBusy}
+              className="w-full py-3 rounded-xl bg-primary text-white text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+              {trustlineBusy
+                ? <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                : <><ShieldCheck size={15} /> Setup USDC Trustline</>}
+            </button>
           </div>
         </div>
       )}

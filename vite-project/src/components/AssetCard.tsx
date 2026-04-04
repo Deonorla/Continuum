@@ -5,6 +5,51 @@ import { TYPE_META } from '../pages/rwa/rwaData';
 
 export const TYPE_ICON = { real_estate: Building2, vehicle: Car, commodity: Package };
 
+// Curated Unsplash photo IDs per asset type
+const ASSET_IMAGES: Record<string, string[]> = {
+  real_estate: [
+    'photo-1564013799919-ab600027ffc6', // modern house
+    'photo-1600596542815-ffad4c1539a9', // luxury villa
+    'photo-1570129477492-45c003edd2be', // suburban home
+    'photo-1512917774080-9991f1c4c750', // contemporary house
+    'photo-1600585154340-be6161a56a0c', // real estate exterior
+    'photo-1580587771525-78b9dba3b914', // white modern house
+  ],
+  vehicle: [
+    'photo-1494976388531-d1058494cdd8', // sports car
+    'photo-1533473359331-0135ef1b58bf', // luxury sedan
+    'photo-1552519507-da3b142c6e3d', // muscle car
+    'photo-1542362567-b07e54358753', // SUV
+    'photo-1511919884226-fd3cad34687c', // truck
+    'photo-1580274455191-1c62238fa333', // electric vehicle
+  ],
+  equipment: [
+    'photo-1504328345606-18bbc8c9d7d1', // industrial equipment
+    'photo-1581091226825-a6a2a5aee158', // machinery
+    'photo-1565043589221-1a6fd9ae45c7', // construction equipment
+    'photo-1558618666-fcd25c85cd64', // heavy machinery
+  ],
+  commodity: [
+    'photo-1610375461246-83df859d849d', // gold bars
+    'photo-1618044733300-9472054094ee', // commodities
+    'photo-1559526324-593bc073d938', // warehouse goods
+    'photo-1586528116311-ad8dd3c8310d', // storage
+  ],
+};
+
+const FALLBACK_IMAGES = [
+  'photo-1560518883-ce09059eeffa',
+  'photo-1486406146926-c627a92ad1ab',
+];
+
+export function getAssetImage(type: string, id: string | number, w = 600, h = 450): string {
+  const list = ASSET_IMAGES[type] ?? FALLBACK_IMAGES;
+  const n = typeof id === 'number' ? id : String(id).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  const photoId = list[n % list.length];
+  return `https://images.unsplash.com/${photoId}?auto=format&fit=crop&w=${w}&h=${h}&q=80`;
+}
+
+/** @deprecated use getAssetImage */
 export const IMAGE_SEEDS = {
   real_estate: 'villa',
   vehicle: 'tech',
@@ -30,7 +75,6 @@ function resolveRentalReadiness(asset) {
 export function AssetCard({ asset, onDetails }) {
   const meta = TYPE_META[asset.type] || TYPE_META.real_estate;
   const Icon = TYPE_ICON[asset.type] || Building2;
-  const seed = IMAGE_SEEDS[asset.type] || 'villa';
   const rentalReadiness = resolveRentalReadiness(asset);
   const isRentalReady = Boolean(rentalReadiness.ready);
   const agentSignals = asset.agentSignals || null;
@@ -43,7 +87,7 @@ export function AssetCard({ asset, onDetails }) {
       <div className="relative aspect-[4/3] overflow-hidden">
         <img
           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-          src={`https://picsum.photos/seed/${seed}${asset.id}/600/450`}
+          src={getAssetImage(asset.type, asset.id, 600, 450)}
           alt={asset.name}
           referrerPolicy="no-referrer"
         />
@@ -117,7 +161,6 @@ export function AssetCard({ asset, onDetails }) {
 export function DetailDrawer({ asset, onClose, renderBody, renderFooter }) {
   const meta = TYPE_META[asset.type] || TYPE_META.real_estate;
   const Icon = TYPE_ICON[asset.type] || Building2;
-  const seed = IMAGE_SEEDS[asset.type] || 'villa';
   const rentalReadiness = resolveRentalReadiness(asset);
   const isRentalReady = Boolean(rentalReadiness.ready);
 
@@ -134,7 +177,7 @@ export function DetailDrawer({ asset, onClose, renderBody, renderFooter }) {
       >
         <div className="relative aspect-[16/9] shrink-0 overflow-hidden">
           <img
-            src={`https://picsum.photos/seed/${seed}${asset.id}/800/450`}
+            src={getAssetImage(asset.type, asset.id, 800, 450)}
             alt={asset.name}
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"

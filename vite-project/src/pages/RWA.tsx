@@ -1327,7 +1327,7 @@ export default function RWA() {
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
         <div className="col-span-1 space-y-6 lg:col-span-3">
-          <div className="flex items-center space-x-4 rounded-3xl border border-slate-100 bg-slate-50 p-6 md:flex-col md:space-x-0 md:space-y-8">
+          <div className="flex items-center space-x-4 rounded-3xl border border-slate-100 bg-slate-50 p-6 lg:flex-col lg:space-x-0 lg:space-y-8">
             {[
               {
                 label: 'Indexed Assets',
@@ -1364,10 +1364,10 @@ export default function RWA() {
               </div>
             ))}
           </div>
-          <div className="group relative aspect-[4/5] overflow-hidden rounded-3xl bg-slate-200">
+          <div className="group relative aspect-[4/5] overflow-hidden rounded-3xl bg-slate-200 hidden lg:flex">
             <img
               className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
-              src="https://picsum.photos/seed/villa/600/800"
+              src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=600&h=800&q=80"
               alt="Featured Asset"
               referrerPolicy="no-referrer"
             />

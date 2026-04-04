@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { TrendingUp, ArrowUpRight, ArrowDownLeft, Store, Plus, Zap, Bot, Activity, Layers, Target, AlertTriangle, RefreshCw, Play, Pause, Wallet, X, KeyRound, PlusCircle, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/cn';
-import { Link } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { useAppMode } from '../context/AppModeContext';
 import { paymentTokenSymbol } from '../contactInfo';
@@ -53,6 +53,7 @@ function AgentLogRow({ entry }: { entry: any }) {
     profit:   { Icon: TrendingUp,    color: 'text-secondary',  bg: 'bg-teal-50' },
   };
   const { Icon, color, bg } = icons[entry.type] || icons.info;
+  const time = new Date(entry.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   return (
     <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
       className="flex items-start gap-3 py-2.5 border-b border-slate-50 last:border-0">
@@ -63,9 +64,12 @@ function AgentLogRow({ entry }: { entry: any }) {
         <p className="text-xs text-slate-800 font-medium leading-snug">{entry.message}</p>
         {entry.detail && <p className="text-[10px] text-slate-400 mt-0.5">{entry.detail}</p>}
       </div>
-      {entry.amount && (
-        <p className={`text-xs font-bold shrink-0 ${entry.amount.startsWith('+') ? 'text-secondary' : 'text-red-500'}`}>{entry.amount}</p>
-      )}
+      <div className="text-right shrink-0">
+        {entry.amount && (
+          <p className={`text-xs font-bold ${entry.amount.startsWith('+') ? 'text-secondary' : 'text-red-500'}`}>{entry.amount}</p>
+        )}
+        <p className="text-[10px] text-slate-600 mt-0.5">{time}</p>
+      </div>
     </motion.div>
   );
 }
@@ -134,7 +138,8 @@ export default function Dashboard() {
     if (!agentPublicKey) return;
     await ctxPause(agentPublicKey);
   }, [agentPublicKey, ctxPause]);
-
+  
+  const navigate = useNavigate();
   const fmt = (v: any) => parseFloat(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const INACTIVE = ['ended', 'cancelled', 'completed'];
   const isActive = (s: any) => !INACTIVE.includes(s.sessionStatus) && s.isActive !== false;
@@ -311,7 +316,7 @@ export default function Dashboard() {
               <div className="bg-white rounded-xl border border-slate-100 shadow-sm flex flex-col h-[380px]">
                 <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
                   <div className="flex items-center gap-2">
-                    <Activity size={14} className="text-primary" />
+                    <Activity size={14} className="text-primary animate-pulse" />
                     <span className="text-xs font-label uppercase tracking-widest text-slate-500 font-bold">Live Activity</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -320,8 +325,8 @@ export default function Dashboard() {
                         <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" /> Autonomous
                       </span>
                     )}
-                    <button onClick={() => refreshStreams()} className="p-1.5 rounded-lg text-slate-400 hover:text-primary hover:bg-slate-50 transition-all">
-                      <RefreshCw size={13} />
+                    <button onClick={() => navigate('/app/agent')} className="p-1.5 rounded-lg text-slate-400 hover:text-primary hover:bg-slate-50 transition-all">
+                     <ArrowUpRight size={16} className="text-amber-600" />
                     </button>
                   </div>
                 </div>

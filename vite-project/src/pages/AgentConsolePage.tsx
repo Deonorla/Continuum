@@ -1,27 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Activity,
-  AlertTriangle,
-  BarChart2,
-  Bot,
-  Copy,
-  Pause,
-  Play,
-  RefreshCw,
-  Settings,
-  Store,
-  Target,
-  TrendingUp,
-  Wallet,
-  X,
+  Activity, AlertTriangle, BarChart2, Bot, Copy, Pause, Play,
+  RefreshCw, Settings, Store, Target, TrendingUp, Wallet, X,
+  Zap, ChevronDown, ChevronUp, ArrowUpRight,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/cn';
 import { useWallet } from '../context/WalletContext';
 import { useAgentWallet } from '../hooks/useAgentWallet';
-import { paymentTokenSymbol, settlementRecipientAddress } from '../contactInfo.js';
 import { useAgentLoopContext } from '../context/AgentLoopContext';
+import { paymentTokenSymbol, settlementRecipientAddress } from '../contactInfo.js';
 import {
   cancelAgentPaymentSession,
   claimMarketYield,
@@ -30,13 +19,11 @@ import {
   fetchAgentWalletState,
   fetchMarketAssets,
   openAgentPaymentSession,
-  pauseAgentRuntime,
   placeAuctionBid,
   rebalanceMarketTreasury,
   routeMarketYield,
   saveAgentMandate,
   settleAuction,
-  startAgentRuntime,
   tickAgentRuntime,
 } from '../services/rwaApi.js';
 
@@ -67,39 +54,24 @@ type MandateDraft = {
 
 const ASSET_CLASS_OPTIONS = [
   { value: 'real_estate', label: 'Real Estate' },
-  { value: 'vehicle', label: 'Vehicle' },
-  { value: 'commodity', label: 'Equipment' },
+  { value: 'vehicle',     label: 'Vehicle' },
+  { value: 'commodity',   label: 'Equipment' },
 ];
 
 const TREASURY_STRATEGY_OPTIONS = [
-  { value: 'safe_yield', label: 'Safe Yield' },
+  { value: 'safe_yield',    label: 'Safe Yield' },
   { value: 'blend_lending', label: 'Blend Lending' },
-  { value: 'stellar_amm', label: 'Stellar AMM' },
+  { value: 'stellar_amm',   label: 'Stellar AMM' },
 ];
 
 function toggleListValue(current: string[], value: string) {
-  if (current.includes(value)) {
-    return current.length === 1 ? current : current.filter((entry) => entry !== value);
-  }
+  if (current.includes(value)) return current.length === 1 ? current : current.filter(e => e !== value);
   return [...current, value];
 }
 
 function formatOptionList(values: string[], options: { value: string; label: string }[]) {
   if (!Array.isArray(values) || values.length === 0) return 'Not set';
-  const labels = values
-    .map((value) => options.find((option) => option.value === value)?.label || value)
-    .filter(Boolean);
-  return labels.join(' · ');
-}
-
-function formatShortAddress(value?: string | null) {
-  if (!value) return 'Not connected';
-  return `${value.slice(0, 6)}…${value.slice(-4)}`;
-}
-
-function formatMoney(value: string | number | undefined, suffix = 'USDC') {
-  const numeric = Number(value || 0);
-  return `${numeric.toFixed(2)} ${suffix}`;
+  return values.map(v => options.find(o => o.value === v)?.label || v).filter(Boolean).join(' · ');
 }
 
 function formatCountdown(endTime?: number) {
@@ -112,40 +84,83 @@ function formatCountdown(endTime?: number) {
   return `${hours}h ${minutes}m left`;
 }
 
+function formatShortAddress(value?: string | null) {
+  if (!value) return 'Not connected';
+  return `${value.slice(0, 6)}…${value.slice(-4)}`;
+}
+
+function formatMoney(value: string | number | undefined, suffix = 'USDC') {
+  const numeric = Number(value || 0);
+  return `${numeric.toFixed(2)} ${suffix}`;
+}
+
 function LogRow({ entry }: { entry: LogEntry }) {
   const icons = {
-    action: { Icon: Target, color: 'text-primary', bg: 'bg-blue-50' },
-    decision: { Icon: Bot, color: 'text-purple-600', bg: 'bg-purple-50' },
-    info: { Icon: Activity, color: 'text-slate-500', bg: 'bg-slate-100' },
-    error: { Icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-50' },
-    profit: { Icon: TrendingUp, color: 'text-secondary', bg: 'bg-emerald-50' },
+    action:   { Icon: Zap,           color: 'text-blue-500',   bg: 'bg-blue-50',    dot: 'bg-blue-400' },
+    decision: { Icon: Bot,           color: 'text-purple-500', bg: 'bg-purple-50',  dot: 'bg-purple-400' },
+    info:     { Icon: Activity,      color: 'text-slate-400',  bg: 'bg-slate-100',  dot: 'bg-slate-300' },
+    error:    { Icon: AlertTriangle, color: 'text-red-500',    bg: 'bg-red-50',     dot: 'bg-red-400' },
+    profit:   { Icon: TrendingUp,    color: 'text-emerald-500',bg: 'bg-emerald-50', dot: 'bg-emerald-400' },
   };
-  const iconConfig = icons[entry.type] || icons.info;
-  const time = new Date(entry.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const cfg = icons[entry.type] || icons.info;
+  const time = new Date(entry.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   return (
-    <div className="flex items-start gap-3 py-3 border-b border-slate-50 last:border-0">
-      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${iconConfig.bg}`}>
-        <iconConfig.Icon size={13} className={iconConfig.color} />
+    <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+      className="flex items-start gap-3 py-3 border-b border-slate-50 last:border-0 group">
+      <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${cfg.bg}`}>
+        <cfg.Icon size={13} className={cfg.color} />
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm text-slate-800 font-medium leading-snug">{entry.message}</p>
         {entry.detail && <p className="text-xs text-slate-400 mt-0.5">{entry.detail}</p>}
       </div>
-      <div className="text-right shrink-0">
+      <div className="text-right shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
         {entry.amount && (
-          <p className={`text-xs font-bold ${entry.amount.startsWith('+') ? 'text-secondary' : 'text-red-500'}`}>{entry.amount}</p>
+          <p className={`text-xs font-bold ${entry.amount.startsWith('+') ? 'text-emerald-600' : 'text-red-500'}`}>{entry.amount}</p>
         )}
         <p className="text-[10px] text-slate-300 mt-0.5">{time}</p>
       </div>
+    </motion.div>
+  );
+}
+
+function SectionCard({ title, icon: Icon, iconColor = 'text-primary', children, action, collapsible = false }: {
+  title: string; icon: any; iconColor?: string; children: React.ReactNode;
+  action?: React.ReactNode; collapsible?: boolean;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      <div className={cn('flex items-center justify-between px-5 py-4 border-b border-slate-50', collapsible && 'cursor-pointer')}
+        onClick={collapsible ? () => setOpen(v => !v) : undefined}>
+        <div className="flex items-center gap-2.5">
+          <div className={`w-7 h-7 rounded-xl bg-slate-50 flex items-center justify-center`}>
+            <Icon size={14} className={iconColor} />
+          </div>
+          <span className="text-xs font-bold uppercase tracking-widest text-slate-600">{title}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {action}
+          {collapsible && (open ? <ChevronUp size={14} className="text-slate-300" /> : <ChevronDown size={14} className="text-slate-300" />)}
+        </div>
+      </div>
+      <AnimatePresence initial={false}>
+        {(!collapsible || open) && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}>
+            <div className="p-5">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-function StatCard({ label, value, color = 'text-slate-900' }: { label: string; value: string; color?: string }) {
+function KV({ label, value, color = 'text-slate-800' }: { label: string; value: string; color?: string }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
-      <p className="text-[10px] font-label uppercase tracking-widest text-slate-400 mb-1">{label}</p>
-      <p className={`text-2xl font-headline font-black ${color}`}>{value}</p>
+    <div className="bg-slate-50 rounded-xl border border-slate-100 px-3 py-2.5">
+      <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">{label}</p>
+      <p className={`text-sm font-bold ${color}`}>{value}</p>
     </div>
   );
 }
@@ -153,14 +168,7 @@ function StatCard({ label, value, color = 'text-slate-900' }: { label: string; v
 export default function AgentConsolePage() {
   const { walletAddress } = useWallet();
   const { agentPublicKey, loading, error, activate } = useAgentWallet(walletAddress);
-  const {
-    logs: contextLogs,
-    agentStatus: contextStatus,
-    agentState: contextState,
-    refreshState: refreshLoopState,
-    startAgent: ctxStart,
-    pauseAgent: ctxPause,
-  } = useAgentLoopContext();
+  const { logs: contextLogs, agentStatus: contextStatus, agentState: contextState, refreshState: refreshLoopState, startAgent: ctxStart, pauseAgent: ctxPause } = useAgentLoopContext();
 
   const [showSettings, setShowSettings] = useState(false);
   const [showFundModal, setShowFundModal] = useState(false);
@@ -198,6 +206,7 @@ export default function AgentConsolePage() {
   const [yieldClaimError, setYieldClaimError] = useState('');
   const [yieldRouteStatus, setYieldRouteStatus] = useState<'idle' | 'loading' | 'ok' | '402' | 'err'>('idle');
   const [yieldRouteError, setYieldRouteError] = useState('');
+
   const activeState = contextState || state;
   const runtime = activeState?.runtime || {};
   const agentStatus: AgentStatus = contextStatus !== 'idle' ? contextStatus : (
@@ -205,11 +214,7 @@ export default function AgentConsolePage() {
   );
 
   const doRefreshState = useCallback(async () => {
-    if (!agentPublicKey) {
-      setState(null);
-      setWalletSnapshot(null);
-      return;
-    }
+    if (!agentPublicKey) { setState(null); setWalletSnapshot(null); return; }
     await refreshLoopState(agentPublicKey);
     try {
       const [agentState, assets, mandate, wallet] = await Promise.all([
@@ -224,18 +229,14 @@ export default function AgentConsolePage() {
       if (mandate) {
         setMandateDraft({
           capitalBase: String(mandate.capitalBase ?? 1000),
-          approvedAssetClasses: Array.isArray(mandate.approvedAssetClasses) && mandate.approvedAssetClasses.length
-            ? mandate.approvedAssetClasses
-            : ['real_estate', 'vehicle', 'commodity'],
+          approvedAssetClasses: Array.isArray(mandate.approvedAssetClasses) && mandate.approvedAssetClasses.length ? mandate.approvedAssetClasses : ['real_estate', 'vehicle', 'commodity'],
           issuerCapPct: String(mandate.issuerCapPct ?? 40),
           assetCapPct: String(mandate.assetCapPct ?? 25),
           targetReturnMinPct: String(mandate.targetReturnMinPct ?? 8),
           targetReturnMaxPct: String(mandate.targetReturnMaxPct ?? 18),
           approvalThreshold: String(mandate.approvalThreshold ?? 250),
           liquidityFloorPct: String(mandate.liquidityFloorPct ?? 10),
-          allowedTreasuryStrategies: Array.isArray(mandate.allowedTreasuryStrategies) && mandate.allowedTreasuryStrategies.length
-            ? mandate.allowedTreasuryStrategies
-            : ['safe_yield', 'blend_lending', 'stellar_amm'],
+          allowedTreasuryStrategies: Array.isArray(mandate.allowedTreasuryStrategies) && mandate.allowedTreasuryStrategies.length ? mandate.allowedTreasuryStrategies : ['safe_yield', 'blend_lending', 'stellar_amm'],
           maxDrawdownPct: String(mandate.maxDrawdownPct ?? 20),
           rebalanceCadenceMinutes: String(mandate.rebalanceCadenceMinutes ?? 60),
         });
@@ -275,51 +276,6 @@ export default function AgentConsolePage() {
       setRuntimeActionError(runtimeError.message || 'Failed to run a managed tick.');
     }
   }, [agentPublicKey, doRefreshState]);
-
-  const settleReservedAuction = useCallback(async (auctionId: number) => {
-    if (!agentPublicKey) return;
-    setSettlePendingAuctionId(auctionId);
-    setReserveActionStatus('idle');
-    setReserveActionMessage('');
-    try {
-      await settleAuction(auctionId);
-      setReserveActionStatus('ok');
-      setReserveActionMessage(`Auction #${auctionId} settled from the reserve book.`);
-      await doRefreshState();
-    } catch (settleError: any) {
-      setReserveActionStatus('err');
-      setReserveActionMessage(settleError?.message || 'Could not settle the selected auction.');
-    } finally {
-      setSettlePendingAuctionId(null);
-    }
-  }, [agentPublicKey, doRefreshState]);
-
-  const rebidReservedAuction = useCallback(async (auctionId: number, nextBidAmount: string) => {
-    if (!agentPublicKey) return;
-    setRebidPendingAuctionId(auctionId);
-    setReserveActionStatus('idle');
-    setReserveActionMessage('');
-    try {
-      await placeAuctionBid(auctionId, {
-        amount: nextBidAmount,
-        sessionId: treasurySessionId || undefined,
-      });
-      setReserveActionStatus('ok');
-      setReserveActionMessage(`Auction #${auctionId} rebid placed at ${nextBidAmount} USDC.`);
-      await doRefreshState();
-    } catch (rebidError: any) {
-      const message = rebidError?.message || 'Could not place the rebid.';
-      if (String(message).includes('402') || String(message).includes('Payment')) {
-        setReserveActionStatus('402');
-        setReserveActionMessage('Rebids are paid. Reuse or enter a valid Continuum payment session ID in the treasury panel first.');
-      } else {
-        setReserveActionStatus('err');
-        setReserveActionMessage(message);
-      }
-    } finally {
-      setRebidPendingAuctionId(null);
-    }
-  }, [agentPublicKey, doRefreshState, treasurySessionId]);
 
   const saveMandate = useCallback(async () => {
     if (!agentPublicKey) return;
@@ -365,88 +321,92 @@ export default function AgentConsolePage() {
 
   const routeYieldIntoTreasury = useCallback(async () => {
     if (!agentPublicKey) return;
-    setYieldRouteStatus('loading');
-    setYieldRouteError('');
+    setYieldRouteStatus('loading'); setYieldRouteError('');
     try {
-      await routeMarketYield(
-        yieldRouteTokenId ? { tokenId: Number(yieldRouteTokenId) } : {},
-        treasurySessionId || undefined,
-      );
-      setYieldRouteStatus('ok');
-      await doRefreshState();
-    } catch (routeError: any) {
-      const message = routeError?.message || 'Yield routing failed.';
-      setYieldRouteError(message);
-      if (String(message).includes('402') || String(message).includes('Payment')) {
-        setYieldRouteStatus('402');
-      } else {
-        setYieldRouteStatus('err');
-      }
+      await routeMarketYield(yieldRouteTokenId ? { tokenId: Number(yieldRouteTokenId) } : {}, treasurySessionId || undefined);
+      setYieldRouteStatus('ok'); await doRefreshState();
+    } catch (e: any) {
+      const msg = e?.message || 'Yield routing failed.';
+      setYieldRouteError(msg);
+      setYieldRouteStatus(String(msg).includes('402') || String(msg).includes('Payment') ? '402' : 'err');
     }
   }, [agentPublicKey, doRefreshState, treasurySessionId, yieldRouteTokenId]);
 
   const claimYieldDirect = useCallback(async () => {
     if (!agentPublicKey || !yieldRouteTokenId) return;
-    setYieldClaimStatus('loading');
-    setYieldClaimError('');
+    setYieldClaimStatus('loading'); setYieldClaimError('');
     try {
       await claimMarketYield(Number(yieldRouteTokenId), treasurySessionId || undefined);
-      setYieldClaimStatus('ok');
-      await doRefreshState();
-    } catch (claimError: any) {
-      const message = claimError?.message || 'Yield claim failed.';
-      setYieldClaimError(message);
-      if (String(message).includes('402') || String(message).includes('Payment')) {
-        setYieldClaimStatus('402');
-      } else {
-        setYieldClaimStatus('err');
-      }
+      setYieldClaimStatus('ok'); await doRefreshState();
+    } catch (e: any) {
+      const msg = e?.message || 'Yield claim failed.';
+      setYieldClaimError(msg);
+      setYieldClaimStatus(String(msg).includes('402') || String(msg).includes('Payment') ? '402' : 'err');
     }
   }, [agentPublicKey, doRefreshState, treasurySessionId, yieldRouteTokenId]);
 
   const openManagedSession = useCallback(async () => {
     if (!agentPublicKey) return;
-    setManagedSessionStatus('loading');
-    setManagedSessionError('');
-    setManagedSessionMessage('');
+    setManagedSessionStatus('loading'); setManagedSessionError(''); setManagedSessionMessage('');
     try {
       const response = await openAgentPaymentSession(agentPublicKey, {
         amount: managedSessionBudget || '5',
         durationSeconds: 3 * 60 * 60,
-        metadata: {
-          lane: 'continuum_console',
-          purpose: 'managed_paid_actions',
-          product: 'continuum',
-        },
+        metadata: { lane: 'continuum_console', purpose: 'managed_paid_actions', product: 'continuum' },
       });
       setManagedSessionStatus('ok');
-      if (response?.session?.id) {
-        setTreasurySessionId(String(response.session.id));
-      }
+      if (response?.session?.id) setTreasurySessionId(String(response.session.id));
       await doRefreshState();
       setManagedSessionMessage('Managed payment session opened and selected for reuse.');
-    } catch (sessionError: any) {
+    } catch (e: any) {
       setManagedSessionStatus('err');
-      setManagedSessionError(sessionError?.message || 'Could not open a managed payment session.');
+      setManagedSessionError(e?.message || 'Could not open a managed payment session.');
     }
   }, [agentPublicKey, managedSessionBudget, doRefreshState]);
 
   const cancelManagedSession = useCallback(async (sessionId: string | number) => {
     if (!agentPublicKey) return;
-    setManagedSessionStatus('loading');
-    setManagedSessionError('');
-    setManagedSessionMessage('');
+    setManagedSessionStatus('loading'); setManagedSessionError(''); setManagedSessionMessage('');
     try {
       const response = await cancelAgentPaymentSession(agentPublicKey, sessionId);
       await doRefreshState();
       setManagedSessionStatus('ok');
       const refundable = Number(response?.refundableAmount || 0) / 1e7;
-      setManagedSessionMessage(`Managed payment session #${sessionId} ended. ${formatMoney(refundable)} returned to the agent.`);
-    } catch (sessionError: any) {
+      setManagedSessionMessage(`Session #${sessionId} ended. ${formatMoney(refundable)} returned.`);
+    } catch (e: any) {
       setManagedSessionStatus('err');
-      setManagedSessionError(sessionError?.message || 'Could not end the selected managed payment session.');
+      setManagedSessionError(e?.message || 'Could not end the selected session.');
     }
   }, [agentPublicKey, doRefreshState]);
+
+  const settleReservedAuction = useCallback(async (auctionId: number) => {
+    if (!agentPublicKey) return;
+    setSettlePendingAuctionId(auctionId); setReserveActionStatus('idle'); setReserveActionMessage('');
+    try {
+      await settleAuction(auctionId);
+      setReserveActionStatus('ok');
+      setReserveActionMessage(`Auction #${auctionId} settled.`);
+      await doRefreshState();
+    } catch (e: any) {
+      setReserveActionStatus('err');
+      setReserveActionMessage(e?.message || 'Could not settle the auction.');
+    } finally { setSettlePendingAuctionId(null); }
+  }, [agentPublicKey, doRefreshState]);
+
+  const rebidReservedAuction = useCallback(async (auctionId: number, nextBidAmount: string) => {
+    if (!agentPublicKey) return;
+    setRebidPendingAuctionId(auctionId); setReserveActionStatus('idle'); setReserveActionMessage('');
+    try {
+      await placeAuctionBid(auctionId, { amount: nextBidAmount, sessionId: treasurySessionId || undefined });
+      setReserveActionStatus('ok');
+      setReserveActionMessage(`Rebid placed at ${nextBidAmount} USDC.`);
+      await doRefreshState();
+    } catch (e: any) {
+      const msg = e?.message || 'Could not place the rebid.';
+      setReserveActionStatus(String(msg).includes('402') || String(msg).includes('Payment') ? '402' : 'err');
+      setReserveActionMessage(msg);
+    } finally { setRebidPendingAuctionId(null); }
+  }, [agentPublicKey, doRefreshState, treasurySessionId]);
 
   // Use shared context logs (sourced from server decisionLog) — fall back to local state
   const mergedLogs = useMemo<LogEntry[]>(() => {
@@ -473,1060 +433,697 @@ export default function AgentConsolePage() {
   const walletState = walletSnapshot || activeState?.wallet || { balances: [] };
   const walletSummary = walletSnapshot?.summary || null;
   const managedPaymentSessions = useMemo(
-    () => (Array.isArray(positions.sessions) ? positions.sessions : []).filter((session: any) => {
-      const targetRecipient = String(settlementRecipientAddress || '').toUpperCase();
-      const sessionRecipient = String(session?.recipient || '').toUpperCase();
-      if (targetRecipient) {
-        return sessionRecipient === targetRecipient && Boolean(session?.isActive);
-      }
-      return Boolean(session?.isActive);
+    () => (Array.isArray(positions.sessions) ? positions.sessions : []).filter((s: any) => {
+      const target = String(settlementRecipientAddress || '').toUpperCase();
+      const recipient = String(s?.recipient || '').toUpperCase();
+      return target ? recipient === target && Boolean(s?.isActive) : Boolean(s?.isActive);
     }),
     [positions.sessions],
   );
   const selectedManagedSession = useMemo(
-    () => managedPaymentSessions.find((session: any) => String(session.id) === String(treasurySessionId)) || null,
+    () => managedPaymentSessions.find((s: any) => String(s.id) === String(treasurySessionId)) || null,
     [managedPaymentSessions, treasurySessionId],
   );
   const screenHighlights = Array.isArray(runtime.lastSummary?.screenHighlights) ? runtime.lastSummary.screenHighlights : [];
   const watchlistHighlights = Array.isArray(runtime.lastSummary?.watchlistHighlights) ? runtime.lastSummary.watchlistHighlights : [];
   const bidFocus = runtime.lastSummary?.bidFocus || null;
-  const runtimeStatusLabel = agentStatus === 'running'
-    ? 'Running'
-    : agentStatus === 'paused'
-      ? 'Paused'
-      : 'Idle';
-  const totalAssets = Number(positions.assets?.length || 0);
-  const totalReservations = reservations.reduce((sum: number, reservation: any) => sum + Number(reservation.reservedAmount || 0) / 1e7, 0);
   const reservationSummary = useMemo(() => ({
-    leading: reservationExposure.filter((entry: any) => entry.isLeading).length,
-    outbid: reservationExposure.filter((entry) => entry.status === 'outbid').length,
-    readyToSettle: reservationExposure.filter((entry: any) => entry.readyToSettle && entry.isLeading).length,
+    leading: reservationExposure.filter((e: any) => e.isLeading).length,
+    outbid: reservationExposure.filter((e: any) => e.status === 'outbid').length,
+    readyToSettle: reservationExposure.filter((e: any) => e.readyToSettle && e.isLeading).length,
   }), [reservationExposure]);
   const managedSessionSummary = useMemo(() => ({
     active: managedPaymentSessions.length,
-    refundable: managedPaymentSessions.reduce((sum: number, session: any) => sum + (Number(session?.refundableAmount || 0) / 1e7), 0),
-    claimable: managedPaymentSessions.reduce((sum: number, session: any) => sum + (Number(session?.claimableInitial || 0) / 1e7), 0),
+    refundable: managedPaymentSessions.reduce((s: number, x: any) => s + Number(x?.refundableAmount || 0) / 1e7, 0),
+    claimable: managedPaymentSessions.reduce((s: number, x: any) => s + Number(x?.claimableInitial || 0) / 1e7, 0),
   }), [managedPaymentSessions]);
 
   useEffect(() => {
-    if (!managedPaymentSessions.length) {
-      if (treasurySessionId) {
-        setTreasurySessionId('');
-      }
-      return;
-    }
-    if (!treasurySessionId || !managedPaymentSessions.some((session: any) => String(session.id) === String(treasurySessionId))) {
+    if (!managedPaymentSessions.length) { if (treasurySessionId) setTreasurySessionId(''); return; }
+    if (!treasurySessionId || !managedPaymentSessions.some((s: any) => String(s.id) === String(treasurySessionId))) {
       setTreasurySessionId(String(managedPaymentSessions[0].id));
     }
   }, [managedPaymentSessions, treasurySessionId]);
+  const totalAssets = Number(positions.assets?.length || 0);
+  const totalReservations = reservations.reduce((sum: number, reservation: any) => sum + Number(reservation.reservedAmount || 0) / 1e7, 0);
 
   return (
-    <div className="p-4 sm:p-8 max-w-[1600px] mx-auto space-y-8">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          {/* <p className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Continuum</p> */}
-          <h2 className="text-4xl font-headline font-bold tracking-tight text-on-surface">Agent Console</h2>
-          <p className="mt-1 text-sm text-on-surface-variant">
-            One autonomous market agent with a live mandate, wallet, treasury, and auction state.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => void doRefreshState()}
-            className="p-2.5 rounded-xl border border-slate-100 text-slate-400 hover:text-primary hover:bg-slate-50 transition-all"
-          >
-            <RefreshCw size={16} />
-          </button>
-          {agentPublicKey && (
-            <button
-              onClick={() => void runSingleTick()}
-              className="px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50"
-            >
-              Run Tick
+    <div className="min-h-screen bg-slate-50/50">
+
+      {/* ── Hero header ── */}
+      <div className="bg-white border-b border-slate-100 px-6 py-5">
+        <div className="max-w-[1400px] mx-auto flex items-center justify-between gap-4 flex-wrap">
+          {/* Identity */}
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <div className="w-12 h-12 rounded-2xl ethereal-gradient flex items-center justify-center shadow-lg shadow-blue-500/20">
+                <Bot size={20} className="text-white" />
+              </div>
+              <span className={cn('absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-white',
+                agentStatus === 'running' ? 'bg-emerald-400 animate-pulse' :
+                agentStatus === 'paused'  ? 'bg-amber-400' : 'bg-slate-300')} />
+            </div>
+            <div>
+              <h1 className="text-lg font-headline font-bold text-slate-900">Agent Console</h1>
+              <p className="text-xs text-slate-400 font-mono mt-0.5">
+                {agentPublicKey ? `${agentPublicKey.slice(0,8)}…${agentPublicKey.slice(-6)}` : 'No agent wallet'}
+                <span className={cn('ml-2 font-sans font-bold',
+                  agentStatus === 'running' ? 'text-emerald-500' :
+                  agentStatus === 'paused'  ? 'text-amber-500' : 'text-slate-400')}>
+                  · {agentStatus === 'running' ? 'Running' : agentStatus === 'paused' ? 'Paused' : 'Idle'}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          {/* KPI strip */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {[
+              { label: 'Net P&L',      value: formatMoney(performance.netPnL ? Number(performance.netPnL)/1e7 : 0),   color: 'text-emerald-600' },
+              { label: 'Yield',        value: formatMoney(performance.realizedYield ? Number(performance.realizedYield)/1e7 : 0), color: 'text-blue-600' },
+              { label: 'Bid Reserves', value: formatMoney(totalReservations),                                           color: 'text-purple-600' },
+              { label: 'Wins',         value: String(performance.auctionWins || 0),                                     color: 'text-amber-600' },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2">
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">{label}</p>
+                  <p className={`text-sm font-headline font-bold ${color}`}>{value}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Controls */}
+          <div className="flex items-center gap-2">
+            <button onClick={() => void doRefreshState()}
+              className="p-2.5 rounded-xl border border-slate-100 text-slate-400 hover:text-primary hover:bg-slate-50 transition-all">
+              <RefreshCw size={15} />
             </button>
-          )}
-          {!agentPublicKey ? (
-            <button
-              onClick={activate}
-              disabled={loading || !walletAddress}
-              className="px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-bold disabled:opacity-40"
-            >
-              {loading ? 'Preparing Agent...' : 'Create Managed Agent'}
-            </button>
-          ) : agentStatus === 'running' ? (
-            <button onClick={pauseAgent} className="px-4 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold">
-              <Pause size={14} className="inline mr-2" />
-              Pause Agent
-            </button>
-          ) : (
-            <button onClick={startAgent} className="px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-bold">
-              <Play size={14} className="inline mr-2" />
-              Run Agent
-            </button>
-          )}
+            {agentPublicKey && (
+              <button onClick={() => void runSingleTick()}
+                className="px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all">
+                Run Tick
+              </button>
+            )}
+            {!agentPublicKey ? (
+              <button onClick={activate} disabled={loading || !walletAddress}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-bold shadow-lg shadow-blue-500/20 hover:scale-105 transition-all disabled:opacity-40">
+                <Bot size={14} /> {loading ? 'Preparing…' : 'Create Agent'}
+              </button>
+            ) : agentStatus === 'running' ? (
+              <button onClick={pauseAgent}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:scale-105 transition-all">
+                <Pause size={14} /> Pause
+              </button>
+            ) : (
+              <button onClick={startAgent}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-bold shadow-lg shadow-blue-500/20 hover:scale-105 transition-all">
+                <Play size={14} /> Run Agent
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {runtimeActionError && (
-        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
-          {runtimeActionError}
+      {/* ── Error banner ── */}
+      {(runtimeActionError || error) && (
+        <div className="max-w-[1400px] mx-auto px-6 pt-4">
+          <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600 flex items-center gap-2">
+            <AlertTriangle size={14} /> {runtimeActionError || error}
+          </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard label="Managed Wallet" value={formatShortAddress(agentPublicKey)} color="text-primary" />
-        <StatCard label="Realized Yield" value={formatMoney(performance.realizedYield ? Number(performance.realizedYield) / 1e7 : 0)} color="text-secondary" />
-        <StatCard label="Bid Reserves" value={formatMoney(totalReservations)} color="text-purple-600" />
-        <StatCard label="Auction Wins" value={String(performance.auctionWins || 0)} color="text-amber-600" />
-      </div>
+      {/* ── Body ── */}
+      <div className="max-w-[1400px] mx-auto px-6 py-6 grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6">
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-8">
-        <div className="space-y-6">
-          <div className="bg-white rounded-[2rem] border border-slate-100 p-6 shadow-sm">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <div className="flex items-center gap-2">
-                <Settings size={16} className="text-primary" />
-                <h3 className="text-sm font-headline font-bold uppercase tracking-widest text-slate-700">Live Mandate</h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowSettings((value) => !value)}
-                  className="text-xs font-bold text-slate-400 hover:text-primary"
-                >
-                  {showSettings ? 'Hide' : 'Show'}
-                </button>
-                <button
-                  onClick={() => void saveMandate()}
-                  disabled={!agentPublicKey || savingMandate}
-                  className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  {savingMandate ? 'Saving...' : 'Save'}
-                </button>
-              </div>
+        {/* ── Left column ── */}
+        <div className="space-y-5">
+
+          {/* Decision Log */}
+          <SectionCard title="Decision Log" icon={Activity} iconColor="text-blue-500"
+            action={
+              <span className="text-[10px] font-bold text-slate-400">{mergedLogs.length} entries</span>
+            }>
+            <div className="max-h-80 overflow-y-auto -mx-1 px-1">
+              {mergedLogs.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-center">
+                  <Activity size={28} className="text-slate-200 mb-2" />
+                  <p className="text-sm text-slate-400">No decisions yet — run the agent to start.</p>
+                </div>
+              ) : mergedLogs.map(e => <LogRow key={`${e.id}-${e.ts}`} entry={e} />)}
             </div>
+          </SectionCard>
 
+          {/* Mandate */}
+          <SectionCard title="Live Mandate" icon={Settings} iconColor="text-primary" collapsible
+            action={
+              <button onClick={() => void saveMandate()} disabled={!agentPublicKey || savingMandate}
+                className="px-3 py-1.5 rounded-xl bg-primary text-white text-[10px] font-bold hover:opacity-90 disabled:opacity-40 transition-all">
+                {savingMandate ? 'Saving…' : 'Save'}
+              </button>
+            }>
             {showSettings && (
               <div className="space-y-4 mb-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {[
-                    { id: 'capitalBase', label: 'Capital Base', unit: 'USDC' },
-                    { id: 'approvalThreshold', label: 'Approval Threshold', unit: 'USDC' },
-                    { id: 'issuerCapPct', label: 'Issuer Cap', unit: '%' },
-                    { id: 'assetCapPct', label: 'Asset Cap', unit: '%' },
-                    { id: 'liquidityFloorPct', label: 'Liquidity Floor', unit: '%' },
-                    { id: 'maxDrawdownPct', label: 'Max Drawdown', unit: '%' },
-                    { id: 'targetReturnMinPct', label: 'Target Return Floor', unit: '%' },
-                    { id: 'targetReturnMaxPct', label: 'Target Return Ceiling', unit: '%' },
-                    { id: 'rebalanceCadenceMinutes', label: 'Rebalance Cadence', unit: 'min' },
-                  ].map((field) => (
-                    <div key={field.id} className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                      <p className="text-[10px] font-label uppercase tracking-widest text-slate-400 mb-2">{field.label}</p>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          value={mandateDraft[field.id as keyof MandateDraft] as string}
-                          onChange={(event) => setMandateDraft((current) => ({
-                            ...current,
-                            [field.id]: event.target.value,
-                          }))}
-                          className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                        />
-                        <span className="text-xs text-slate-400">{field.unit}</span>
+                    { id: 'capitalBase',            label: 'Capital Base',     unit: 'USDC' },
+                    { id: 'approvalThreshold',       label: 'Approval Cap',     unit: 'USDC' },
+                    { id: 'issuerCapPct',            label: 'Issuer Cap',       unit: '%' },
+                    { id: 'assetCapPct',             label: 'Asset Cap',        unit: '%' },
+                    { id: 'liquidityFloorPct',       label: 'Liquidity Floor',  unit: '%' },
+                    { id: 'maxDrawdownPct',          label: 'Max Drawdown',     unit: '%' },
+                    { id: 'targetReturnMinPct',      label: 'Return Floor',     unit: '%' },
+                    { id: 'targetReturnMaxPct',      label: 'Return Ceiling',   unit: '%' },
+                    { id: 'rebalanceCadenceMinutes', label: 'Rebalance',        unit: 'min' },
+                  ].map(f => (
+                    <div key={f.id} className="bg-slate-50 rounded-xl border border-slate-100 p-3">
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">{f.label}</p>
+                      <div className="flex items-center gap-1.5">
+                        <input type="number" value={mandateDraft[f.id as keyof MandateDraft] as string}
+                          onChange={e => setMandateDraft(c => ({ ...c, [f.id]: e.target.value }))}
+                          className="w-full bg-white border border-slate-100 rounded-lg px-2 py-1.5 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                        <span className="text-[10px] text-slate-400 shrink-0">{f.unit}</span>
                       </div>
                     </div>
                   ))}
                 </div>
-
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                    <p className="text-[10px] font-label uppercase tracking-widest text-slate-400 mb-3">Approved Asset Classes</p>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  <div className="bg-slate-50 rounded-xl border border-slate-100 p-3">
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Approved Asset Classes</p>
                     <div className="flex flex-wrap gap-2">
-                      {ASSET_CLASS_OPTIONS.map((option) => {
-                        const active = mandateDraft.approvedAssetClasses.includes(option.value);
+                      {ASSET_CLASS_OPTIONS.map(opt => {
+                        const active = mandateDraft.approvedAssetClasses.includes(opt.value);
                         return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => setMandateDraft((current) => ({
-                              ...current,
-                              approvedAssetClasses: toggleListValue(current.approvedAssetClasses, option.value),
-                            }))}
-                            className={`rounded-full border px-3 py-1.5 text-xs font-bold transition-all ${
-                              active
-                                ? 'border-blue-200 bg-blue-50 text-primary'
-                                : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-100'
-                            }`}
-                          >
-                            {option.label}
+                          <button key={opt.value} type="button"
+                            onClick={() => setMandateDraft(c => ({ ...c, approvedAssetClasses: toggleListValue(c.approvedAssetClasses, opt.value) }))}
+                            className={cn('rounded-full border px-3 py-1 text-xs font-bold transition-all',
+                              active ? 'border-blue-200 bg-blue-50 text-primary' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-100')}>
+                            {opt.label}
                           </button>
                         );
                       })}
                     </div>
-                    <p className="mt-3 text-xs text-slate-500">
-                      Productive twins stay limited to real estate, vehicles, and equipment for the v1 managed loop.
-                    </p>
                   </div>
-
-                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                    <p className="text-[10px] font-label uppercase tracking-widest text-slate-400 mb-3">Treasury Strategy Families</p>
+                  <div className="bg-slate-50 rounded-xl border border-slate-100 p-3">
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Treasury Strategies</p>
                     <div className="flex flex-wrap gap-2">
-                      {TREASURY_STRATEGY_OPTIONS.map((option) => {
-                        const active = mandateDraft.allowedTreasuryStrategies.includes(option.value);
+                      {TREASURY_STRATEGY_OPTIONS.map(opt => {
+                        const active = mandateDraft.allowedTreasuryStrategies.includes(opt.value);
                         return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => setMandateDraft((current) => ({
-                              ...current,
-                              allowedTreasuryStrategies: toggleListValue(current.allowedTreasuryStrategies, option.value),
-                            }))}
-                            className={`rounded-full border px-3 py-1.5 text-xs font-bold transition-all ${
-                              active
-                                ? 'border-emerald-200 bg-emerald-50 text-secondary'
-                                : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-100'
-                            }`}
-                          >
-                            {option.label}
+                          <button key={opt.value} type="button"
+                            onClick={() => setMandateDraft(c => ({ ...c, allowedTreasuryStrategies: toggleListValue(c.allowedTreasuryStrategies, opt.value) }))}
+                            className={cn('rounded-full border px-3 py-1 text-xs font-bold transition-all',
+                              active ? 'border-emerald-200 bg-emerald-50 text-secondary' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-100')}>
+                            {opt.label}
                           </button>
                         );
                       })}
                     </div>
-                    <p className="mt-3 text-xs text-slate-500">
-                      Safe yield stays the lowest-risk lane, with Blend and AMM routes enabled only when the mandate allows them.
-                    </p>
                   </div>
                 </div>
               </div>
             )}
-
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
               {[
-                { label: 'Capital Base', value: `${state?.mandate?.capitalBase || mandateDraft.capitalBase} USDC` },
-                { label: 'Target Return', value: `${state?.mandate?.targetReturnMinPct || mandateDraft.targetReturnMinPct}% to ${state?.mandate?.targetReturnMaxPct || mandateDraft.targetReturnMaxPct}%` },
-                { label: 'Liquidity Floor', value: `${state?.mandate?.liquidityFloorPct || mandateDraft.liquidityFloorPct}%` },
-                { label: 'Approval Threshold', value: `${state?.mandate?.approvalThreshold || mandateDraft.approvalThreshold} USDC` },
-                { label: 'Rebalance', value: `${state?.mandate?.rebalanceCadenceMinutes || mandateDraft.rebalanceCadenceMinutes} min` },
-                { label: 'Issuer Cap', value: `${state?.mandate?.issuerCapPct || mandateDraft.issuerCapPct}%` },
-                { label: 'Asset Cap', value: `${state?.mandate?.assetCapPct || mandateDraft.assetCapPct}%` },
-                { label: 'Max Drawdown', value: `${state?.mandate?.maxDrawdownPct || mandateDraft.maxDrawdownPct}%` },
-              ].map((item) => (
-                <div key={item.label} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-                  <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">{item.label}</p>
-                  <p className="text-sm font-bold text-slate-800">{item.value}</p>
-                </div>
-              ))}
+                { label: 'Capital Base',    value: `${activeState?.mandate?.capitalBase || mandateDraft.capitalBase} USDC` },
+                { label: 'Target Return',   value: `${activeState?.mandate?.targetReturnMinPct || mandateDraft.targetReturnMinPct}–${activeState?.mandate?.targetReturnMaxPct || mandateDraft.targetReturnMaxPct}%` },
+                { label: 'Liquidity Floor', value: `${activeState?.mandate?.liquidityFloorPct || mandateDraft.liquidityFloorPct}%` },
+                { label: 'Approval Cap',    value: `${activeState?.mandate?.approvalThreshold || mandateDraft.approvalThreshold} USDC` },
+                { label: 'Rebalance',       value: `${activeState?.mandate?.rebalanceCadenceMinutes || mandateDraft.rebalanceCadenceMinutes} min` },
+                { label: 'Issuer Cap',      value: `${activeState?.mandate?.issuerCapPct || mandateDraft.issuerCapPct}%` },
+                { label: 'Asset Cap',       value: `${activeState?.mandate?.assetCapPct || mandateDraft.assetCapPct}%` },
+                { label: 'Max Drawdown',    value: `${activeState?.mandate?.maxDrawdownPct || mandateDraft.maxDrawdownPct}%` },
+              ].map(i => <KV key={i.label} label={i.label} value={i.value} />)}
             </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <KV label="Asset Classes" value={formatOptionList(activeState?.mandate?.approvedAssetClasses || mandateDraft.approvedAssetClasses, ASSET_CLASS_OPTIONS)} />
+              <KV label="Treasury Strategies" value={formatOptionList(activeState?.mandate?.allowedTreasuryStrategies || mandateDraft.allowedTreasuryStrategies, TREASURY_STRATEGY_OPTIONS)} />
+            </div>
+            <button onClick={() => setShowSettings(v => !v)} className="mt-3 text-xs font-bold text-slate-400 hover:text-primary transition-colors">
+              {showSettings ? 'Hide fields' : 'Edit fields'}
+            </button>
+          </SectionCard>
 
-            <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-                <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-2">Approved Asset Classes</p>
-                <p className="text-sm font-bold text-slate-800">
-                  {formatOptionList(state?.mandate?.approvedAssetClasses || mandateDraft.approvedAssetClasses, ASSET_CLASS_OPTIONS)}
-                </p>
-              </div>
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-                <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-2">Treasury Strategy Families</p>
-                <p className="text-sm font-bold text-slate-800">
-                  {formatOptionList(state?.mandate?.allowedTreasuryStrategies || mandateDraft.allowedTreasuryStrategies, TREASURY_STRATEGY_OPTIONS)}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-[2rem] border border-slate-100 p-6 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
-              <Wallet size={16} className="text-primary" />
-              <h3 className="text-sm font-headline font-bold uppercase tracking-widest text-slate-700">Wallet And Treasury</h3>
-            </div>
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 mb-4 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Liquidity Runway</p>
-                <span className={`text-[10px] font-bold uppercase tracking-widest ${
-                  liquidity?.status === 'below_floor'
-                    ? 'text-rose-600'
-                    : liquidity?.status === 'near_floor'
-                      ? 'text-amber-600'
-                      : 'text-secondary'
-                }`}>
-                  {liquidity?.statusLabel || 'Waiting for agent'}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-                {[
-                  { label: 'Liquid USDC', value: `${liquidity?.walletBalanceDisplay || '0'} USDC` },
-                  { label: 'Bid Headroom', value: `${liquidity?.immediateBidHeadroomDisplay || '0'} USDC` },
-                  { label: 'Reserve Floor', value: `${liquidity?.liquidityFloorAmountDisplay || '0'} USDC` },
-                  { label: 'Treasury Deployed', value: `${liquidity?.treasuryDeployedDisplay || '0'} USDC` },
-                ].map((item) => (
-                  <div key={item.label} className="rounded-xl border border-slate-100 bg-white px-3 py-3">
-                    <p className="text-[9px] font-label uppercase tracking-widest text-slate-400">{item.label}</p>
-                    <p className="mt-1 text-sm font-bold text-slate-800">{item.value}</p>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-slate-500">
-                Open bid reserves stay committed, and treasury recall can expand bidding room when the runtime needs more liquid USDC.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Managed Wallet Readiness</p>
-                  <span className={`text-[10px] font-bold uppercase tracking-widest ${
-                    walletSummary?.status === 'ready'
-                      ? 'text-secondary'
-                      : walletSummary?.status === 'needs_trustline'
-                        ? 'text-amber-600'
-                        : 'text-rose-600'
-                  }`}>
-                    {walletSummary?.statusLabel || 'Waiting for wallet'}
+          {/* Wallet + Treasury */}
+          <SectionCard title="Wallet & Treasury" icon={Wallet} iconColor="text-primary" collapsible>
+            {liquidity && (
+              <div className="bg-slate-50 rounded-xl border border-slate-100 p-4 mb-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Liquidity Runway</p>
+                  <span className={cn('text-[10px] font-bold uppercase tracking-widest',
+                    liquidity.status === 'below_floor' ? 'text-rose-600' :
+                    liquidity.status === 'near_floor'  ? 'text-amber-600' : 'text-emerald-600')}>
+                    {liquidity.statusLabel || 'Waiting for agent'}
                   </span>
                 </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { label: 'Liquid USDC',      value: `${liquidity.walletBalanceDisplay || '0'} USDC` },
+                    { label: 'Bid Headroom',      value: `${liquidity.immediateBidHeadroomDisplay || '0'} USDC` },
+                    { label: 'Reserve Floor',     value: `${liquidity.liquidityFloorAmountDisplay || '0'} USDC` },
+                    { label: 'Treasury Deployed', value: `${liquidity.treasuryDeployedDisplay || '0'} USDC` },
+                  ].map(i => <KV key={i.label} label={i.label} value={i.value} />)}
+                </div>
+              </div>
+            )}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {/* Wallet */}
+              <div className="space-y-3">
+                {walletSummary && (
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Wallet Readiness</p>
+                    <span className={cn('text-[10px] font-bold uppercase tracking-widest',
+                      walletSummary.status === 'ready' ? 'text-emerald-600' :
+                      walletSummary.status === 'needs_trustline' ? 'text-amber-600' : 'text-rose-600')}>
+                      {walletSummary.statusLabel || 'Checking…'}
+                    </span>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { label: 'Managed Account', value: formatShortAddress(walletState.publicKey || agentPublicKey) },
-                    { label: 'Payment Asset', value: walletSummary?.paymentAssetCode || 'USDC' },
-                    { label: 'XLM', value: `${walletSummary?.nativeBalanceDisplay || '0'} XLM` },
-                    { label: 'USDC', value: `${walletSummary?.paymentBalanceDisplay || '0'} USDC` },
-                  ].map((item) => (
-                    <div key={item.label} className="rounded-xl border border-slate-100 bg-white px-3 py-3">
-                      <p className="text-[9px] font-label uppercase tracking-widest text-slate-400">{item.label}</p>
-                      <p className="mt-1 text-sm font-bold text-slate-800">{item.value}</p>
-                    </div>
-                  ))}
+                    { label: 'Account', value: formatShortAddress(walletState.publicKey || agentPublicKey) },
+                    { label: 'Asset',   value: walletSummary?.paymentAssetCode || 'USDC' },
+                    { label: 'XLM',     value: `${walletSummary?.nativeBalanceDisplay || '0'} XLM` },
+                    { label: 'USDC',    value: `${walletSummary?.paymentBalanceDisplay || '0'} USDC` },
+                  ].map(i => <KV key={i.label} label={i.label} value={i.value} />)}
                 </div>
-                <p className="text-xs text-slate-500">
-                  {walletSummary?.paymentReady
-                    ? 'This managed wallet is ready for paid market actions and USDC auction bids.'
-                    : 'Fund the account with XLM and ensure the USDC trustline exists before expecting paid market actions to clear.'}
-                </p>
-                <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Wallet Balances</p>
-                {(walletState.balances || []).length === 0 ? (
-                  <p className="text-sm text-slate-400">Activate the managed wallet to load live balances.</p>
-                ) : (
-                  (walletState.balances || []).map((balance: any) => (
-                    <div key={`${balance.assetCode}-${balance.assetIssuer || 'native'}`} className="flex items-center justify-between text-sm">
-                      <span className="text-slate-500">{balance.assetCode}</span>
-                      <span className="font-bold text-slate-800">{balance.balance}</span>
-                    </div>
-                  ))
-                )}
+                {(walletState.balances || []).map((b: any) => (
+                  <div key={`${b.assetCode}-${b.assetIssuer || 'native'}`}
+                    className="flex items-center justify-between bg-slate-50 rounded-xl border border-slate-100 px-3 py-2.5">
+                    <span className="text-xs font-bold text-slate-500">{b.assetCode}</span>
+                    <span className="text-sm font-bold text-slate-800">{b.balance}</span>
+                  </div>
+                ))}
                 {agentPublicKey && (
-                  <button
-                    onClick={() => setShowFundModal(true)}
-                    className="w-full py-2.5 rounded-xl border border-primary text-primary text-xs font-bold hover:bg-blue-50"
-                  >
+                  <button onClick={() => setShowFundModal(true)}
+                    className="w-full py-2.5 rounded-xl border border-primary text-primary text-xs font-bold hover:bg-blue-50 transition-all">
                     Fund Managed Wallet
                   </button>
                 )}
               </div>
 
-              <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 space-y-3">
-                <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Treasury Positions</p>
-                <div className="space-y-2">
-                  <div className="rounded-xl border border-slate-100 bg-white px-3 py-3 space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-[10px] font-label uppercase tracking-widest text-slate-400">Managed Session Rail</p>
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                        {selectedManagedSession ? `Using #${selectedManagedSession.id}` : managedPaymentSessions.length ? 'Select session' : 'Open session'}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { label: 'Active Sessions', value: String(managedSessionSummary.active), tone: 'text-primary' },
-                        { label: 'Refundable', value: formatMoney(managedSessionSummary.refundable), tone: 'text-secondary' },
-                        { label: 'Claimable', value: formatMoney(managedSessionSummary.claimable), tone: 'text-purple-600' },
-                      ].map((item) => (
-                        <div key={item.label} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
-                          <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">{item.label}</p>
-                          <p className={`text-xs font-bold ${item.tone}`}>{item.value}</p>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex flex-col gap-2 md:flex-row">
-                      <input
-                        type="number"
-                        min="0.1"
-                        step="0.1"
-                        value={managedSessionBudget}
-                        onChange={(event) => setManagedSessionBudget(event.target.value)}
-                        placeholder="Session budget"
-                        className="w-full md:w-[9rem] bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
-                      />
-                      <button
-                        onClick={() => void openManagedSession()}
-                        disabled={!agentPublicKey || managedSessionStatus === 'loading'}
-                        className="rounded-xl border border-primary text-primary text-xs font-bold hover:bg-blue-50 disabled:opacity-50 px-3 py-2"
-                      >
-                        {managedSessionStatus === 'loading' ? 'Opening...' : `Open ${paymentTokenSymbol} Session`}
-                      </button>
-                      <button
-                        onClick={() => void cancelManagedSession(treasurySessionId)}
-                        disabled={!selectedManagedSession || managedSessionStatus === 'loading'}
-                        className="rounded-xl border border-rose-200 text-rose-600 text-xs font-bold hover:bg-rose-50 disabled:opacity-50 px-3 py-2"
-                      >
-                        {managedSessionStatus === 'loading' ? 'Updating...' : 'End Session'}
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      value={treasurySessionId}
-                      onChange={(event) => setTreasurySessionId(event.target.value)}
-                      placeholder="Selected managed payment session ID"
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
-                    />
-                    <p className="text-xs text-slate-500">
-                      Treasury optimization, yield claim, yield routing, and paid rebids reuse this managed Continuum session. Recipient: {settlementRecipientAddress ? formatShortAddress(settlementRecipientAddress) : 'not configured'}.
-                    </p>
-                    {managedSessionStatus === 'err' && (
-                      <p className="text-xs text-red-500">{managedSessionError || 'Could not open the managed payment session.'}</p>
-                    )}
-                    {managedSessionStatus === 'ok' && (
-                      <p className="text-xs text-secondary">{managedSessionMessage || 'Managed session rail updated.'}</p>
-                    )}
-                    <div className="space-y-2">
-                      {managedPaymentSessions.slice(0, 3).map((session: any) => (
-                        <button
-                          key={session.id}
-                          onClick={() => setTreasurySessionId(String(session.id))}
-                          className={`w-full rounded-xl border px-3 py-2 text-left transition-all ${
-                            String(session.id) === String(treasurySessionId)
-                              ? 'border-blue-200 bg-blue-50'
-                              : 'border-slate-100 bg-slate-50 hover:bg-slate-100'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-bold text-slate-800">Session #{session.id}</p>
-                              <p className="text-xs text-slate-500 mt-1">
-                                Refundable {formatMoney(Number(session?.refundableAmount || 0) / 1e7)} · Claimable {formatMoney(Number(session?.claimableInitial || 0) / 1e7)}
-                              </p>
-                            </div>
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-secondary">
-                              {String(session.id) === String(treasurySessionId) ? 'selected' : 'active'}
-                            </span>
-                          </div>
-                        </button>
-                      ))}
-                      {managedPaymentSessions.length === 0 && (
-                        <p className="text-sm text-slate-400">Open a managed payment session here to drive paid treasury, yield, and rebid actions from the server-custodied path.</p>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => void runTreasuryOptimization()}
-                    disabled={!agentPublicKey || treasuryActionStatus === 'loading'}
-                    className="w-full py-2.5 rounded-xl border border-primary text-primary text-xs font-bold hover:bg-blue-50 disabled:opacity-50"
-                  >
-                    {treasuryActionStatus === 'loading' ? 'Optimizing...' : 'Optimize Treasury · 0.02 USDC'}
-                  </button>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={yieldRouteTokenId}
-                    onChange={(event) => setYieldRouteTokenId(event.target.value)}
-                    placeholder="Token ID to claim or route"
-                    className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                  <button
-                    onClick={() => void claimYieldDirect()}
-                    disabled={!agentPublicKey || !yieldRouteTokenId || yieldClaimStatus === 'loading'}
-                    className="w-full py-2.5 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-bold hover:bg-emerald-50 disabled:opacity-50"
-                  >
-                    {yieldClaimStatus === 'loading' ? 'Claiming Yield...' : 'Claim Yield · 0.01 USDC'}
-                  </button>
-                  <button
-                    onClick={() => void routeYieldIntoTreasury()}
-                    disabled={!agentPublicKey || yieldRouteStatus === 'loading'}
-                    className="w-full py-2.5 rounded-xl border border-purple-200 text-purple-700 text-xs font-bold hover:bg-purple-50 disabled:opacity-50"
-                  >
-                    {yieldRouteStatus === 'loading' ? 'Routing Yield...' : 'Route Yield · 0.03 USDC'}
-                  </button>
-                  {treasuryActionStatus === '402' && (
-                    <p className="text-xs text-amber-700">Treasury optimization is paid. Reuse or enter a valid Continuum payment session first.</p>
-                  )}
-                  {treasuryActionStatus === 'err' && (
-                    <p className="text-xs text-red-500">{treasuryActionError || 'Treasury optimization failed.'}</p>
-                  )}
-                  {treasuryActionStatus === 'ok' && (
-                    <p className="text-xs text-secondary">Treasury optimization completed and refreshed the live state.</p>
-                  )}
-                  {yieldClaimStatus === '402' && (
-                    <p className="text-xs text-amber-700">Yield claim is paid too. Reuse or enter a valid Continuum payment session first.</p>
-                  )}
-                  {yieldClaimStatus === 'err' && (
-                    <p className="text-xs text-red-500">{yieldClaimError || 'Yield claim failed.'}</p>
-                  )}
-                  {yieldClaimStatus === 'ok' && (
-                    <p className="text-xs text-secondary">Claimable yield was withdrawn into the managed wallet.</p>
-                  )}
-                  {yieldRouteStatus === '402' && (
-                    <p className="text-xs text-amber-700">Yield routing is paid too. Reuse or enter a valid Continuum payment session first.</p>
-                  )}
-                  {yieldRouteStatus === 'err' && (
-                    <p className="text-xs text-red-500">{yieldRouteError || 'Yield routing failed.'}</p>
-                  )}
-                  {yieldRouteStatus === 'ok' && (
-                    <p className="text-xs text-secondary">Claimable yield was routed through the treasury optimizer.</p>
-                  )}
-                </div>
+              {/* Treasury */}
+              <div className="space-y-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Treasury</p>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { label: 'Deployed', value: formatMoney(Number(treasurySummary.deployed || 0) / 1e7) },
-                    { label: 'Projected Return', value: formatMoney(Number(treasurySummary.projectedAnnualReturn || 0) / 1e7) },
+                    { label: 'Deployed',     value: formatMoney(Number(treasurySummary.deployed || 0)/1e7) },
+                    { label: 'Liquid',       value: formatMoney(Number(treasurySummary.liquidBalance || 0)/1e7) },
                     { label: 'Weighted APY', value: `${Number(treasurySummary.weightedProjectedNetApy || 0).toFixed(2)}%` },
-                    { label: 'Liquid Balance', value: formatMoney(Number(treasurySummary.liquidBalance || 0) / 1e7) },
-                  ].map((item) => (
-                    <div key={item.label} className="rounded-xl border border-slate-100 bg-white px-3 py-2">
-                      <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">{item.label}</p>
-                      <p className="text-xs font-bold text-slate-800">{item.value}</p>
-                    </div>
-                  ))}
+                    { label: 'Proj. Return', value: formatMoney(Number(treasurySummary.projectedAnnualReturn || 0)/1e7) },
+                  ].map(i => <KV key={i.label} label={i.label} value={i.value} />)}
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {[
                     { label: 'Safe Yield', ok: Boolean(treasuryHealth.safeYield?.ok) },
-                    { label: 'Blend', ok: Boolean(treasuryHealth.blendLending?.ok) },
-                    { label: 'Stellar AMM', ok: Boolean(treasuryHealth.stellarAmm?.ok) },
-                  ].map((entry) => (
-                    <span
-                      key={entry.label}
-                      className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${
-                        entry.ok ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-700'
-                      }`}
-                    >
-                      {entry.label}
+                    { label: 'Blend',      ok: Boolean(treasuryHealth.blendLending?.ok) },
+                    { label: 'AMM',        ok: Boolean(treasuryHealth.stellarAmm?.ok) },
+                  ].map(v => (
+                    <span key={v.label} className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest',
+                      v.ok ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600')}>
+                      {v.ok ? '✓' : '!'} {v.label}
                     </span>
                   ))}
                 </div>
-                {(treasury.positions || []).length === 0 ? (
-                  <p className="text-sm text-slate-400">No treasury deployments yet. Rebalance from the Marketplace flow after opening a payment session.</p>
-                ) : (
-                  (treasury.positions || []).map((position: any) => (
-                    <div key={position.positionId} className="rounded-xl border border-slate-100 bg-white px-3 py-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-bold text-slate-800">{position.strategyFamily}</span>
-                        <span className="text-secondary font-bold">{Number(position.projectedNetApy || 0).toFixed(2)}% APY</span>
-                      </div>
-                      <p className="text-xs text-slate-500 mt-1">{position.venueId}</p>
-                      <p className="text-xs text-slate-400 mt-1">{formatMoney(Number(position.allocatedAmount || 0) / 1e7)}</p>
-                    </div>
-                  ))
-                )}
-                {treasuryOptimization && (
-                  <div className="rounded-2xl border border-slate-100 bg-white p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] uppercase tracking-widest text-slate-400">Last Optimization</p>
-                        <p className="text-sm font-bold text-slate-800">{(treasuryOptimization.objective || 'highest approved return first').replace(/_/g, ' ')}</p>
-                      </div>
-                      <span className="rounded-full bg-purple-50 text-purple-600 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1">
-                        {String(treasuryOptimization.reason || 'rebalanced').replace(/_/g, ' ')}
-                      </span>
-                    </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      {[
-                        { label: 'Deployable', value: formatMoney(Number(treasuryOptimization.deployableAmount || 0) / 1e7) },
-                        { label: 'Target Reserve', value: formatMoney(Number(treasuryOptimization.targetReserve || 0) / 1e7) },
-                        { label: 'Deployments', value: String(treasuryOptimization.execution?.deploymentCount || 0) },
-                        { label: 'Reserved', value: formatMoney(Number(treasuryOptimization.reservedAmount || 0) / 1e7) },
-                      ].map((item) => (
-                        <div key={item.label} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
-                          <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">{item.label}</p>
-                          <p className="text-xs font-bold text-slate-800">{item.value}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div>
-                      <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-2">Selected Venues</p>
-                      <div className="space-y-2">
-                        {(treasuryOptimization.execution?.deployedVenues || []).length ? (
-                          (treasuryOptimization.execution?.deployedVenues || []).map((venue: any) => (
-                            <div key={`${venue.strategyFamily}-${venue.venueId}`} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
-                              <div className="flex items-center justify-between gap-3">
-                                <span className="text-sm font-bold text-slate-800">{venue.venueId}</span>
-                                <span className="text-xs font-bold text-secondary">{Number(venue.projectedNetApy || 0).toFixed(2)}% APY</span>
-                              </div>
-                              <p className="text-xs text-slate-500 mt-1">
-                                {venue.strategyFamily} · {formatMoney(Number(venue.allocatedAmount || 0) / 1e7)}
-                              </p>
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-sm text-slate-400">No new treasury deployments were executed on the last optimization.</p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div>
-                      <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-2">Eligible Venues</p>
-                      <div className="space-y-2">
-                        {(treasuryOptimization.candidates || []).map((candidate: any) => (
-                          <div key={`${candidate.strategyFamily}-${candidate.venueId}`} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="text-sm font-bold text-slate-800">{candidate.label || candidate.venueId}</span>
-                              <span className={`text-[10px] font-bold uppercase tracking-widest ${candidate.selected ? 'text-secondary' : 'text-slate-500'}`}>
-                                {candidate.selected ? 'selected' : 'eligible'}
-                              </span>
-                            </div>
-                            <p className="text-xs text-slate-500 mt-1">
-                              {candidate.strategyFamily} · {Number(candidate.projectedNetApy || 0).toFixed(2)}% APY · cap room {formatMoney(Number(candidate.remainingCap || 0) / 1e7)}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-slate-500">
-                      Recall order when liquidity is needed: {(treasuryOptimization.recallOrder || []).join(' → ')}
-                    </p>
+                {/* Session rail */}
+                <div className="bg-slate-50 rounded-xl border border-slate-100 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Session Rail</p>
+                    <span className="text-[10px] font-bold text-slate-400">
+                      {selectedManagedSession ? `Using #${selectedManagedSession.id}` : managedPaymentSessions.length ? 'Select session' : 'No session'}
+                    </span>
                   </div>
-                )}
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { label: 'Active',     value: String(managedSessionSummary.active),          color: 'text-primary' },
+                      { label: 'Refundable', value: formatMoney(managedSessionSummary.refundable), color: 'text-emerald-600' },
+                      { label: 'Claimable',  value: formatMoney(managedSessionSummary.claimable),  color: 'text-purple-600' },
+                    ].map(i => <KV key={i.label} label={i.label} value={i.value} color={i.color} />)}
+                  </div>
+                  <div className="flex gap-2">
+                    <input type="number" min="0.1" step="0.1" value={managedSessionBudget}
+                      onChange={e => setManagedSessionBudget(e.target.value)} placeholder="Budget"
+                      className="w-20 shrink-0 bg-white border border-slate-100 rounded-xl px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                    <button onClick={() => void openManagedSession()} disabled={!agentPublicKey || managedSessionStatus === 'loading'}
+                      className="flex-1 rounded-xl border border-primary text-primary text-xs font-bold hover:bg-blue-50 disabled:opacity-50 px-2 py-2">
+                      {managedSessionStatus === 'loading' ? 'Opening…' : `Open ${paymentTokenSymbol} Session`}
+                    </button>
+                    <button onClick={() => void cancelManagedSession(treasurySessionId)} disabled={!selectedManagedSession || managedSessionStatus === 'loading'}
+                      className="rounded-xl border border-rose-200 text-rose-600 text-xs font-bold hover:bg-rose-50 disabled:opacity-50 px-2 py-2">
+                      End
+                    </button>
+                  </div>
+                  {managedPaymentSessions.slice(0, 3).map((s: any) => (
+                    <button key={s.id} onClick={() => setTreasurySessionId(String(s.id))}
+                      className={cn('w-full rounded-xl border px-3 py-2 text-left text-xs transition-all',
+                        String(s.id) === String(treasurySessionId) ? 'border-blue-200 bg-blue-50 font-bold text-primary' : 'border-slate-100 bg-white text-slate-600 hover:bg-slate-50')}>
+                      Session #{s.id} · {formatMoney(Number(s.refundableAmount || 0)/1e7)} refundable
+                    </button>
+                  ))}
+                  {managedSessionStatus === 'err' && <p className="text-xs text-red-500">{managedSessionError}</p>}
+                  {managedSessionStatus === 'ok'  && <p className="text-xs text-emerald-600">{managedSessionMessage}</p>}
+                </div>
+
+                <button onClick={() => void runTreasuryOptimization()} disabled={!agentPublicKey || treasuryActionStatus === 'loading'}
+                  className="w-full py-2.5 rounded-xl bg-primary text-white text-xs font-bold hover:opacity-90 disabled:opacity-50 transition-all">
+                  {treasuryActionStatus === 'loading' ? 'Optimizing…' : 'Optimize Treasury · 0.02 USDC'}
+                </button>
+                <div className="flex gap-2">
+                  <input type="number" min="0" step="1" value={yieldRouteTokenId} onChange={e => setYieldRouteTokenId(e.target.value)}
+                    placeholder="Token ID" className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                  <button onClick={() => void claimYieldDirect()} disabled={!agentPublicKey || !yieldRouteTokenId || yieldClaimStatus === 'loading'}
+                    className="rounded-xl border border-emerald-200 text-emerald-700 text-xs font-bold hover:bg-emerald-50 disabled:opacity-50 px-3 py-2">
+                    {yieldClaimStatus === 'loading' ? '…' : 'Claim'}
+                  </button>
+                  <button onClick={() => void routeYieldIntoTreasury()} disabled={!agentPublicKey || yieldRouteStatus === 'loading'}
+                    className="rounded-xl border border-purple-200 text-purple-700 text-xs font-bold hover:bg-purple-50 disabled:opacity-50 px-3 py-2">
+                    {yieldRouteStatus === 'loading' ? '…' : 'Route'}
+                  </button>
+                </div>
+                {treasuryActionStatus === '402' && <p className="text-xs text-amber-600">Paid — open a session first.</p>}
+                {treasuryActionStatus === 'err'  && <p className="text-xs text-red-500">{treasuryActionError}</p>}
+                {treasuryActionStatus === 'ok'   && <p className="text-xs text-emerald-600">✓ Optimization complete.</p>}
+                {yieldClaimStatus === 'err'  && <p className="text-xs text-red-500">{yieldClaimError}</p>}
+                {yieldClaimStatus === 'ok'   && <p className="text-xs text-emerald-600">✓ Yield claimed.</p>}
+                {yieldRouteStatus === 'err'  && <p className="text-xs text-red-500">{yieldRouteError}</p>}
+                {yieldRouteStatus === 'ok'   && <p className="text-xs text-emerald-600">✓ Yield routed.</p>}
               </div>
             </div>
-          </div>
 
-          <div className="bg-white rounded-[2rem] border border-slate-100 p-6 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
-              <Activity size={16} className="text-primary" />
-              <h3 className="text-sm font-headline font-bold uppercase tracking-widest text-slate-700">Decision Log</h3>
-            </div>
-            <div className="max-h-[30rem] overflow-y-auto">
-              {mergedLogs.length === 0 ? (
-                <p className="text-sm text-slate-400">The managed runtime hasn’t made any decisions yet.</p>
-              ) : (
-                mergedLogs.map((entry) => <LogRow key={`${entry.id}-${entry.ts}`} entry={entry} />)
-              )}
-            </div>
-          </div>
+            {/* Treasury positions */}
+            {(treasury.positions || []).length > 0 && (
+              <div className="mt-4 space-y-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Active Positions</p>
+                {(treasury.positions || []).map((p: any) => (
+                  <div key={p.positionId} className="flex items-center justify-between bg-slate-50 rounded-xl border border-slate-100 px-3 py-2.5">
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">{p.strategyFamily} · {p.venueId}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{formatMoney(Number(p.allocatedAmount || 0)/1e7)}</p>
+                    </div>
+                    <span className="text-xs font-bold text-emerald-600">{Number(p.projectedNetApy || 0).toFixed(2)}%</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Last optimization */}
+            {treasuryOptimization && (
+              <div className="mt-4 bg-slate-50 rounded-xl border border-slate-100 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-700">{(treasuryOptimization.objective || 'highest approved return first').replace(/_/g, ' ')}</p>
+                  <span className="rounded-full bg-purple-50 text-purple-600 text-[10px] font-bold px-2.5 py-1">
+                    {String(treasuryOptimization.reason || 'rebalanced').replace(/_/g, ' ')}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { label: 'Deployable',   value: formatMoney(Number(treasuryOptimization.deployableAmount || 0)/1e7) },
+                    { label: 'Target Rsv',   value: formatMoney(Number(treasuryOptimization.targetReserve || 0)/1e7) },
+                    { label: 'Deployments',  value: String(treasuryOptimization.execution?.deploymentCount || 0) },
+                    { label: 'Reserved',     value: formatMoney(Number(treasuryOptimization.reservedAmount || 0)/1e7) },
+                  ].map(i => <KV key={i.label} label={i.label} value={i.value} />)}
+                </div>
+                {(treasuryOptimization.recallOrder || []).length > 0 && (
+                  <p className="text-[10px] text-slate-400">Recall order: {(treasuryOptimization.recallOrder || []).join(' → ')}</p>
+                )}
+              </div>
+            )}
+          </SectionCard>
         </div>
 
-        <div className="space-y-6">
-          <div className="bg-white rounded-[2rem] border border-slate-100 p-6 shadow-sm">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <div className="flex items-center gap-2">
-                <BarChart2 size={16} className="text-primary" />
-                <h3 className="text-sm font-headline font-bold uppercase tracking-widest text-slate-700">Performance</h3>
-              </div>
-              <span className={cn(
-                'rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest',
-                agentStatus === 'running'
-                  ? 'bg-emerald-50 text-emerald-600'
-                  : agentStatus === 'paused'
-                    ? 'bg-amber-50 text-amber-600'
-                    : 'bg-slate-100 text-slate-500',
-              )}>
-                {runtimeStatusLabel}
+        {/* ── Right column ── */}
+        <div className="space-y-5">
+
+          {/* Runtime status */}
+          <SectionCard title="Runtime" icon={BarChart2} iconColor="text-primary"
+            action={
+              <span className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest',
+                agentStatus === 'running' ? 'bg-emerald-50 text-emerald-600' :
+                agentStatus === 'paused'  ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-500')}>
+                {agentStatus === 'running' ? 'Running' : agentStatus === 'paused' ? 'Paused' : 'Idle'}
               </span>
-            </div>
+            }>
             <div className="grid grid-cols-2 gap-3 mb-3">
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-                <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">Last Tick</p>
-                <p className="text-sm font-bold text-slate-800">
-                  {runtime.lastTickAt ? new Date(Number(runtime.lastTickAt) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Not yet'}
-                </p>
-              </div>
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-                <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">Heartbeat</p>
-                <p className="text-sm font-bold text-slate-800">{String(runtime.heartbeatCount || 0)}</p>
-              </div>
+              <KV label="Last Tick" value={runtime.lastTickAt
+                ? new Date(Number(runtime.lastTickAt)*1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : 'Not yet'} />
+              <KV label="Heartbeat" value={String(runtime.heartbeatCount || 0)} />
             </div>
-            <div className="mb-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
-              Last loop: {String(runtime.lastSummary?.opportunities || 0)} opportunities · {String(runtime.lastSummary?.screenMatches || 0)} screen matches · {String(runtime.lastSummary?.watchlistSignals || 0)} watchlist signals · {String(runtime.lastSummary?.autoBids || 0)} auto bids
+            <div className="bg-slate-50 rounded-xl border border-slate-100 px-3 py-2.5 text-xs text-slate-500 mb-3">
+              {String(runtime.lastSummary?.opportunities || 0)} opportunities · {String(runtime.lastSummary?.autoBids || 0)} bids · {String(runtime.lastSummary?.settledAuctions || 0)} settlements
             </div>
             {runtime.lastError && (
-              <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">
+              <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600 mb-3">
                 {runtime.lastError}
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2">
               {[
-                { label: 'Net P&L', value: formatMoney(performance.netPnL ? Number(performance.netPnL) / 1e7 : 0), color: 'text-secondary' },
-                { label: 'Gross Positive', value: formatMoney(performanceAttribution.grossPositivePnL ? Number(performanceAttribution.grossPositivePnL) / 1e7 : 0), color: 'text-primary' },
-                { label: 'Fees Paid', value: formatMoney(performance.paidActionFees ? Number(performance.paidActionFees) / 1e7 : 0), color: 'text-amber-600' },
-                { label: 'Realized Yield', value: formatMoney(performance.realizedYield ? Number(performance.realizedYield) / 1e7 : 0), color: 'text-secondary' },
-                { label: 'Treasury Return', value: formatMoney(performance.treasuryReturn ? Number(performance.treasuryReturn) / 1e7 : 0), color: 'text-purple-600' },
-                { label: 'Auction Win Rate', value: `${Number(performanceAttribution.winRatePct || 0).toFixed(1)}%`, color: 'text-slate-700' },
-              ].map((item) => (
-                <div key={item.label} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-                  <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">{item.label}</p>
-                  <p className={`text-lg font-bold ${item.color}`}>{item.value}</p>
-                </div>
-              ))}
+                { label: 'Net P&L',        value: formatMoney(performance.netPnL ? Number(performance.netPnL)/1e7 : 0),                                                  color: 'text-emerald-600' },
+                { label: 'Gross +',        value: formatMoney(performanceAttribution.grossPositivePnL ? Number(performanceAttribution.grossPositivePnL)/1e7 : 0),         color: 'text-blue-600' },
+                { label: 'Fees Paid',      value: formatMoney(performance.paidActionFees ? Number(performance.paidActionFees)/1e7 : 0),                                   color: 'text-amber-600' },
+                { label: 'Treasury Ret.',  value: formatMoney(performance.treasuryReturn ? Number(performance.treasuryReturn)/1e7 : 0),                                   color: 'text-purple-600' },
+                { label: 'Win Rate',       value: `${Number(performanceAttribution.winRatePct || 0).toFixed(1)}%`,                                                        color: 'text-slate-700' },
+                { label: 'Outcomes',       value: String(performanceAttribution.totalAuctionOutcomes || 0),                                                               color: 'text-slate-700' },
+              ].map(i => <KV key={i.label} label={i.label} value={i.value} color={i.color} />)}
             </div>
-            <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[10px] uppercase tracking-widest text-slate-400">Attribution</p>
-                  <p className="text-sm font-bold text-slate-800">How yield, treasury, fees, and auctions are shaping this book</p>
-                </div>
-                <span className="rounded-full bg-white border border-slate-100 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                  {String(performanceAttribution.totalAuctionOutcomes || 0)} outcomes
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: 'Yield Contribution', value: formatMoney(performanceAttribution.yieldContribution ? Number(performanceAttribution.yieldContribution) / 1e7 : 0) },
-                  { label: 'Treasury Contribution', value: formatMoney(performanceAttribution.treasuryContribution ? Number(performanceAttribution.treasuryContribution) / 1e7 : 0) },
-                  { label: 'Fee Drag', value: formatMoney(performanceAttribution.feeDrag ? Number(performanceAttribution.feeDrag) / 1e7 : 0) },
-                  { label: 'Auction Record', value: `${String(performanceAttribution.auctionWins || 0)}W / ${String(performanceAttribution.auctionLosses || 0)}L` },
-                ].map((item) => (
-                  <div key={item.label} className="rounded-xl border border-slate-100 bg-white px-3 py-2">
-                    <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">{item.label}</p>
-                    <p className="text-xs font-bold text-slate-800">{item.value}</p>
+
+            {/* Attribution */}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {[
+                { label: 'Yield',    value: formatMoney(performanceAttribution.yieldContribution ? Number(performanceAttribution.yieldContribution)/1e7 : 0) },
+                { label: 'Treasury', value: formatMoney(performanceAttribution.treasuryContribution ? Number(performanceAttribution.treasuryContribution)/1e7 : 0) },
+                { label: 'Fee Drag', value: formatMoney(performanceAttribution.feeDrag ? Number(performanceAttribution.feeDrag)/1e7 : 0) },
+                { label: 'W/L',      value: `${String(performanceAttribution.auctionWins || 0)}W / ${String(performanceAttribution.auctionLosses || 0)}L` },
+              ].map(i => <KV key={i.label} label={i.label} value={i.value} />)}
+            </div>
+
+            {/* Recent events */}
+            {performanceEvents.length > 0 && (
+              <div className="mt-3 space-y-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Recent Events</p>
+                {performanceEvents.slice(0, 5).map((ev: any) => (
+                  <div key={ev.id} className="flex items-center justify-between bg-slate-50 rounded-xl border border-slate-100 px-3 py-2">
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">{ev.label}</p>
+                      <p className="text-[10px] text-slate-400">{String(ev.category || '').toUpperCase()}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={cn('text-xs font-bold',
+                        ev.direction === 'inflow' ? 'text-emerald-600' :
+                        ev.direction === 'outflow' ? 'text-amber-600' : 'text-slate-600')}>
+                        {ev.amount ? formatMoney(Number(ev.amount)/1e7) : '—'}
+                      </p>
+                      <p className="text-[10px] text-slate-300">
+                        {ev.ts ? new Date(Number(ev.ts)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                      </p>
+                    </div>
                   </div>
                 ))}
               </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-2">Recent Performance Events</p>
-                <div className="space-y-2">
-                  {performanceEvents.length === 0 ? (
-                    <p className="text-sm text-slate-400">No realized performance events yet.</p>
-                  ) : (
-                    performanceEvents.slice(0, 6).map((event: any) => (
-                      <div key={event.id} className="rounded-xl border border-slate-100 bg-white px-3 py-2.5">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-bold text-slate-800">{event.label}</p>
-                            <p className="text-xs text-slate-500 mt-1">{String(event.category || 'event').toUpperCase()}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className={`text-xs font-bold ${
-                              event.direction === 'inflow'
-                                ? 'text-secondary'
-                                : event.direction === 'outflow'
-                                  ? 'text-amber-600'
-                                  : 'text-slate-600'
-                            }`}>
-                              {event.amount ? formatMoney(Number(event.amount || 0) / 1e7) : 'Tracked'}
-                            </p>
-                            <p className="text-[10px] text-slate-400 mt-1">
-                              {event.ts ? new Date(Number(event.ts)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+            )}
+          </SectionCard>
 
-          <div className="bg-white rounded-[2rem] border border-slate-100 p-6 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
-              <Target size={16} className="text-primary" />
-              <h3 className="text-sm font-headline font-bold uppercase tracking-widest text-slate-700">Active Bid Reserves</h3>
+          {/* Positions */}
+          <SectionCard title="Positions" icon={Bot} iconColor="text-primary">
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <KV label="Owned Twins"      value={String(totalAssets)} />
+              <KV label="Payment Sessions" value={String(positions.sessions?.length || 0)} />
             </div>
-            {reserveActionStatus === 'err' && reserveActionMessage && (
-              <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">
+            {(positions.assets || []).length === 0 ? (
+              <p className="text-sm text-slate-400">No asset twins acquired yet.</p>
+            ) : (positions.assets || []).slice(0, 4).map((a: any) => (
+              <div key={a.tokenId} className="flex items-center justify-between bg-slate-50 rounded-xl border border-slate-100 px-3 py-2.5 mb-2">
+                <div>
+                  <p className="text-xs font-bold text-slate-800">Twin #{a.tokenId}</p>
+                  <p className="text-[10px] text-slate-400">{a.verificationStatusLabel || a.verificationStatus}</p>
+                </div>
+                <span className="text-xs font-bold text-emerald-600">{formatMoney(Number(a.claimableYield || 0)/1e7)}</span>
+              </div>
+            ))}
+          </SectionCard>
+
+          {/* Bid Reserves */}
+          <SectionCard title="Bid Reserves" icon={Target} iconColor="text-purple-500">
+            {reserveActionStatus !== 'idle' && reserveActionMessage && (
+              <div className={cn('rounded-xl border px-3 py-2 text-xs mb-3',
+                reserveActionStatus === 'ok'  ? 'border-emerald-100 bg-emerald-50 text-emerald-700' :
+                reserveActionStatus === '402' ? 'border-amber-100 bg-amber-50 text-amber-700' :
+                'border-red-100 bg-red-50 text-red-600')}>
                 {reserveActionMessage}
               </div>
             )}
-            {reserveActionStatus === '402' && reserveActionMessage && (
-              <div className="mb-4 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                {reserveActionMessage}
+            {reservationExposure.length > 0 && (
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                {[
+                  { label: 'Leading',        value: String(reservationSummary.leading),       color: 'text-emerald-600' },
+                  { label: 'Outbid',         value: String(reservationSummary.outbid),        color: 'text-amber-600' },
+                  { label: 'Ready Settle',   value: String(reservationSummary.readyToSettle), color: 'text-primary' },
+                ].map(i => <KV key={i.label} label={i.label} value={i.value} color={i.color} />)}
               </div>
             )}
-            {reserveActionStatus === 'ok' && reserveActionMessage && (
-              <div className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-                {reserveActionMessage}
+            {reservationExposure.length === 0 && reservations.length === 0 ? (
+              <p className="text-sm text-slate-400">No active auction reservations.</p>
+            ) : (reservationExposure.length > 0 ? reservationExposure : reservations).map((entry: any) => (
+              <div key={entry.bidId} className="bg-slate-50 rounded-xl border border-slate-100 p-3 mb-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">{entry.title || `Auction #${entry.auctionId}`}</p>
+                    <p className="text-[10px] text-slate-400">Bid #{entry.bidId} · {formatShortAddress(entry.issuer)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-bold text-purple-600">{formatMoney(Number(entry.reservedAmount || 0)/1e7)}</p>
+                    {entry.statusLabel && (
+                      <p className={cn('text-[10px] font-bold uppercase tracking-widest mt-0.5',
+                        entry.status === 'ready_to_settle' ? 'text-primary' :
+                        entry.status === 'leading'         ? 'text-emerald-600' :
+                        entry.status === 'outbid' || entry.status === 'closed_outbid' ? 'text-amber-600' : 'text-slate-400')}>
+                        {entry.statusLabel}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {entry.auction && (
+                  <div className="mt-2 space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { label: 'Top Bid',       value: `${entry.highestBidDisplay || '0.00'} USDC` },
+                        { label: 'Next Valid',    value: `${entry.minimumNextBidDisplay || '0.00'} USDC` },
+                        { label: 'Time Left',     value: formatCountdown(entry.endTime) },
+                        { label: 'Gap To Relead', value: Number(entry.nextBidGap || 0) > 0 ? formatMoney(Number(entry.nextBidGap || 0)/1e7) : '—' },
+                      ].map(i => <KV key={i.label} label={i.label} value={i.value} />)}
+                    </div>
+                    <div className="flex gap-2">
+                      {entry.readyToSettle && (
+                        <button onClick={() => void settleReservedAuction(Number(entry.auctionId))}
+                          disabled={settlePendingAuctionId === Number(entry.auctionId)}
+                          className="flex-1 rounded-xl border border-primary text-primary text-xs font-bold hover:bg-blue-50 disabled:opacity-50 py-2">
+                          {settlePendingAuctionId === Number(entry.auctionId) ? 'Settling…' : 'Settle Now'}
+                        </button>
+                      )}
+                      {entry.status === 'outbid' && (
+                        <button onClick={() => void rebidReservedAuction(Number(entry.auctionId), String(entry.minimumNextBidDisplay || '0'))}
+                          disabled={rebidPendingAuctionId === Number(entry.auctionId)}
+                          className="flex-1 rounded-xl border border-purple-200 text-purple-700 text-xs font-bold hover:bg-purple-50 disabled:opacity-50 py-2">
+                          {rebidPendingAuctionId === Number(entry.auctionId) ? 'Rebidding…' : `Rebid ${entry.minimumNextBidDisplay || '0'} USDC`}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-            {reservations.length === 0 ? (
-              <p className="text-sm text-slate-400">No active auction reservations yet.</p>
-            ) : (
-              <div className="space-y-3">
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { label: 'Leading', value: String(reservationSummary.leading), tone: 'text-secondary' },
-                    { label: 'Outbid', value: String(reservationSummary.outbid), tone: 'text-amber-600' },
-                    { label: 'Ready To Settle', value: String(reservationSummary.readyToSettle), tone: 'text-primary' },
-                  ].map((item) => (
-                    <div key={item.label} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                      <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">{item.label}</p>
-                      <p className={`text-lg font-bold ${item.tone}`}>{item.value}</p>
+            ))}
+          </SectionCard>
+
+          {/* Shortlist Signals */}
+          {(savedScreens.length > 0 || watchlist.length > 0 || screenHighlights.length > 0 || watchlistHighlights.length > 0 || bidFocus) && (
+            <SectionCard title="Shortlist Signals" icon={Target} iconColor="text-blue-500"
+              action={
+                <Link to="/app/marketplace" className="text-[10px] font-bold text-slate-400 hover:text-primary">Manage</Link>
+              }>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <KV label="Saved Screens"   value={String(savedScreens.length)} />
+                <KV label="Watchlist Twins" value={String(watchlist.length)} />
+              </div>
+              {bidFocus && (
+                <div className="bg-blue-50 rounded-xl border border-blue-100 px-3 py-3 mb-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Current Bid Focus</p>
+                  <p className="text-xs font-bold text-slate-800">Auction #{bidFocus.auctionId} · Twin #{bidFocus.assetId}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    {Array.isArray(bidFocus.prioritySource) && bidFocus.prioritySource.length > 0
+                      ? `From ${bidFocus.prioritySource.join(' + ')}`
+                      : 'No shortlist bias'}
+                    {typeof bidFocus.preferenceScore === 'number' ? ` · score ${bidFocus.preferenceScore.toFixed(0)}` : ''}
+                  </p>
+                </div>
+              )}
+              {screenHighlights.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Screen Matches</p>
+                  {screenHighlights.map((e: any) => (
+                    <div key={e.screenId} className="flex items-center justify-between bg-slate-50 rounded-xl border border-slate-100 px-3 py-2">
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">{e.name}</p>
+                        <p className="text-[10px] text-slate-400">{String(e.matches)} matches · top #{e.topTokenId}</p>
+                      </div>
+                      <span className="text-[10px] font-bold text-primary">score {Number(e.topScore || 0).toFixed(0)}</span>
                     </div>
                   ))}
                 </div>
-                {reservationExposure.map((entry: any) => (
-                  <div key={entry.bidId} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                    <div className="flex items-center justify-between gap-3">
+              )}
+              {watchlistHighlights.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Watchlist Signals</p>
+                  {watchlistHighlights.map((e: any) => (
+                    <div key={e.tokenId} className="flex items-center justify-between bg-slate-50 rounded-xl border border-slate-100 px-3 py-2">
                       <div>
-                        <p className="text-sm font-bold text-slate-800">{entry.title || `Auction #${entry.auctionId}`}</p>
-                        <p className="text-xs text-slate-500 mt-1">Bid #{entry.bidId} · issuer {formatShortAddress(entry.issuer)}</p>
+                        <p className="text-xs font-bold text-slate-800">{e.name}</p>
+                        <p className="text-[10px] text-slate-400">Twin #{e.tokenId} · {Array.isArray(e.reasons) ? e.reasons.join(' · ') : 'signal'}</p>
                       </div>
-                      <div className="text-right">
-                        <span className="text-xs font-bold text-purple-600">{formatMoney(Number(entry.reservedAmount || 0) / 1e7)}</span>
-                        <p className={cn(
-                          'mt-1 text-[10px] font-bold uppercase tracking-widest',
-                          entry.status === 'ready_to_settle'
-                            ? 'text-primary'
-                            : entry.status === 'leading'
-                              ? 'text-secondary'
-                              : entry.status === 'outbid' || entry.status === 'closed_outbid'
-                                ? 'text-amber-600'
-                                : 'text-slate-400',
-                        )}>
-                          {entry.statusLabel}
-                        </p>
-                      </div>
+                      <span className={cn('text-[10px] font-bold uppercase tracking-widest',
+                        e.severity === 'high' ? 'text-red-500' : e.severity === 'medium' ? 'text-amber-600' : 'text-primary')}>
+                        {e.hasLiveAuction ? 'live' : e.severity || 'info'}
+                      </span>
                     </div>
-                    {entry.auction ? (
-                      <div className="mt-3 space-y-3">
-                        <div className="grid grid-cols-2 gap-2">
-                          {[
-                            { label: 'Top Bid', value: `${entry.highestBidDisplay || '0.00'} USDC` },
-                            { label: 'Next Valid Bid', value: `${entry.minimumNextBidDisplay || '0.00'} USDC` },
-                            { label: 'Time Left', value: formatCountdown(entry.endTime) },
-                            { label: 'Gap To Relead', value: Number(entry.nextBidGap || 0) > 0 ? formatMoney(Number(entry.nextBidGap || 0) / 1e7) : '0.00 USDC' },
-                          ].map((item) => (
-                            <div key={item.label} className="rounded-xl border border-slate-100 bg-white px-3 py-2">
-                              <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">{item.label}</p>
-                              <p className="text-xs font-bold text-slate-800">{item.value}</p>
-                            </div>
-                          ))}
-                        </div>
-                        {entry.readyToSettle && (
-                          <button
-                            onClick={() => void settleReservedAuction(Number(entry.auctionId))}
-                            disabled={settlePendingAuctionId === Number(entry.auctionId) || rebidPendingAuctionId === Number(entry.auctionId)}
-                            className="w-full rounded-xl border border-primary bg-white px-3 py-2.5 text-xs font-bold uppercase tracking-widest text-primary hover:bg-blue-50 disabled:opacity-50"
-                          >
-                            {settlePendingAuctionId === Number(entry.auctionId) ? 'Settling...' : 'Settle Now'}
-                          </button>
-                        )}
-                        {entry.status === 'outbid' && entry.auction && (
-                          <button
-                            onClick={() => void rebidReservedAuction(Number(entry.auctionId), String(entry.minimumNextBidDisplay || '0'))}
-                            disabled={rebidPendingAuctionId === Number(entry.auctionId) || settlePendingAuctionId === Number(entry.auctionId)}
-                            className="w-full rounded-xl border border-purple-200 bg-white px-3 py-2.5 text-xs font-bold uppercase tracking-widest text-purple-700 hover:bg-purple-50 disabled:opacity-50"
-                          >
-                            {rebidPendingAuctionId === Number(entry.auctionId)
-                              ? 'Rebidding...'
-                              : `Rebid ${entry.minimumNextBidDisplay || '0'} USDC`}
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="mt-3 text-xs text-slate-500">Live auction exposure will appear here once the auction snapshot is available again.</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  ))}
+                </div>
+              )}
+            </SectionCard>
+          )}
 
-          <div className="bg-white rounded-[2rem] border border-slate-100 p-6 shadow-sm">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <div className="flex items-center gap-2">
-                <Store size={16} className="text-purple-600" />
-                <h3 className="text-sm font-headline font-bold uppercase tracking-widest text-slate-700">Continuum Market</h3>
-              </div>
-              <Link to="/app/marketplace" className="text-[10px] font-bold text-slate-400 hover:text-primary">
-                Open Marketplace
+          {/* Market */}
+          <SectionCard title="Continuum Market" icon={Store} iconColor="text-purple-500"
+            action={
+              <Link to="/app/marketplace" className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-primary transition-colors">
+                Open <ArrowUpRight size={11} />
               </Link>
-            </div>
-            <div className="space-y-3">
-              {marketAssets.slice(0, 5).map((asset: any) => (
-                <motion.div
-                  key={asset.tokenId}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-xl border border-slate-100 bg-slate-50 p-3"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-bold text-slate-800">{asset.publicMetadata?.name || asset.name || `Asset #${asset.tokenId}`}</p>
-                      <p className="text-xs text-slate-500 mt-1">
-                        {asset.market?.activeAuction ? `Auction #${asset.market.activeAuction.auctionId}` : 'No active auction'}
-                      </p>
-                    </div>
-                    <span className={cn(
-                      'text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full',
-                      asset.market?.hasActiveAuction ? 'bg-purple-50 text-purple-600' : 'bg-slate-100 text-slate-500',
-                    )}>
-                      {asset.market?.hasActiveAuction ? 'Live Auction' : 'Browse'}
-                    </span>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-[2rem] border border-slate-100 p-6 shadow-sm">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <div className="flex items-center gap-2">
-                <Target size={16} className="text-primary" />
-                <h3 className="text-sm font-headline font-bold uppercase tracking-widest text-slate-700">Shortlist Signals</h3>
-              </div>
-              <Link to="/app/marketplace" className="text-[10px] font-bold text-slate-400 hover:text-primary">
-                Manage In Marketplace
-              </Link>
-            </div>
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="bg-slate-50 rounded-xl border border-slate-100 p-3">
-                <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">Saved Screens</p>
-                <p className="text-lg font-bold text-slate-800">{String(savedScreens.length)}</p>
-              </div>
-              <div className="bg-slate-50 rounded-xl border border-slate-100 p-3">
-                <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">Watchlist Twins</p>
-                <p className="text-lg font-bold text-slate-800">{String(watchlist.length)}</p>
-              </div>
-            </div>
-            <div className="space-y-3">
-              <div className="rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-3">
-                <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-1">Current Bid Focus</p>
-                {bidFocus ? (
-                  <>
-                    <p className="text-sm font-bold text-slate-800">
-                      Auction #{bidFocus.auctionId} · twin #{bidFocus.assetId}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-1">
-                      {Array.isArray(bidFocus.prioritySource) && bidFocus.prioritySource.length > 0
-                        ? `Prioritized from ${bidFocus.prioritySource.join(' + ')}`
-                        : 'No shortlist bias applied on the last loop'}
-                      {typeof bidFocus.preferenceScore === 'number' ? ` · score ${bidFocus.preferenceScore.toFixed(0)}` : ''}
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-sm text-slate-400">No eligible live auction candidate was selected on the last runtime loop.</p>
-                )}
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-2">Saved Screen Matches</p>
-                <div className="space-y-2">
-                  {screenHighlights.length === 0 ? (
-                    <p className="text-sm text-slate-400">No saved-screen shortlist matches on the last runtime loop.</p>
-                  ) : (
-                    screenHighlights.map((entry: any) => (
-                      <div key={entry.screenId} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-bold text-slate-800">{entry.name}</p>
-                            <p className="text-xs text-slate-500 mt-1">
-                              {String(entry.matches)} matches · top twin #{entry.topTokenId}
-                            </p>
-                          </div>
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-primary">
-                            score {Number(entry.topScore || 0).toFixed(0)}
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  )}
+            }>
+            {marketAssets.length === 0 ? (
+              <p className="text-sm text-slate-400">No assets indexed yet.</p>
+            ) : marketAssets.slice(0, 5).map((a: any) => (
+              <motion.div key={a.tokenId} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+                className="flex items-center justify-between bg-slate-50 rounded-xl border border-slate-100 px-3 py-2.5 mb-2">
+                <div>
+                  <p className="text-xs font-bold text-slate-800">{a.publicMetadata?.name || a.name || `Asset #${a.tokenId}`}</p>
+                  <p className="text-[10px] text-slate-400">{a.market?.activeAuction ? `Auction #${a.market.activeAuction.auctionId}` : 'No active auction'}</p>
                 </div>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-2">Watchlist Signals</p>
-                <div className="space-y-2">
-                  {watchlistHighlights.length === 0 ? (
-                    <p className="text-sm text-slate-400">No live watchlist signals on the last runtime loop.</p>
-                  ) : (
-                    watchlistHighlights.map((entry: any) => (
-                      <div key={entry.tokenId} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-bold text-slate-800">{entry.name}</p>
-                            <p className="text-xs text-slate-500 mt-1">
-                              Twin #{entry.tokenId} · {Array.isArray(entry.reasons) ? entry.reasons.join(' · ') : 'signal'}
-                            </p>
-                          </div>
-                          <span className={cn(
-                            'text-[10px] font-bold uppercase tracking-widest',
-                            entry.severity === 'high'
-                              ? 'text-red-500'
-                              : entry.severity === 'medium'
-                                ? 'text-amber-600'
-                                : 'text-primary',
-                          )}>
-                            {entry.hasLiveAuction ? 'live auction' : entry.severity || 'info'}
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-[2rem] border border-slate-100 p-6 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
-              <Bot size={16} className="text-primary" />
-              <h3 className="text-sm font-headline font-bold uppercase tracking-widest text-slate-700">Positions</h3>
-            </div>
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="bg-slate-50 rounded-xl border border-slate-100 p-3">
-                <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">Owned Twins</p>
-                <p className="text-lg font-bold text-slate-800">{totalAssets}</p>
-              </div>
-              <div className="bg-slate-50 rounded-xl border border-slate-100 p-3">
-                <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">Payment Sessions</p>
-                <p className="text-lg font-bold text-slate-800">{positions.sessions?.length || 0}</p>
-              </div>
-            </div>
-            <div className="space-y-3">
-              {(positions.assets || []).slice(0, 4).map((asset: any) => (
-                <div key={asset.tokenId} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                  <div className="flex items-center justify-between">
-                  <p className="text-sm font-bold text-slate-800">Twin #{asset.tokenId}</p>
-                  <span className="text-xs font-bold text-secondary">{formatMoney(Number(asset.claimableYield || 0) / 1e7)}</span>
-                </div>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {(asset.verificationStatusLabel || asset.verificationStatus)} · platform/economic ownership only
-                  </p>
-                </div>
-              ))}
-              {totalAssets === 0 && <p className="text-sm text-slate-400">No asset twins acquired yet.</p>}
-            </div>
-          </div>
+                <span className={cn('text-[10px] font-bold px-2 py-1 rounded-full',
+                  a.market?.hasActiveAuction ? 'bg-purple-50 text-purple-600' : 'bg-slate-100 text-slate-500')}>
+                  {a.market?.hasActiveAuction ? 'Live' : 'Browse'}
+                </span>
+              </motion.div>
+            ))}
+          </SectionCard>
         </div>
       </div>
 
+      {/* ── Fund modal ── */}
       {showFundModal && agentPublicKey && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 space-y-5">
+          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Wallet size={16} className="text-primary" />
                 <p className="text-sm font-bold text-slate-900">Fund Managed Agent</p>
               </div>
-              <button onClick={() => setShowFundModal(false)} className="text-slate-400 hover:text-slate-600">
-                <X size={16} />
-              </button>
+              <button onClick={() => setShowFundModal(false)} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
             </div>
-            <div className="bg-slate-50 rounded-xl border border-slate-100 p-3 space-y-2">
-              <p className="text-[9px] uppercase tracking-widest text-slate-400">Agent Address</p>
+            <div className="bg-slate-50 rounded-xl border border-slate-100 p-3">
+              <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-1">Agent Address</p>
               <div className="flex items-center gap-2">
                 <p className="text-xs font-mono text-slate-700 truncate flex-1">{agentPublicKey}</p>
-                <button
-                  onClick={() => navigator.clipboard.writeText(agentPublicKey)}
-                  className="text-slate-400 hover:text-primary"
-                >
-                  <Copy size={13} />
-                </button>
+                <button onClick={() => navigator.clipboard.writeText(agentPublicKey)} className="text-slate-400 hover:text-primary"><Copy size={13} /></button>
               </div>
             </div>
-            <button
-              onClick={() => window.open(`https://friendbot.stellar.org/?addr=${agentPublicKey}`, '_blank', 'noopener')}
-              className="w-full py-3 rounded-xl bg-slate-900 text-white text-sm font-bold hover:opacity-90"
-            >
-              Get Testnet XLM
+            <button onClick={() => window.open(`https://friendbot.stellar.org/?addr=${agentPublicKey}`, '_blank', 'noopener')}
+              className="w-full py-3 rounded-xl bg-slate-900 text-white text-sm font-bold hover:opacity-90 transition-all">
+              Get Testnet XLM via Friendbot
             </button>
-            <p className="text-xs text-slate-500">
-              Send USDC directly to the managed agent address after trustline setup so it can bid, settle, and rebalance treasury on your behalf.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {error && (
-        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
-          {error}
+            <p className="text-xs text-slate-500">Send USDC to the agent address above so it can bid, settle, and rebalance treasury on your behalf.</p>
+          </motion.div>
         </div>
       )}
     </div>

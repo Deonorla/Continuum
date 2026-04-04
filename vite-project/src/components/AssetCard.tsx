@@ -77,6 +77,7 @@ export function AssetCard({ asset, onDetails }) {
   const Icon = TYPE_ICON[asset.type] || Building2;
   const rentalReadiness = resolveRentalReadiness(asset);
   const isRentalReady = Boolean(rentalReadiness.ready);
+  const isRented = Boolean(asset.isRented) || Number(asset.activeStreamId || 0) > 0;
   const agentSignals = asset.agentSignals || null;
 
   return (
@@ -107,6 +108,12 @@ export function AssetCard({ asset, onDetails }) {
         }`}>
           {rentalReadiness.label}
         </div>
+        {isRented && (
+          <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-500/90 backdrop-blur-md px-3 py-1.5 shadow-lg">
+            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+            <span className="text-[9px] font-bold uppercase tracking-widest text-white">Rented</span>
+          </div>
+        )}
       </div>
       <div className="p-8">
         <div className="flex items-center gap-2 mb-3">

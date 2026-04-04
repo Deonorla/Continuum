@@ -293,7 +293,15 @@ class AgentWalletService {
         if (!cs.horizonServer || !cs.networkPassphrase) {
             throw Object.assign(new Error("Horizon not configured."), { status: 503 });
         }
-        const account = await cs.horizonServer.loadAccount(kp.publicKey());
+        let account;
+        try {
+            account = await cs.horizonServer.loadAccount(kp.publicKey());
+        } catch (e) {
+            if (e?.response?.status === 404 || e?.status === 404) {
+                throw Object.assign(new Error("Agent wallet is not funded yet. Send XLM to the agent address first."), { status: 400 });
+            }
+            throw e;
+        }
         const tx = new TransactionBuilder(account, {
             fee: String(BASE_FEE),
             networkPassphrase: cs.networkPassphrase,
@@ -312,7 +320,15 @@ class AgentWalletService {
         if (!cs.horizonServer || !cs.networkPassphrase) {
             throw Object.assign(new Error("Horizon not configured."), { status: 503 });
         }
-        const account = await cs.horizonServer.loadAccount(kp.publicKey());
+        let account;
+        try {
+            account = await cs.horizonServer.loadAccount(kp.publicKey());
+        } catch (e) {
+            if (e?.response?.status === 404 || e?.status === 404) {
+                throw Object.assign(new Error("Agent wallet is not funded yet. Send XLM to the agent address first."), { status: 400 });
+            }
+            throw e;
+        }
         const asset = assetCode === "XLM" ? Asset.native() : new Asset(assetCode, assetIssuer);
         const tx = new TransactionBuilder(account, {
             fee: String(BASE_FEE),

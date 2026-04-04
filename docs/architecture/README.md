@@ -40,9 +40,9 @@ agent / user / renter
 | `StreamEngineAssetNFT` | the onchain rental twin / digital twin NFT |
 | `StreamEngineAssetRegistry` | stores identity, metadata hash, evidence root, and verification state |
 | `StreamEngineAssetAttestationRegistry` | stores role-based attestations and revocations |
-| `StreamEngineComplianceGuard` | issuer approval, compliance checks, asset policy, attestation policy |
+| `StreamEngineComplianceGuard` | compliance checks, asset policy, attestation policy, and legacy issuer-admin controls that are no longer on the active Stellar mint path |
 | `StreamEngineAssetStream` | binds rental yield to NFT ownership |
-| `StreamEngineRWAHub` | orchestration layer for minting, operator-driven issuer onboarding, attestation, policy, and yield actions |
+| `StreamEngineRWAHub` | orchestration layer for policy/admin actions and legacy backend-assisted flows; the active Stellar mint path is now low-friction and backend-submitted |
 | Private evidence vault | stores deed/tax/inspection/insurance evidence offchain |
 | IPFS | stores sanitized public metadata only |
 | Indexer | exposes activity history and hydrated asset snapshots |

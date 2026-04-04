@@ -13,6 +13,7 @@ const {
 } = require("./rwaModel");
 const { StellarAnchorService, formatStellarAmount } = require("./stellarAnchorService");
 const { StellarSorobanContractService } = require("./stellarSorobanContractService");
+const { resolveStellarRuntimeId, DEFAULT_STELLAR_DEPLOYMENTS } = require("../../utils/runtimeConfig");
 
 const DEFAULT_ATTESTATION_POLICIES = {
     1: [
@@ -75,6 +76,14 @@ function normalizeAddress(value) {
 
 function sameAddress(left, right) {
     return normalizeAddress(left) && normalizeAddress(left) === normalizeAddress(right);
+}
+
+function directWalletRequired(action, details = {}) {
+    return createError(
+        "direct_wallet_required",
+        `Stellar ${action} must be signed by the acting wallet directly. Backend relay fallbacks are disabled for scalable owner-auth writes.`,
+        details
+    );
 }
 
 function normalizeSessionAmount(value) {
@@ -427,11 +436,26 @@ class StellarRWAChainService {
             }),
         };
         this.kind = "stellar";
-        this.hubAddress = config.hubAddress || process.env.STREAM_ENGINE_RWA_HUB_ADDRESS || "stellar:rwa-registry";
-        this.assetNFTAddress = config.assetNFTAddress || process.env.STREAM_ENGINE_RWA_ASSET_NFT_ADDRESS || "stellar:rwa-nft";
-        this.assetRegistryAddress = config.assetRegistryAddress || process.env.STREAM_ENGINE_RWA_ASSET_REGISTRY_ADDRESS || "stellar:rwa-registry";
-        this.attestationRegistryAddress = config.attestationRegistryAddress || process.env.STREAM_ENGINE_RWA_ATTESTATION_REGISTRY_ADDRESS || "stellar:rwa-attestation";
-        this.assetStreamAddress = config.assetStreamAddress || process.env.STREAM_ENGINE_RWA_ASSET_STREAM_ADDRESS || "stellar:yield-vault";
+        this.hubAddress = resolveStellarRuntimeId(
+            config.hubAddress || process.env.STREAM_ENGINE_RWA_HUB_ADDRESS,
+            this.runtime.contracts?.rwaRegistry?.contractId || DEFAULT_STELLAR_DEPLOYMENTS.rwaRegistry
+        );
+        this.assetNFTAddress = resolveStellarRuntimeId(
+            config.assetNFTAddress || process.env.STREAM_ENGINE_RWA_ASSET_NFT_ADDRESS,
+            this.runtime.contracts?.rwaRegistry?.contractId || DEFAULT_STELLAR_DEPLOYMENTS.rwaRegistry
+        );
+        this.assetRegistryAddress = resolveStellarRuntimeId(
+            config.assetRegistryAddress || process.env.STREAM_ENGINE_RWA_ASSET_REGISTRY_ADDRESS,
+            this.runtime.contracts?.rwaRegistry?.contractId || DEFAULT_STELLAR_DEPLOYMENTS.rwaRegistry
+        );
+        this.attestationRegistryAddress = resolveStellarRuntimeId(
+            config.attestationRegistryAddress || process.env.STREAM_ENGINE_RWA_ATTESTATION_REGISTRY_ADDRESS,
+            this.runtime.contracts?.attestationRegistry?.contractId || DEFAULT_STELLAR_DEPLOYMENTS.attestationRegistry
+        );
+        this.assetStreamAddress = resolveStellarRuntimeId(
+            config.assetStreamAddress || process.env.STREAM_ENGINE_RWA_ASSET_STREAM_ADDRESS,
+            this.runtime.contracts?.yieldVault?.contractId || DEFAULT_STELLAR_DEPLOYMENTS.yieldVault
+        );
         this.complianceGuardAddress = config.complianceGuardAddress || process.env.STREAM_ENGINE_RWA_COMPLIANCE_GUARD_ADDRESS || "stellar:policy";
         this.sessionEscrowAddress =
             config.sessionEscrowAddress
@@ -440,14 +464,16 @@ class StellarRWAChainService {
             || process.env.STREAM_ENGINE_RECIPIENT_ADDRESS
             || "";
         this.sessionMeterAddress =
-            config.sessionMeterAddress
-            || this.runtime.contracts?.sessionMeter?.contractId
-            || process.env.STREAM_ENGINE_CONTRACT_ADDRESS
-            || "";
+            resolveStellarRuntimeId(
+                config.sessionMeterAddress
+                || process.env.STREAM_ENGINE_CONTRACT_ADDRESS,
+                this.runtime.contracts?.sessionMeter?.contractId || DEFAULT_STELLAR_DEPLOYMENTS.sessionMeter
+            );
         this.nativeTokenAddress =
-            this.runtime.sac?.nativeXlm
-            || process.env.STELLAR_NATIVE_XLM_SAC_ADDRESS
-            || "";
+            resolveStellarRuntimeId(
+                process.env.STELLAR_NATIVE_XLM_SAC_ADDRESS,
+                this.runtime.sac?.nativeXlm || DEFAULT_STELLAR_DEPLOYMENTS.nativeXlmSac
+            );
         this.contractService = new StellarSorobanContractService({
             rpcUrl: this.runtime.sorobanRpcUrl || this.runtime.rpcUrl,
             horizonUrl: this.runtime.horizonUrl,
@@ -487,42 +513,6 @@ class StellarRWAChainService {
 
     getEventSources() {
         return [];
-    }
-
-    async ensureIssuerApproved(
-        issuer,
-        note = "Auto-approved from signed Stream Engine mint authorization"
-    ) {
-        const approval = await this.getIssuerApproval(issuer);
-        if (!approval?.approved) {
-            try {
-                const result = await this.setIssuerApproval({
-                    issuer,
-                    approved: true,
-                    note,
-                });
-                return {
-                    approved: true,
-                    alreadyApproved: false,
-                    txHash: result.txHash || "",
-                };
-            } catch (error) {
-                throw createError(
-                    "issuer_onboarding_failed",
-                    `Issuer ${issuer} is not onboarded and automatic onboarding failed.`,
-                    {
-                        issuer,
-                        operator: this.signer.address,
-                        reason: error?.message || String(error),
-                    }
-                );
-            }
-        }
-        return {
-            approved: true,
-            alreadyApproved: true,
-            txHash: approval.txHash || "",
-        };
     }
 
     async getIssuerApproval(issuer) {
@@ -723,58 +713,41 @@ class StellarRWAChainService {
         tagHash,
         issuer,
         statusReason = "",
-        skipIssuerApprovalCheck = false,
     }) {
-        const issuerOnboarding = skipIssuerApprovalCheck
-            ? {
-                approved: true,
-                alreadyApproved: true,
-                txHash: "",
-            }
-            : await this.ensureIssuerApproved(issuer);
-
         const attestationPolicies = await this.getAttestationPolicies(assetType);
         const requiresAttestations = attestationPolicies.some((policy) => policy.required);
-        const canWriteOnchain = this.assetRegistryAddress
-            && this.contractService.isConfigured()
-            && this.canOperatorAuthorize(issuer);
+        const verificationStatus = requiresAttestations
+            ? VERIFICATION_STATUS_CODES.pending_attestation
+            : VERIFICATION_STATUS_CODES.verified;
+        const canWriteOnchain = this.assetRegistryAddress && this.contractService.isConfigured();
 
-        let tokenId;
-        let txHash;
-        if (canWriteOnchain) {
-            const chainWrite = await this.contractService.invokeWrite({
-                contractId: this.assetRegistryAddress,
-                method: "mint_asset",
-                args: [
-                    { type: "address", value: issuer },
-                    { type: "u32", value: Number(assetType) },
-                    { type: "u32", value: Number(rightsModel) },
-                    { type: "string", value: publicMetadataURI },
-                    { type: "string", value: publicMetadataHash },
-                    { type: "string", value: evidenceRoot },
-                    { type: "string", value: evidenceManifestHash },
-                    { type: "string", value: propertyRefHash },
-                    { type: "string", value: jurisdiction || "" },
-                    { type: "string", value: cidHash || "" },
-                    { type: "string", value: tagHash || "" },
-                    { type: "string", value: statusReason || "" },
-                ],
-            });
-            tokenId = Number(chainWrite.result || 0);
-            txHash = chainWrite.txHash;
-        } else {
-            tokenId = await this.store.nextCounter("assetTokenId");
-            const anchor = await this.anchorService.submitAnchor("mint_asset", {
-                tokenId,
-                issuer,
-                assetType,
-                rightsModel,
-                publicMetadataHash,
-                evidenceRoot,
-                propertyRefHash,
-            });
-            txHash = anchor.txHash;
+        if (!canWriteOnchain) {
+            throw createError(
+                "backend_unavailable",
+                "The Stellar registry backend is not configured for mint writes."
+            );
         }
+
+        const chainWrite = await this.contractService.invokeWrite({
+            contractId: this.assetRegistryAddress,
+            method: "mint_asset",
+            args: [
+                { type: "address", value: issuer },
+                { type: "u32", value: Number(assetType) },
+                { type: "u32", value: Number(rightsModel) },
+                { type: "string", value: publicMetadataURI },
+                { type: "string", value: publicMetadataHash },
+                { type: "string", value: evidenceRoot },
+                { type: "string", value: evidenceManifestHash },
+                { type: "string", value: propertyRefHash },
+                { type: "string", value: jurisdiction || "" },
+                { type: "string", value: cidHash || "" },
+                { type: "string", value: tagHash || "" },
+                { type: "string", value: statusReason || "" },
+            ],
+        });
+        const tokenId = Number(chainWrite.result || 0);
+        const txHash = chainWrite.txHash;
 
         const compliance = (await this.getCompliance(issuer, assetType)) || {
             approved: true,
@@ -846,16 +819,14 @@ class StellarRWAChainService {
             txHash,
         };
 
-        if (canWriteOnchain) {
-            const onchainSnapshot = await this.getAssetSnapshot(tokenId);
-            if (onchainSnapshot) {
-                snapshot.verificationStatus = onchainSnapshot.verificationStatus;
-                snapshot.verificationStatusLabel = onchainSnapshot.verificationStatusLabel;
-                snapshot.statusReason = onchainSnapshot.statusReason;
-                snapshot.createdAt = onchainSnapshot.createdAt;
-                snapshot.updatedAt = onchainSnapshot.updatedAt;
-                snapshot.verificationUpdatedAt = onchainSnapshot.verificationUpdatedAt;
-            }
+        const onchainSnapshot = await this.getAssetSnapshot(tokenId);
+        if (onchainSnapshot) {
+            snapshot.verificationStatus = onchainSnapshot.verificationStatus;
+            snapshot.verificationStatusLabel = onchainSnapshot.verificationStatusLabel;
+            snapshot.statusReason = onchainSnapshot.statusReason;
+            snapshot.createdAt = onchainSnapshot.createdAt;
+            snapshot.updatedAt = onchainSnapshot.updatedAt;
+            snapshot.verificationUpdatedAt = onchainSnapshot.verificationUpdatedAt;
         }
 
         await this.store.upsertAsset(snapshot);
@@ -868,7 +839,7 @@ class StellarRWAChainService {
             })
         );
 
-        return { tokenId, txHash, issuerOnboarding };
+        return { tokenId, txHash };
     }
 
     async getAttestationRecord(attestationId) {
@@ -954,45 +925,12 @@ class StellarRWAChainService {
             );
             return { attestationId, txHash: chainWrite.txHash };
         }
-
-        const attestationId = await this.store.nextCounter("attestationId");
-        const anchor = await this.anchorService.submitAnchor("register_attestation", {
-            tokenId,
-            role: normalizedRole.code,
+        throw directWalletRequired("attestation registration", {
             attestor,
-            evidenceHash,
-            statementType,
-            expiry: Number(expiry || 0),
-        });
-        const attestation = {
-            attestationId,
             tokenId: Number(tokenId),
-            role: normalizedRole.code,
-            roleLabel: normalizedRole.label,
-            attestor,
-            evidenceHash,
-            statementType,
-            issuedAt: nowSeconds(),
-            expiry: Number(expiry || 0),
-            revoked: false,
-            revocationReason: "",
-            txHash: anchor.txHash,
-        };
-
-        asset.attestations = [
-            ...(asset.attestations || []).filter(
-                (entry) =>
-                    !(Number(entry.role) === normalizedRole.code && String(entry.attestor).toLowerCase() === String(attestor).toLowerCase())
-            ),
-            attestation,
-        ];
-        await this.store.upsertRecord(`attestation:${attestationId}`, attestation);
-        this.recomputeAssetStatus(asset);
-        await this.store.upsertAsset(asset);
-        await this.store.recordActivity(
-            toActivity("attestation", "AttestationRegistered", anchor.txHash, tokenId, attestation)
-        );
-        return { attestationId, txHash: anchor.txHash };
+            operator: this.signer.address,
+            authPath: "wallet_native",
+        });
     }
 
     async revokeAttestation({ attestationId, reason = "" }) {
@@ -1030,29 +968,12 @@ class StellarRWAChainService {
             );
             return { txHash: chainWrite.txHash };
         }
-
-        const anchor = await this.anchorService.submitAnchor("revoke_attestation", {
+        throw directWalletRequired("attestation revocation", {
+            attestor: attestation.attestor,
             attestationId: Number(attestationId),
-            reason,
+            operator: this.signer.address,
+            authPath: "wallet_native",
         });
-        attestation.revoked = true;
-        attestation.revocationReason = reason;
-        attestation.revokedAt = nowSeconds();
-        attestation.txHash = anchor.txHash;
-        await this.store.upsertRecord(`attestation:${Number(attestationId)}`, attestation);
-
-        const asset = await this.getAssetSnapshot(attestation.tokenId);
-        if (asset) {
-            asset.attestations = (asset.attestations || []).map((entry) =>
-                Number(entry.attestationId) === Number(attestationId) ? { ...attestation } : entry
-            );
-            this.recomputeAssetStatus(asset);
-            await this.store.upsertAsset(asset);
-        }
-        await this.store.recordActivity(
-            toActivity("attestation", "AttestationRevoked", anchor.txHash, attestation.tokenId, attestation)
-        );
-        return { txHash: anchor.txHash };
     }
 
     async setVerificationStatus({ tokenId, status, reason = "" }) {
@@ -1197,25 +1118,12 @@ class StellarRWAChainService {
             );
             return { txHash: chainWrite.txHash };
         }
-
-        const anchor = await this.anchorService.submitAnchor("update_metadata", {
+        throw directWalletRequired("metadata update", {
+            owner: asset.currentOwner,
             tokenId: Number(tokenId),
-            metadataURI,
-            cidHash,
+            operator: this.signer.address,
+            authPath: "wallet_native",
         });
-        asset.publicMetadataURI = metadataURI;
-        asset.metadataURI = metadataURI;
-        asset.tokenURI = metadataURI;
-        asset.cidHash = cidHash || hashText(metadataURI);
-        asset.updatedAt = nowSeconds();
-        await this.store.upsertAsset(asset);
-        await this.store.recordActivity(
-            toActivity("registry", "MetadataUpdated", anchor.txHash, tokenId, {
-                metadataURI,
-                cidHash: asset.cidHash,
-            })
-        );
-        return { txHash: anchor.txHash };
     }
 
     async updateAssetEvidence({ tokenId, evidenceRoot, evidenceManifestHash }) {
@@ -1250,23 +1158,12 @@ class StellarRWAChainService {
             );
             return { txHash: chainWrite.txHash };
         }
-
-        const anchor = await this.anchorService.submitAnchor("update_evidence", {
+        throw directWalletRequired("evidence update", {
+            owner: asset.currentOwner,
             tokenId: Number(tokenId),
-            evidenceRoot,
-            evidenceManifestHash,
+            operator: this.signer.address,
+            authPath: "wallet_native",
         });
-        asset.evidenceRoot = evidenceRoot;
-        asset.evidenceManifestHash = evidenceManifestHash;
-        asset.updatedAt = nowSeconds();
-        await this.store.upsertAsset(asset);
-        await this.store.recordActivity(
-            toActivity("registry", "EvidenceUpdated", anchor.txHash, tokenId, {
-                evidenceRoot,
-                evidenceManifestHash,
-            })
-        );
-        return { txHash: anchor.txHash };
     }
 
     async updateVerificationTag({ tokenId, tagHash }) {
@@ -1299,20 +1196,12 @@ class StellarRWAChainService {
             );
             return { txHash: chainWrite.txHash };
         }
-
-        const anchor = await this.anchorService.submitAnchor("update_tag", {
+        throw directWalletRequired("verification tag update", {
+            owner: asset.currentOwner,
             tokenId: Number(tokenId),
-            tagHash,
+            operator: this.signer.address,
+            authPath: "wallet_native",
         });
-        asset.tagHash = tagHash;
-        asset.updatedAt = nowSeconds();
-        await this.store.upsertAsset(asset);
-        await this.store.recordActivity(
-            toActivity("registry", "VerificationTagUpdated", anchor.txHash, tokenId, {
-                tagHash,
-            })
-        );
-        return { txHash: anchor.txHash };
     }
 
     async createAssetYieldStream({ tokenId, totalAmount, duration, sender }) {
@@ -1365,14 +1254,12 @@ class StellarRWAChainService {
                 }
             }
         } else {
-            const anchor = await this.anchorService.submitAnchor("yield_stream_open", {
+            throw directWalletRequired("yield stream open", {
+                owner: fundingSender,
                 tokenId: Number(tokenId),
-                sender: fundingSender,
-                totalAmount: String(totalAmount),
-                duration: Number(duration || 0),
+                operator: this.signer.address,
+                authPath: "wallet_native",
             });
-            streamId = await this.store.nextCounter("yieldStreamId");
-            txHash = anchor.txHash;
         }
 
         asset.activeStreamId = Number(streamId);
@@ -1435,25 +1322,12 @@ class StellarRWAChainService {
             );
             return { txHash: chainWrite.txHash, amount: String(chainWrite.result || "0") };
         }
-
-        const claimable = BigInt(asset.claimableYield || "0");
-        const anchor = await this.anchorService.submitAnchor("claim_yield", {
+        throw directWalletRequired("yield claim", {
+            owner: asset.currentOwner,
             tokenId: Number(tokenId),
-            claimable: claimable.toString(),
+            operator: this.signer.address,
+            authPath: "wallet_native",
         });
-        asset.claimableYield = "0";
-        if (asset.stream) {
-            asset.stream.amountWithdrawn = String(
-                BigInt(asset.stream.amountWithdrawn || "0") + claimable
-            );
-        }
-        await this.store.upsertAsset(asset);
-        await this.store.recordActivity(
-            toActivity("yield", "YieldClaimed", anchor.txHash, tokenId, {
-                amount: claimable.toString(),
-            })
-        );
-        return { txHash: anchor.txHash, amount: claimable.toString() };
     }
 
     async flashAdvance({ tokenId, amount }) {
@@ -1489,21 +1363,12 @@ class StellarRWAChainService {
             );
             return { txHash: chainWrite.txHash };
         }
-
-        const anchor = await this.anchorService.submitAnchor("flash_advance", {
+        throw directWalletRequired("flash advance", {
+            owner: asset.currentOwner,
             tokenId: Number(tokenId),
-            amount: String(amount),
+            operator: this.signer.address,
+            authPath: "wallet_native",
         });
-        asset.flashAdvanceOutstanding = String(
-            BigInt(asset.flashAdvanceOutstanding || "0") + BigInt(amount)
-        );
-        await this.store.upsertAsset(asset);
-        await this.store.recordActivity(
-            toActivity("yield", "FlashAdvanceIssued", anchor.txHash, tokenId, {
-                amount: String(amount),
-            })
-        );
-        return { txHash: anchor.txHash };
     }
 
     async openSession({

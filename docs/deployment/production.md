@@ -12,7 +12,7 @@ This repo currently targets **Stellar testnet** for active testing. Before any p
 
 - attestation registry/runtime surface is configured
 - backend operator key is configured for admin/policy actions
-- issuer onboarding can be performed automatically by the backend admin signer before minting
+- owner mints should be signed directly from Freighter or another Stellar wallet; the backend admin signer is reserved for policy/admin actions
 - attestation policy is defined per asset type
 - private evidence vault storage is configured
 - public metadata pinning is configured

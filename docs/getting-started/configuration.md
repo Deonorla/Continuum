@@ -31,12 +31,12 @@ STREAM_ENGINE_RECIPIENT_ADDRESS=G...
 STREAM_ENGINE_SESSION_API_URL=http://127.0.0.1:3001
 STREAM_ENGINE_APP_BASE_URL=http://localhost:5173
 
-STREAM_ENGINE_RWA_ASSET_NFT_ADDRESS=stellar:rwa-nft
-STREAM_ENGINE_RWA_ASSET_REGISTRY_ADDRESS=stellar:rwa-registry
-STREAM_ENGINE_RWA_ATTESTATION_REGISTRY_ADDRESS=stellar:rwa-attestation
+STREAM_ENGINE_RWA_ASSET_NFT_ADDRESS=CCONFVNIUX6L7Y6DQVDGPZ53T76JOS6ATOPCCAPMWISRK7DVUXKQOSPV
+STREAM_ENGINE_RWA_ASSET_REGISTRY_ADDRESS=CCONFVNIUX6L7Y6DQVDGPZ53T76JOS6ATOPCCAPMWISRK7DVUXKQOSPV
+STREAM_ENGINE_RWA_ATTESTATION_REGISTRY_ADDRESS=CBI3Y36NC644R23TXN7LOQGCKPKEVIJYVNBKZZEXXD75HAFBAAOMMPAA
 STREAM_ENGINE_RWA_COMPLIANCE_GUARD_ADDRESS=stellar:policy
-STREAM_ENGINE_RWA_ASSET_STREAM_ADDRESS=stellar:yield-vault
-STREAM_ENGINE_RWA_HUB_ADDRESS=stellar:rwa-registry
+STREAM_ENGINE_RWA_ASSET_STREAM_ADDRESS=CDZYOSO3LTHUXC3SL64SAGBT7JPNAMYPVS5EB2H5Y2M2MOLOIYLSQRHR
+STREAM_ENGINE_RWA_HUB_ADDRESS=CCONFVNIUX6L7Y6DQVDGPZ53T76JOS6ATOPCCAPMWISRK7DVUXKQOSPV
 
 PINATA_JWT=your_pinata_jwt_here
 IPFS_GATEWAY_URL=https://gateway.pinata.cloud/ipfs
@@ -68,10 +68,12 @@ VITE_STREAM_ENGINE_PAYMENT_TOKEN_DECIMALS=7
 VITE_RWA_API_URL=http://localhost:3001
 ```
 
-## Issuer onboarding
+## Mint path
 
-Issuer approval is normally handled automatically during minting.
+The active Stellar mint flow is low-friction.
 
-- the backend checks whether the issuer is already approved
-- if not, the backend admin signer auto-onboards the issuer before minting
-- if automatic onboarding fails, mint returns a clear issuer-onboarding error instead of an opaque contract revert
+- the frontend sends metadata + evidence roots to the backend mint route
+- the backend submits the Soroban mint write without issuer-signature ceremony
+- the issuer address still becomes the initial owner onchain
+- the backend is still used for metadata pinning, private evidence storage, reads, and policy actions
+- if a stale local env still contains `stellar:*` aliases, the runtime now falls back to the deployment manifest, but you should still replace those aliases with the real contract IDs above

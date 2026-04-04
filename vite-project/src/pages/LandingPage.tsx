@@ -244,7 +244,7 @@ export default function LandingPage() {
                 <ul className="space-y-5 mb-10">
                   {[
                     { title: 'Admit a productive twin', desc: 'Upload evidence privately, anchor the public metadata, and admit a real estate, vehicle, or equipment twin into the market.' },
-                    { title: 'Attestation & compliance', desc: 'Issuers are onboarded once. Attestors verify the asset. Policy controls and human approvals stay at the real-world trust boundary.' },
+                    { title: 'Attestation & compliance', desc: 'Attestors verify the asset. Policy controls stay at the real-world trust boundary without forcing manual issuer onboarding for every mint.' },
                     { title: 'Auction and yield ready', desc: 'Once admitted, the twin can be auctioned in Continuum while yield stays coupled to the current platform owner.' },
                     { title: 'Rental stays available', desc: 'Physical access flows remain in the product, but they are a side lane beside the main auction, yield, and treasury loop.' },
                   ].map(({ title, desc }, i) => (
@@ -264,7 +264,7 @@ export default function LandingPage() {
               <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 gap-5">
                 {[
                   { icon: ShieldCheck, label: 'Verification Status', value: 'Verified', sub: 'Evidence root anchored', color: 'text-secondary', bg: 'bg-secondary-container' },
-                  { icon: Fingerprint, label: 'Issuer Onboarding', value: 'Explicit', sub: 'No owner-only surprises', color: 'text-primary', bg: 'bg-blue-50' },
+                  { icon: Fingerprint, label: 'Mint Path', value: 'Low Friction', sub: 'No issuer-signature ceremony', color: 'text-primary', bg: 'bg-blue-50' },
                   { icon: Gauge,       label: 'Yield Flow Rate',   value: '0.0023 USDC/s', sub: 'Per-second streaming', color: 'text-purple-600', bg: 'bg-purple-50' },
                   { icon: UserCheck,   label: 'Attestation Roles', value: '7 roles', sub: 'Surveyor · Legal · Valuer…', color: 'text-amber-600', bg: 'bg-amber-50' },
                   { icon: Ban,         label: 'Compliance Guard',  value: 'Active', sub: 'Freeze · Dispute · Revoke', color: 'text-red-500', bg: 'bg-red-50' },

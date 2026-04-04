@@ -75,13 +75,13 @@
 
 - `POST /api/rwa/ipfs/metadata`
 - `POST /api/rwa/evidence`
-- `POST /api/rwa/assets`
+- `POST /api/rwa/assets` (active low-friction Stellar mint surface)
 - `GET /api/rwa/assets`
 - `GET /api/rwa/assets/:tokenId`
 - `GET /api/rwa/assets/:tokenId/activity`
-- `POST /api/rwa/attestations`
+- `POST /api/rwa/attestations` (legacy backend/operator attestation surface on Stellar)
 - `POST /api/rwa/verify`
-- `POST /api/rwa/relay`
+- `POST /api/rwa/relay` (legacy backend/operator write surface on Stellar)
 - `POST /api/rwa/admin`
 
 ## Quick start

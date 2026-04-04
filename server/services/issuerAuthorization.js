@@ -13,20 +13,6 @@ function decodeStellarSignature(signature) {
     return Buffer.from(raw, "base64");
 }
 
-function buildIssuerAuthorizationMessage(payload = {}) {
-    return [
-        "Stream Engine RWA Mint Authorization",
-        `issuer:${String(payload.issuer || "").trim().toUpperCase()}`,
-        `rightsModel:${payload.rightsModel || ""}`,
-        `jurisdiction:${payload.jurisdiction || ""}`,
-        `propertyRef:${payload.propertyRef || ""}`,
-        `publicMetadataHash:${payload.publicMetadataHash || ""}`,
-        `evidenceRoot:${payload.evidenceRoot || ""}`,
-        `issuedAt:${payload.issuedAt || ""}`,
-        `nonce:${payload.nonce || ""}`,
-    ].join("\n");
-}
-
 function buildAttestationAuthorizationMessage(payload = {}) {
     return [
         "Stream Engine RWA Attestation Authorization",
@@ -122,41 +108,6 @@ function verifyStellarAuthorization({
     }
 }
 
-async function verifyIssuerAuthorization({
-    issuer,
-    issuerSignature,
-    issuerAuthorization,
-    rightsModel,
-    jurisdiction,
-    propertyRef,
-    publicMetadataHash,
-    evidenceRoot,
-}) {
-    const authorization = issuerAuthorization || {};
-    const signature = issuerSignature || authorization.signature;
-    const issuedAt = authorization.issuedAt || "";
-    const nonce = authorization.nonce || "";
-
-    const message = buildIssuerAuthorizationMessage({
-        issuer,
-        rightsModel,
-        jurisdiction,
-        propertyRef,
-        publicMetadataHash,
-        evidenceRoot,
-        issuedAt,
-        nonce,
-    });
-
-    return verifyStellarAuthorization({
-        expectedSigner: issuer,
-        signature,
-        authorization,
-        message,
-        missingSignatureReason: "issuerSignature is required",
-    });
-}
-
 async function verifyAttestationAuthorization({
     tokenId,
     role,
@@ -222,10 +173,8 @@ async function verifyAttestationRevocationAuthorization({
 }
 
 module.exports = {
-    buildIssuerAuthorizationMessage,
     buildAttestationAuthorizationMessage,
     buildAttestationRevocationAuthorizationMessage,
-    verifyIssuerAuthorization,
     verifyAttestationAuthorization,
     verifyAttestationRevocationAuthorization,
 };

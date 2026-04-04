@@ -297,13 +297,6 @@ impl RwaRegistryContract {
         tag_hash: String,
         status_reason: String,
     ) -> u64 {
-        issuer.require_auth();
-
-        let approval = Self::get_issuer_approval(env.clone(), issuer.clone());
-        if !approval.approved {
-            panic!("issuer_not_onboarded");
-        }
-
         let token_id = get_next_token_id(&env) + 1;
         env.storage().persistent().set(&DataKey::NextTokenId, &token_id);
 

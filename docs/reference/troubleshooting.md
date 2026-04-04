@@ -20,12 +20,12 @@ The asset is still using the old CID/tag model. Migrate it to the v2 evidence + 
 
 The frontend is likely using its cached registry snapshot because the backend verifier is unavailable. Start the backend with `npm run start:all` and re-run the verification flow to get live evidence and attestation checks.
 
-## Issuer onboarding fails during RWA mint
+## Mint still asks for issuer approval or issuer signature
 
-The normal flow now auto-onboards a first-time issuer during minting when the backend admin signer is configured correctly.
+The active Stellar mint flow should not depend on issuer onboarding or issuer signatures.
 
-If you still see an issuer-onboarding error:
+If you still see issuer-gated mint errors:
 
-- confirm the backend is running with the registry admin signer configured
-- confirm that signer can call issuer-approval actions
-- if needed, let a platform admin onboard the issuer manually and then retry the mint
+- confirm the target registry deployment is the updated permissionless mint version
+- confirm the frontend is calling `POST /api/rwa/assets`
+- confirm the backend is pointed at the same updated registry deployment

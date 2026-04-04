@@ -17,7 +17,7 @@ Stella's Stream Engine is now a Stellar-first system. The active runtime is buil
 | `RwaRegistry` | stores rental-twin identity, public metadata hash, evidence root, and verification status |
 | `AttestationRegistry` | stores role-based attestations, revocations, and expiry information |
 | `YieldVault` | tracks asset-linked rental yield, claims, and flash advances |
-| Policy/admin layer | issuer onboarding, compliance decisions, verification status, and asset freeze/dispute state |
+| Policy/admin layer | compliance decisions, verification status, and asset freeze/dispute state |
 
 ## Verification Model
 

@@ -24,8 +24,6 @@ export interface MintAssetParams {
     evidenceManifestHash?: string;
     tag?: string;
     tagHash?: string;
-    issuerSignature?: string;
-    issuerAuthorization?: Record<string, unknown>;
     statusReason?: string;
 }
 
@@ -46,8 +44,6 @@ export interface SubmitAttestationParams {
     expiry?: number;
     attestationId?: number;
     reason?: string;
-    attestorSignature?: string;
-    attestationAuthorization?: Record<string, unknown>;
 }
 
 export class StreamEngineRWAClient {
@@ -93,6 +89,12 @@ export class StreamEngineRWAClient {
             || String(this.tokenAddress || "").startsWith("stellar:");
     }
 
+    private requireWalletNativeStellarWrite(action: string): never {
+        throw new Error(
+            `Wallet-native Soroban ${action} is required on Stellar. Use a direct signer flow or a managed agent wallet instead of the backend relay.`
+        );
+    }
+
     async pinMetadata(metadata: Record<string, unknown>) {
         return this.request("/api/rwa/ipfs/metadata", {
             method: "POST",
@@ -115,6 +117,9 @@ export class StreamEngineRWAClient {
     }
 
     async submitAttestation(params: SubmitAttestationParams) {
+        if (this.isStellarRuntime()) {
+            this.requireWalletNativeStellarWrite("attestation");
+        }
         return this.request("/api/rwa/attestations", {
             method: "POST",
             body: JSON.stringify(params),
@@ -170,15 +175,7 @@ export class StreamEngineRWAClient {
         duration: number
     ) {
         if (this.isStellarRuntime()) {
-            return this.request("/api/rwa/relay", {
-                method: "POST",
-                body: JSON.stringify({
-                    action: "createAssetYieldStream",
-                    tokenId,
-                    totalAmount: String(totalAmount),
-                    duration,
-                }),
-            });
+            this.requireWalletNativeStellarWrite("yield stream open");
         }
 
         if (!this.hubAddress || !this.streamAddress || !this.tokenAddress) {
@@ -222,10 +219,7 @@ export class StreamEngineRWAClient {
 
     async claimYield(signer: Signer, tokenId: number) {
         if (this.isStellarRuntime()) {
-            return this.request("/api/rwa/relay", {
-                method: "POST",
-                body: JSON.stringify({ action: "claimYield", tokenId }),
-            });
+            this.requireWalletNativeStellarWrite("yield claim");
         }
 
         if (!this.hubAddress) {
@@ -243,14 +237,7 @@ export class StreamEngineRWAClient {
 
     async flashAdvance(signer: Signer, tokenId: number, amount: bigint) {
         if (this.isStellarRuntime()) {
-            return this.request("/api/rwa/relay", {
-                method: "POST",
-                body: JSON.stringify({
-                    action: "flashAdvance",
-                    tokenId,
-                    amount: String(amount),
-                }),
-            });
+            this.requireWalletNativeStellarWrite("flash advance");
         }
 
         if (!this.hubAddress) {
@@ -339,14 +326,7 @@ export class StreamEngineRWAClient {
 
     async updateAssetMetadata(signer: Signer, tokenId: number, metadataURI: string) {
         if (this.isStellarRuntime()) {
-            return this.request("/api/rwa/relay", {
-                method: "POST",
-                body: JSON.stringify({
-                    action: "updateAssetMetadata",
-                    tokenId,
-                    metadataURI,
-                }),
-            });
+            this.requireWalletNativeStellarWrite("metadata update");
         }
 
         if (!this.hubAddress) {
@@ -370,14 +350,7 @@ export class StreamEngineRWAClient {
 
     async updateVerificationTag(signer: Signer, tokenId: number, tag: string) {
         if (this.isStellarRuntime()) {
-            return this.request("/api/rwa/relay", {
-                method: "POST",
-                body: JSON.stringify({
-                    action: "updateVerificationTag",
-                    tokenId,
-                    tag,
-                }),
-            });
+            this.requireWalletNativeStellarWrite("verification tag update");
         }
 
         if (!this.hubAddress) {

@@ -1,21 +1,32 @@
 const env = typeof import.meta !== 'undefined' ? import.meta.env || {} : {};
 const runtimeKind = (env.VITE_STREAM_ENGINE_RUNTIME_KIND || env.VITE_FLOWPAY_RUNTIME_KIND || 'stellar').toLowerCase();
+const resolveStellarRuntimeId = (value, fallback) => {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
+    return fallback;
+  }
+  return runtimeKind === 'stellar' && normalized.startsWith('stellar:') && fallback ? fallback : normalized;
+};
 
 export const appName = "Stella's Stream Engine";
 export const streamContractName = runtimeKind === 'stellar' ? 'SessionMeter' : 'StreamEngineStream';
 
-export const contractAddress = env.VITE_STREAM_ENGINE_CONTRACT_ADDRESS
+export const contractAddress = resolveStellarRuntimeId(
+  env.VITE_STREAM_ENGINE_CONTRACT_ADDRESS
   || env.VITE_CONTRACT_ADDRESS
-  || env.VITE_FLOWPAY_CONTRACT_ADDRESS
-  || (runtimeKind === 'stellar'
+  || env.VITE_FLOWPAY_CONTRACT_ADDRESS,
+  runtimeKind === 'stellar'
     ? 'CBC4DKMWZTHTA35LHKNWYNC5DNVT4VBRZLR7YF7HMZIDYJTAUECIAMHE'
-    : '0x75edbf3d9857521f5fb2f581c896779f5110a8a0');
+    : '0x75edbf3d9857521f5fb2f581c896779f5110a8a0',
+);
 
-export const paymentTokenAddress = env.VITE_STREAM_ENGINE_PAYMENT_TOKEN_ADDRESS
-  || env.VITE_FLOWPAY_PAYMENT_TOKEN_ADDRESS
-  || (runtimeKind === 'stellar'
+export const paymentTokenAddress = resolveStellarRuntimeId(
+  env.VITE_STREAM_ENGINE_PAYMENT_TOKEN_ADDRESS
+  || env.VITE_FLOWPAY_PAYMENT_TOKEN_ADDRESS,
+  runtimeKind === 'stellar'
     ? 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA'
-    : '0x00007a6900000000000000000000000001200000');
+    : '0x00007a6900000000000000000000000001200000',
+);
 
 export const paymentTokenSymbol = env.VITE_STREAM_ENGINE_PAYMENT_TOKEN_SYMBOL || env.VITE_FLOWPAY_PAYMENT_TOKEN_SYMBOL || 'USDC';
 export const paymentTokenDisplayName =
@@ -31,18 +42,23 @@ export const paymentAssetId = Number(env.VITE_STREAM_ENGINE_PAYMENT_ASSET_ID || 
 export const paymentAssetCode = env.VITE_STELLAR_PAYMENT_ASSET_CODE || paymentTokenSymbol;
 export const paymentAssetIssuer = env.VITE_STELLAR_PAYMENT_ASSET_ISSUER || '';
 export const nativeTokenAddress =
-  env.VITE_STELLAR_NATIVE_TOKEN_ADDRESS
-  || 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC';
-export const rwaRegistryAddress =
+  resolveStellarRuntimeId(
+    env.VITE_STELLAR_NATIVE_TOKEN_ADDRESS,
+    'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+  );
+export const rwaRegistryAddress = resolveStellarRuntimeId(
   env.VITE_STREAM_ENGINE_RWA_ASSET_REGISTRY_ADDRESS
-  || env.VITE_STREAM_ENGINE_RWA_HUB_ADDRESS
-  || 'CCONFVNIUX6L7Y6DQVDGPZ53T76JOS6ATOPCCAPMWISRK7DVUXKQOSPV';
-export const rwaAttestationRegistryAddress =
-  env.VITE_STREAM_ENGINE_RWA_ATTESTATION_REGISTRY_ADDRESS
-  || 'CBI3Y36NC644R23TXN7LOQGCKPKEVIJYVNBKZZEXXD75HAFBAAOMMPAA';
-export const rwaYieldVaultAddress =
-  env.VITE_STREAM_ENGINE_RWA_ASSET_STREAM_ADDRESS
-  || 'CDZYOSO3LTHUXC3SL64SAGBT7JPNAMYPVS5EB2H5Y2M2MOLOIYLSQRHR';
+  || env.VITE_STREAM_ENGINE_RWA_HUB_ADDRESS,
+  'CCONFVNIUX6L7Y6DQVDGPZ53T76JOS6ATOPCCAPMWISRK7DVUXKQOSPV',
+);
+export const rwaAttestationRegistryAddress = resolveStellarRuntimeId(
+  env.VITE_STREAM_ENGINE_RWA_ATTESTATION_REGISTRY_ADDRESS,
+  'CBI3Y36NC644R23TXN7LOQGCKPKEVIJYVNBKZZEXXD75HAFBAAOMMPAA',
+);
+export const rwaYieldVaultAddress = resolveStellarRuntimeId(
+  env.VITE_STREAM_ENGINE_RWA_ASSET_STREAM_ADDRESS,
+  'CDZYOSO3LTHUXC3SL64SAGBT7JPNAMYPVS5EB2H5Y2M2MOLOIYLSQRHR',
+);
 export const settlementRecipientAddress =
   env.VITE_STREAM_ENGINE_RECIPIENT_ADDRESS
   || env.VITE_FLOWPAY_RECIPIENT_ADDRESS

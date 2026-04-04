@@ -5,7 +5,6 @@ const createApp = require("../index");
 const {
     buildAttestationAuthorizationMessage,
     buildAttestationRevocationAuthorizationMessage,
-    buildIssuerAuthorizationMessage,
 } = require("../services/issuerAuthorization");
 const { parseVerificationPayload } = require("../services/verificationPayload");
 const { EvidenceVaultService } = require("../services/evidenceVault");
@@ -47,34 +46,6 @@ describe("RWA API Integration", function () {
         },
     };
 
-    async function buildIssuerAuthorization({
-        issuer,
-        rightsModel = "verified_rental_asset",
-        jurisdiction = "NG-LA",
-        propertyRef = "plot-42-block-7",
-        publicMetadataHash,
-        evidenceRoot,
-    }) {
-        const message = buildIssuerAuthorizationMessage({
-            issuer,
-            rightsModel,
-            jurisdiction,
-            propertyRef,
-            publicMetadataHash,
-            evidenceRoot,
-            issuedAt: "2026-03-18T00:00:00Z",
-            nonce: "mint-7",
-        });
-
-        return {
-            issuedAt: "2026-03-18T00:00:00Z",
-            nonce: "mint-7",
-            signerAddress: issuer,
-            signatureType: "stellar",
-            signature: await issuerWallet.signMessage(message),
-        };
-    }
-
     async function buildAttestationAuthorization({
         tokenId = 7,
         role = "lawyer",
@@ -82,6 +53,7 @@ describe("RWA API Integration", function () {
         evidenceHash = "0xdeed",
         statementType = "title_review_complete",
         expiry = 0,
+        signer = issuerWallet,
     } = {}) {
         const message = buildAttestationAuthorizationMessage({
             tokenId,
@@ -99,7 +71,7 @@ describe("RWA API Integration", function () {
             nonce: "attest-7",
             signerAddress: attestor,
             signatureType: "stellar",
-            signature: await issuerWallet.signMessage(message),
+            signature: await signer.signMessage(message),
         };
     }
 
@@ -107,6 +79,7 @@ describe("RWA API Integration", function () {
         attestationId = 1,
         attestor = issuerWallet.address,
         reason = "title opinion superseded",
+        signer = issuerWallet,
     } = {}) {
         const message = buildAttestationRevocationAuthorizationMessage({
             attestationId,
@@ -121,7 +94,7 @@ describe("RWA API Integration", function () {
             nonce: "revoke-7",
             signerAddress: attestor,
             signatureType: "stellar",
-            signature: await issuerWallet.signMessage(message),
+            signature: await signer.signMessage(message),
         };
     }
 
@@ -208,7 +181,6 @@ describe("RWA API Integration", function () {
                 evidenceVault: new EvidenceVaultService(),
                 chainService: {
                     signer: backendSigner,
-                    ensuredIssuerApprovals: [],
                     provider: {
                         async getNetwork() {
                             return { chainId: 0n };
@@ -218,9 +190,8 @@ describe("RWA API Integration", function () {
                     isConfigured() {
                         return false;
                     },
-                    async ensureIssuerApproved(issuer, note) {
-                        this.ensuredIssuerApprovals.push({ issuer, note });
-                        return { approved: true, alreadyApproved: false, txHash: "0xapprove" };
+                    canOperatorAuthorize(address) {
+                        return String(address || "").toUpperCase() === String(backendSigner.address || "").toUpperCase();
                     },
                     async mintAsset(payload) {
                         store.asset = {
@@ -350,6 +321,30 @@ describe("RWA API Integration", function () {
                     async getAssetSnapshot() {
                         return store.asset;
                     },
+                    async updateAssetMetadata({ tokenId, metadataURI, publicMetadataHash }) {
+                        if (!store.asset || Number(store.asset.tokenId) !== Number(tokenId)) {
+                            const error = new Error(`Asset ${tokenId} was not found.`);
+                            error.code = "asset_not_found";
+                            throw error;
+                        }
+                        if (!this.canOperatorAuthorize(store.asset.currentOwner)) {
+                            const error = new Error(
+                                "Stellar metadata update must be signed by the acting wallet directly. Backend relay fallbacks are disabled for scalable owner-auth writes."
+                            );
+                            error.code = "direct_wallet_required";
+                            error.details = {
+                                owner: store.asset.currentOwner,
+                                tokenId: Number(tokenId),
+                                operator: backendSigner.address,
+                                authPath: "wallet_native",
+                            };
+                            throw error;
+                        }
+                        store.asset.publicMetadataURI = metadataURI;
+                        store.asset.metadataURI = metadataURI;
+                        store.asset.publicMetadataHash = publicMetadataHash || store.asset.publicMetadataHash;
+                        return { txHash: "0xmetadata" };
+                    },
                     async syncSessionMetadata({
                         sessionId,
                         metadata,
@@ -443,7 +438,7 @@ describe("RWA API Integration", function () {
         expect(first.body.evidenceSummary.missingRequiredDocuments).to.deep.equal([]);
     });
 
-    it("rejects minting when issuer authorization is missing", async function () {
+    it("mints a v2 asset for any issuer through the scalable Stellar backend path", async function () {
         const evidenceResponse = await request(app)
             .post("/api/rwa/evidence")
             .send({
@@ -466,11 +461,14 @@ describe("RWA API Integration", function () {
                 evidenceManifestHash: evidenceResponse.body.evidenceManifestHash,
             });
 
-        expect(response.status).to.equal(400);
-        expect(response.body.error).to.match(/issuerSignature/i);
+        expect(response.status).to.equal(201);
+        expect(response.body.tokenId).to.equal(7);
+        expect(response.body.asset.issuer).to.equal(issuerWallet.address);
+        expect(response.body.asset.currentOwner).to.equal(issuerWallet.address);
+        expect(response.body.details.authMode).to.equal("platform_operator");
     });
 
-    it("mints a v2 asset and returns structured verification payloads", async function () {
+    it("mints a v2 asset through the managed operator path and returns structured verification payloads", async function () {
         const evidenceResponse = await request(app)
             .post("/api/rwa/evidence")
             .send({
@@ -480,17 +478,10 @@ describe("RWA API Integration", function () {
                 evidenceBundle: baseEvidenceBundle,
             });
 
-        const publicMetadataHash = hashJson(basePublicMetadata);
-        const authorization = await buildIssuerAuthorization({
-            issuer: issuerWallet.address,
-            publicMetadataHash,
-            evidenceRoot: evidenceResponse.body.evidenceRoot,
-        });
-
         const response = await request(app)
             .post("/api/rwa/assets")
             .send({
-                issuer: issuerWallet.address,
+                issuer: backendSigner.address,
                 assetType: 1,
                 rightsModel: "verified_rental_asset",
                 jurisdiction: "NG-LA",
@@ -498,17 +489,13 @@ describe("RWA API Integration", function () {
                 publicMetadata: basePublicMetadata,
                 evidenceRoot: evidenceResponse.body.evidenceRoot,
                 evidenceManifestHash: evidenceResponse.body.evidenceManifestHash,
-                issuerAuthorization: authorization,
             });
 
         expect(response.status).to.equal(201);
         expect(response.body.tokenId).to.equal(7);
         expect(response.body.publicMetadataURI).to.equal("ipfs://bafytestcid");
         expect(response.body.verificationStatus).to.equal("pending_attestation");
-        expect(response.body.issuerOnboarding).to.deep.equal({
-            alreadyApproved: false,
-            automaticallyApproved: true,
-        });
+        expect(response.body.details.authMode).to.equal("platform_operator");
         expect(response.body.verificationPayload).to.be.a("string");
         expect(parseVerificationPayload(response.body.verificationPayload).verificationStatus)
             .to.equal("pending_attestation");
@@ -517,55 +504,6 @@ describe("RWA API Integration", function () {
         expect(response.body.asset.tokenId).to.equal(7);
         expect(response.body.asset.rentalReady).to.equal(true);
         expect(response.body.asset.rentalReadiness.label).to.equal("Stellar Rental Ready");
-        expect(app.locals.services.chainService.ensuredIssuerApprovals).to.deep.equal([
-            {
-                issuer: issuerWallet.address,
-                note: "Auto-approved from signed Stream Engine mint authorization",
-            },
-        ]);
-    });
-
-    it("returns a clear onboarding error when automatic issuer approval fails", async function () {
-        app.locals.services.chainService.ensureIssuerApproved = async () => {
-            const error = new Error("Issuer onboarding failed because the backend signer is not allowed to approve issuers.");
-            error.code = "issuer_onboarding_failed";
-            error.details = { issuer: issuerWallet.address };
-            throw error;
-        };
-
-        const evidenceResponse = await request(app)
-            .post("/api/rwa/evidence")
-            .send({
-                rightsModel: "verified_rental_asset",
-                propertyRef: "plot-42-block-7",
-                jurisdiction: "NG-LA",
-                evidenceBundle: baseEvidenceBundle,
-            });
-
-        const publicMetadataHash = hashJson(basePublicMetadata);
-        const authorization = await buildIssuerAuthorization({
-            issuer: issuerWallet.address,
-            publicMetadataHash,
-            evidenceRoot: evidenceResponse.body.evidenceRoot,
-        });
-
-        const response = await request(app)
-            .post("/api/rwa/assets")
-            .send({
-                issuer: issuerWallet.address,
-                assetType: 1,
-                rightsModel: "verified_rental_asset",
-                jurisdiction: "NG-LA",
-                propertyRef: "plot-42-block-7",
-                publicMetadata: basePublicMetadata,
-                evidenceRoot: evidenceResponse.body.evidenceRoot,
-                evidenceManifestHash: evidenceResponse.body.evidenceManifestHash,
-                issuerAuthorization: authorization,
-            });
-
-        expect(response.status).to.equal(400);
-        expect(response.body.code).to.equal("issuer_onboarding_failed");
-        expect(response.body.error).to.match(/Issuer onboarding failed/i);
     });
 
     it("returns structured verification states for v2 and legacy assets", async function () {
@@ -888,7 +826,7 @@ describe("RWA API Integration", function () {
         expect(mismatchResponse.body.status).to.equal("mismatch");
     });
 
-    it("registers attestations only when the attestor signed the request", async function () {
+    it("rejects backend attestation relay for external attestors on Stellar", async function () {
         store.asset = {
             ...(store.asset || {}),
             tokenId: 7,
@@ -909,13 +847,42 @@ describe("RWA API Integration", function () {
                 attestationAuthorization: authorization,
             });
 
+        expect(response.status).to.equal(409);
+        expect(response.body.code).to.equal("direct_wallet_required");
+        expect(response.body.action).to.equal("registerAttestation");
+    });
+
+    it("registers operator-backed attestations when the backend operator signs the request", async function () {
+        store.asset = {
+            ...(store.asset || {}),
+            tokenId: 7,
+            schemaVersion: 2,
+            attestationPolicies: [],
+            attestations: [],
+        };
+
+        const authorization = await buildAttestationAuthorization({
+            attestor: backendSigner.address,
+            signer: backendSigner,
+        });
+        const response = await request(app)
+            .post("/api/rwa/attestations")
+            .send({
+                tokenId: 7,
+                role: "lawyer",
+                attestor: backendSigner.address,
+                evidenceHash: "0xdeed",
+                statementType: "title_review_complete",
+                attestationAuthorization: authorization,
+            });
+
         expect(response.status).to.equal(201);
         expect(response.body.action).to.equal("register");
         expect(response.body.role).to.equal("lawyer");
         expect(response.body.attestationId).to.equal(3);
     });
 
-    it("revokes attestations only when the attestor signed the revocation request", async function () {
+    it("rejects backend attestation revocation relay for external attestors on Stellar", async function () {
         store.asset = {
             ...(store.asset || {}),
             tokenId: 7,
@@ -948,10 +915,74 @@ describe("RWA API Integration", function () {
                 revocationAuthorization: authorization,
             });
 
+        expect(response.status).to.equal(409);
+        expect(response.body.code).to.equal("direct_wallet_required");
+        expect(response.body.action).to.equal("revokeAttestation");
+    });
+
+    it("revokes operator-backed attestations when the backend operator signs the request", async function () {
+        store.asset = {
+            ...(store.asset || {}),
+            tokenId: 7,
+            schemaVersion: 2,
+            attestationPolicies: [],
+            attestations: [
+                {
+                    attestationId: 1,
+                    tokenId: 7,
+                    role: 2,
+                    roleLabel: "lawyer",
+                    attestor: backendSigner.address,
+                    evidenceHash: "0xdeed",
+                    statementType: "title_review_complete",
+                    issuedAt: Math.floor(Date.now() / 1000),
+                    expiry: 0,
+                    revoked: false,
+                    revocationReason: "",
+                },
+            ],
+        };
+
+        const authorization = await buildAttestationRevocationAuthorization({
+            attestor: backendSigner.address,
+            signer: backendSigner,
+        });
+        const response = await request(app)
+            .post("/api/rwa/attestations")
+            .send({
+                action: "revoke",
+                attestationId: 1,
+                reason: "title opinion superseded",
+                revocationAuthorization: authorization,
+            });
+
         expect(response.status).to.equal(200);
         expect(response.body.action).to.equal("revoke");
         expect(response.body.attestationId).to.equal(1);
         expect(store.asset.attestations[0].revoked).to.equal(true);
+    });
+
+    it("rejects backend relay metadata updates for external Stellar owners", async function () {
+        store.asset = {
+            ...(store.asset || {}),
+            tokenId: 7,
+            currentOwner: issuerWallet.address,
+            publicMetadataURI: "ipfs://bafytestcid",
+            metadataURI: "ipfs://bafytestcid",
+            publicMetadataHash: hashJson(basePublicMetadata),
+        };
+
+        const response = await request(app)
+            .post("/api/rwa/relay")
+            .send({
+                action: "updateAssetMetadata",
+                tokenId: 7,
+                metadataURI: "ipfs://bafyupdatedcid",
+            });
+
+        expect(response.status).to.equal(409);
+        expect(response.body.code).to.equal("direct_wallet_required");
+        expect(response.body.action).to.equal("updateAssetMetadata");
     });
 
     it("syncs live session metadata and returns renter-facing session state", async function () {

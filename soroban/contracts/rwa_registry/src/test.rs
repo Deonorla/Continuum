@@ -4,7 +4,7 @@ use super::*;
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
 #[test]
-fn mints_after_issuer_onboarding() {
+fn mints_without_issuer_auth() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -15,12 +15,6 @@ fn mints_after_issuer_onboarding() {
 
     client.initialize(&admin);
     client.set_asset_type_policy(&admin, &1, &true);
-    client.set_issuer_approval(
-        &admin,
-        &issuer,
-        &true,
-        &String::from_str(&env, "demo issuer"),
-    );
 
     let token_id = client.mint_asset(
         &issuer,
@@ -55,13 +49,6 @@ fn transfer_updates_owner_index() {
     let client = RwaRegistryContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
-    client.set_issuer_approval(
-        &admin,
-        &issuer,
-        &true,
-        &String::from_str(&env, "issuer"),
-    );
-
     let token_id = client.mint_asset(
         &issuer,
         &1,

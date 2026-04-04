@@ -10,7 +10,7 @@ Make sure all of these are true:
 2. `GET /api/health` returns `200`
 3. `GET /api/engine/catalog` returns `network.kind = "stellar"`
 4. Freighter is installed and set to **Stellar Testnet**
-5. The issuer wallet has already been onboarded through the admin path
+5. The deployed registry matches the current low-friction mint path
 6. The connected wallet has testnet funds
 
 ## Step 1 — Connect wallet
@@ -61,16 +61,14 @@ Click **Mint**.
 
 What the backend does:
 
-1. checks issuer onboarding and auto-approves the issuer if the backend admin signer is allowed to
-2. verifies the issuer signature freshness
-3. verifies evidence presence
-4. mints the asset through the Stellar-backed chain service
-5. returns explicit rental-readiness and verification state in the asset snapshot
+1. stores the private evidence bundle and pins the public metadata
+2. returns the evidence root and metadata URI the wallet-signed mint needs
+3. reads back explicit rental-readiness and verification state after the mint lands on Soroban
 
 Important talking point:
 
-- mint can auto-onboard a first-time issuer through the backend admin signer
-- if onboarding still fails, the backend returns a clear issuer-onboarding error instead of an opaque revert
+- mint runs through the low-friction backend path, so issuers do not need to stop and sign a separate mint authorization
+- if you still hit `issuer_not_onboarded`, the environment is pointed at an older registry deployment and needs the updated contract set
 
 ## Step 5 — Verify the asset
 
@@ -167,8 +165,8 @@ Check these in order:
 
 1. `GET /api/health`
 2. `GET /api/engine/catalog`
-3. issuer onboarding exists
-4. Freighter is on testnet
+3. the deployed registry is the permissionless-mint version
+4. Freighter is on testnet for transfer, rent, and other direct wallet actions
 5. payment asset config is present in env
 6. session endpoints are reachable
 7. backend logs show a structured `code`, not an opaque revert

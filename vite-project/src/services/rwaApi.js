@@ -1,5 +1,6 @@
 import { getApiBaseUrl } from './apiBase';
 import { getPreferredAgentAuthToken } from '../lib/agentAuthStorage';
+import { ACTIVE_NETWORK } from '../networkConfig.js';
 
 const DEFAULT_RWA_API_URL = getApiBaseUrl();
 
@@ -72,6 +73,9 @@ export async function storeRwaEvidence(payload) {
 }
 
 export async function submitRwaAttestation(payload) {
+  if (ACTIVE_NETWORK.kind === 'stellar') {
+    throw new Error('Direct wallet attestation required on Stellar. Use the Freighter/Soroban attestation path instead of the backend relay.');
+  }
   return request('/api/rwa/attestations', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -79,6 +83,9 @@ export async function submitRwaAttestation(payload) {
 }
 
 export async function revokeRwaAttestation(payload) {
+  if (ACTIVE_NETWORK.kind === 'stellar') {
+    throw new Error('Direct wallet attestation revocation required on Stellar. Use the Freighter/Soroban revocation path instead of the backend relay.');
+  }
   return request('/api/rwa/attestations', {
     method: 'POST',
     body: JSON.stringify({
@@ -128,6 +135,9 @@ export async function placeBid(tokenId, payload) {
 }
 
 export async function rwaRelayAction(payload) {
+  if (ACTIVE_NETWORK.kind === 'stellar') {
+    throw new Error('Direct wallet Soroban write required on Stellar. Use the active signer or managed agent path instead of the backend relay.');
+  }
   return request('/api/rwa/relay', {
     method: 'POST',
     body: JSON.stringify(payload),

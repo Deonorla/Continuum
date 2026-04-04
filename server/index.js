@@ -14,7 +14,6 @@ const { EvidenceVaultService } = require("./services/evidenceVault");
 const {
     verifyAttestationAuthorization,
     verifyAttestationRevocationAuthorization,
-    verifyIssuerAuthorization,
 } = require("./services/issuerAuthorization");
 const { evaluateVerification } = require("./services/rwaVerification");
 const {
@@ -23,7 +22,7 @@ const {
     normalizeAttestationRole,
     normalizeRightsModel,
 } = require("./services/rwaModel");
-const { createRuntimeConfig } = require("../utils/runtimeConfig");
+const { createRuntimeConfig, resolveStellarRuntimeId, DEFAULT_STELLAR_DEPLOYMENTS } = require("../utils/runtimeConfig");
 const { AgentWalletService } = require("./services/agentWalletService");
 const { AgentAuthService } = require("./services/agentAuthService");
 const { AgentStateService } = require("./services/agentStateService");
@@ -39,10 +38,11 @@ const PORT = Number(process.env.PORT || 3001);
 const runtimeConfig = createRuntimeConfig();
 const PAYMENT_TOKEN_ADDRESS = runtimeConfig.paymentTokenAddress;
 const CONTRACT_ADDRESS =
-    process.env.STREAM_ENGINE_CONTRACT_ADDRESS
-    || process.env.VITE_STREAM_ENGINE_CONTRACT_ADDRESS
-    || runtimeConfig.contracts?.sessionMeter?.contractId
-    || "stellar:session-meter";
+    resolveStellarRuntimeId(
+        process.env.STREAM_ENGINE_CONTRACT_ADDRESS
+        || process.env.VITE_STREAM_ENGINE_CONTRACT_ADDRESS,
+        runtimeConfig.contracts?.sessionMeter?.contractId || DEFAULT_STELLAR_DEPLOYMENTS.sessionMeter
+    );
 const RPC_URL = runtimeConfig.rpcUrl;
 const RECIPIENT_ADDRESS =
     process.env.STELLAR_OPERATOR_PUBLIC_KEY
@@ -117,22 +117,26 @@ const defaultConfig = {
     },
     rwa: {
         hubAddress:
-            process.env.STREAM_ENGINE_RWA_HUB_ADDRESS
-            || runtimeConfig.contracts?.rwaRegistry?.contractId
-            || "",
+            resolveStellarRuntimeId(
+                process.env.STREAM_ENGINE_RWA_HUB_ADDRESS,
+                runtimeConfig.contracts?.rwaRegistry?.contractId || DEFAULT_STELLAR_DEPLOYMENTS.rwaRegistry
+            ),
         assetNFTAddress: process.env.STREAM_ENGINE_RWA_ASSET_NFT_ADDRESS || "",
         assetRegistryAddress:
-            process.env.STREAM_ENGINE_RWA_ASSET_REGISTRY_ADDRESS
-            || runtimeConfig.contracts?.rwaRegistry?.contractId
-            || "",
+            resolveStellarRuntimeId(
+                process.env.STREAM_ENGINE_RWA_ASSET_REGISTRY_ADDRESS,
+                runtimeConfig.contracts?.rwaRegistry?.contractId || DEFAULT_STELLAR_DEPLOYMENTS.rwaRegistry
+            ),
         attestationRegistryAddress:
-            process.env.STREAM_ENGINE_RWA_ATTESTATION_REGISTRY_ADDRESS
-            || runtimeConfig.contracts?.attestationRegistry?.contractId
-            || "",
+            resolveStellarRuntimeId(
+                process.env.STREAM_ENGINE_RWA_ATTESTATION_REGISTRY_ADDRESS,
+                runtimeConfig.contracts?.attestationRegistry?.contractId || DEFAULT_STELLAR_DEPLOYMENTS.attestationRegistry
+            ),
         assetStreamAddress:
-            process.env.STREAM_ENGINE_RWA_ASSET_STREAM_ADDRESS
-            || runtimeConfig.contracts?.yieldVault?.contractId
-            || "",
+            resolveStellarRuntimeId(
+                process.env.STREAM_ENGINE_RWA_ASSET_STREAM_ADDRESS,
+                runtimeConfig.contracts?.yieldVault?.contractId || DEFAULT_STELLAR_DEPLOYMENTS.yieldVault
+            ),
         complianceGuardAddress: process.env.STREAM_ENGINE_RWA_COMPLIANCE_GUARD_ADDRESS || "",
         startBlock: Number(process.env.RWA_INDEXER_START_BLOCK || 0),
     },
@@ -140,6 +144,29 @@ const defaultConfig = {
 
 function asyncHandler(fn) {
     return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
+function resolveActionErrorStatus(error) {
+    const code = String(error?.code || "");
+    if (["issuer_not_onboarded", "issuer_onboarding_failed", "direct_wallet_required", "asset_claim_blocked"].includes(code)) {
+        return 409;
+    }
+    if (["asset_not_found", "attestation_not_found", "session_not_found"].includes(code)) {
+        return 404;
+    }
+    if (["nothing_to_claim", "session_frozen"].includes(code)) {
+        return 400;
+    }
+    return 500;
+}
+
+function sendActionError(res, error, action, fallbackError) {
+    return res.status(resolveActionErrorStatus(error)).json({
+        error: error?.message || fallbackError,
+        code: error?.code || "action_failed",
+        action,
+        details: error?.details || {},
+    });
 }
 
 async function hydrateAssetMetadata(services, asset) {
@@ -556,8 +583,6 @@ function createApp(config = defaultConfig) {
             evidenceManifestHash,
             tag,
             tagHash,
-            issuerSignature,
-            issuerAuthorization,
             statusReason = "Awaiting attestation review",
         } = req.body || {};
 
@@ -567,7 +592,6 @@ function createApp(config = defaultConfig) {
         if (!propertyRef) {
             return res.status(400).json({ error: "propertyRef is required" });
         }
-
         const normalizedRightsModel = normalizeRightsModel(rightsModel);
         const metadataResult = await resolvePublicMetadata(services, publicMetadata, publicMetadataURI);
         let resolvedPublicMetadataURI = metadataResult.uri;
@@ -597,33 +621,12 @@ function createApp(config = defaultConfig) {
             });
         }
 
-        const authorizationResult = await verifyIssuerAuthorization({
-            issuer,
-            issuerSignature,
-            issuerAuthorization,
-            rightsModel: normalizedRightsModel.label,
-            jurisdiction,
-            propertyRef,
-            publicMetadataHash,
-            evidenceRoot: evidenceRecord.evidenceRoot,
-        });
-        if (!authorizationResult.valid) {
-            return res.status(400).json({ error: authorizationResult.reason || "invalid issuer authorization" });
-        }
-
         const propertyRefHash = hashText(propertyRef);
         const resolvedTagHash = tagHash || hashText(tag || `${issuer}:${propertyRef}:${resolvedPublicMetadataURI}`);
         const cidHash = hashText(resolvedPublicMetadataURI);
 
         let mintResult;
-        let issuerOnboardingResult = null;
         try {
-            if (typeof chainService.ensureIssuerApproved === "function") {
-                issuerOnboardingResult = await chainService.ensureIssuerApproved(
-                    issuer,
-                    "Auto-approved from signed Stream Engine mint authorization"
-                );
-            }
             mintResult = await chainService.mintAsset({
                 publicMetadataURI: resolvedPublicMetadataURI,
                 assetType,
@@ -637,16 +640,9 @@ function createApp(config = defaultConfig) {
                 tagHash: resolvedTagHash,
                 issuer,
                 statusReason,
-                skipIssuerApprovalCheck: Boolean(issuerOnboardingResult),
             });
         } catch (error) {
-            const statusCode = ["issuer_not_onboarded", "issuer_onboarding_failed"].includes(error.code) ? 400 : 500;
-            return res.status(statusCode).json({
-                error: error.message || "Asset mint failed",
-                code: error.code || "mint_failed",
-                action: "mintAsset",
-                details: error.details || {},
-            });
+            return sendActionError(res, error, "mintAsset", "Asset mint failed");
         }
 
         void beginIndexerSync(app);
@@ -701,26 +697,8 @@ function createApp(config = defaultConfig) {
             statusReason: resolvedStatusReason,
             details: {
                 runtime: runtimeConfig.kind,
-                issuerApproved: Boolean(
-                    issuerOnboardingResult?.approved
-                    ?? mintResult?.issuerOnboarding?.approved
-                    ?? true
-                ),
+                authMode: "platform_operator",
             },
-            issuerOnboarding: issuerOnboardingResult
-                ? {
-                    alreadyApproved: Boolean(issuerOnboardingResult.alreadyApproved),
-                    automaticallyApproved: !issuerOnboardingResult.alreadyApproved,
-                }
-                : mintResult?.issuerOnboarding
-                    ? {
-                        alreadyApproved: Boolean(mintResult.issuerOnboarding.alreadyApproved),
-                        automaticallyApproved: !mintResult.issuerOnboarding.alreadyApproved,
-                    }
-                    : {
-                        alreadyApproved: true,
-                        automaticallyApproved: false,
-                    },
             verificationPayload,
             verificationUrl: buildVerificationUrl(resolvedConfig.appBaseUrl, verificationPayload),
             verificationApiUrl: `${resolvedConfig.appBaseUrl.replace(/5173$/, "3001")}/api/rwa/verify`,
@@ -759,6 +737,23 @@ function createApp(config = defaultConfig) {
             if (!existingAttestation) {
                 return res.status(404).json({ error: "attestation not found" });
             }
+            if (
+                runtimeConfig.kind === "stellar"
+                && typeof chainService.canOperatorAuthorize === "function"
+                && !chainService.canOperatorAuthorize(existingAttestation.attestor)
+            ) {
+                return res.status(409).json({
+                    error: "Direct wallet attestation revocation required on Stellar. Sign the Soroban revocation with the attestor wallet instead of relaying revocationAuthorization to the backend.",
+                    code: "direct_wallet_required",
+                    action: "revokeAttestation",
+                    details: {
+                        attestor: existingAttestation.attestor,
+                        attestationId: Number(attestationId),
+                        operator: chainService?.signer?.address || "",
+                        authMode: "wallet_native",
+                    },
+                });
+            }
             const authorizationResult = await verifyAttestationRevocationAuthorization({
                 attestationId: Number(attestationId),
                 attestor: existingAttestation.attestor,
@@ -771,10 +766,15 @@ function createApp(config = defaultConfig) {
                     error: authorizationResult.reason || "invalid attestation revocation authorization",
                 });
             }
-            const result = await chainService.revokeAttestation({
-                attestationId,
-                reason,
-            });
+            let result;
+            try {
+                result = await chainService.revokeAttestation({
+                    attestationId,
+                    reason,
+                });
+            } catch (error) {
+                return sendActionError(res, error, "revokeAttestation", "Attestation revocation failed");
+            }
             void beginIndexerSync(app);
             res.status(200).json({
                 action: "revoke",
@@ -787,6 +787,23 @@ function createApp(config = defaultConfig) {
         if (!tokenId || !role || !attestor || !evidenceHash || !statementType) {
             return res.status(400).json({
                 error: "tokenId, role, attestor, evidenceHash, and statementType are required",
+            });
+        }
+        if (
+            runtimeConfig.kind === "stellar"
+            && typeof chainService.canOperatorAuthorize === "function"
+            && !chainService.canOperatorAuthorize(attestor)
+        ) {
+            return res.status(409).json({
+                error: "Direct wallet attestation required on Stellar. Sign the Soroban attestation with the attestor wallet instead of sending attestationAuthorization to the backend.",
+                code: "direct_wallet_required",
+                action: "registerAttestation",
+                details: {
+                    attestor,
+                    tokenId: Number(tokenId),
+                    operator: chainService?.signer?.address || "",
+                    authMode: "wallet_native",
+                },
             });
         }
 
@@ -807,14 +824,19 @@ function createApp(config = defaultConfig) {
         }
 
         const normalizedRole = normalizeAttestationRole(role);
-        const result = await chainService.registerAttestation({
-            tokenId: Number(tokenId),
-            role: normalizedRole.code,
-            attestor,
-            evidenceHash,
-            statementType,
-            expiry: Number(expiry || 0),
-        });
+        let result;
+        try {
+            result = await chainService.registerAttestation({
+                tokenId: Number(tokenId),
+                role: normalizedRole.code,
+                attestor,
+                evidenceHash,
+                statementType,
+                expiry: Number(expiry || 0),
+            });
+        } catch (error) {
+            return sendActionError(res, error, "registerAttestation", "Attestation registration failed");
+        }
 
         void beginIndexerSync(app);
         const snapshot = await chainService.getAssetSnapshot(Number(tokenId));
@@ -1022,116 +1044,119 @@ Respond concisely. If the human is asking you to take an action (stream payment,
         const services = await app.locals.ready;
         const { action } = req.body || {};
         const chainService = services.chainService;
-
-        if (action === "createAssetYieldStream") {
-            const { tokenId, totalAmount, duration, sender } = req.body || {};
-            const result = await chainService.createAssetYieldStream({
-                tokenId: Number(tokenId),
-                totalAmount: BigInt(String(totalAmount || 0)),
-                duration: Number(duration || 0),
-                sender,
-            });
-            const asset = await getHydratedAsset(services, Number(tokenId));
-            return res.status(201).json({
-                code: "asset_yield_stream_created",
-                action,
-                txHash: result.txHash,
-                streamId: result.streamId,
-                asset,
-                details: { runtime: runtimeConfig.kind },
-            });
-        }
-
-        if (action === "claimYield") {
-            const { tokenId } = req.body || {};
-            const result = await chainService.claimYield({
-                tokenId: Number(tokenId),
-            });
-            const asset = await getHydratedAsset(services, Number(tokenId));
-            return res.json({
-                code: "yield_claimed",
-                action,
-                txHash: result.txHash,
-                amount: result.amount,
-                asset,
-                details: { runtime: runtimeConfig.kind },
-            });
-        }
-
-        if (action === "flashAdvance") {
-            const { tokenId, amount } = req.body || {};
-            const result = await chainService.flashAdvance({
-                tokenId: Number(tokenId),
-                amount: BigInt(String(amount || 0)),
-            });
-            const asset = await getHydratedAsset(services, Number(tokenId));
-            return res.json({
-                code: "flash_advance_issued",
-                action,
-                txHash: result.txHash,
-                asset,
-                details: { runtime: runtimeConfig.kind },
-            });
-        }
-
-        if (action === "updateAssetMetadata") {
-            const { tokenId, metadataURI, publicMetadataHash } = req.body || {};
-            let resolvedPublicMetadataHash = publicMetadataHash || "";
-            if (!resolvedPublicMetadataHash && metadataURI) {
-                try {
-                    const metadataResult = await services.ipfsService.fetchJSON(metadataURI);
-                    resolvedPublicMetadataHash = hashJson(metadataResult.metadata);
-                } catch {
-                    resolvedPublicMetadataHash = "";
-                }
+        try {
+            if (action === "createAssetYieldStream") {
+                const { tokenId, totalAmount, duration, sender } = req.body || {};
+                const result = await chainService.createAssetYieldStream({
+                    tokenId: Number(tokenId),
+                    totalAmount: BigInt(String(totalAmount || 0)),
+                    duration: Number(duration || 0),
+                    sender,
+                });
+                const asset = await getHydratedAsset(services, Number(tokenId));
+                return res.status(201).json({
+                    code: "asset_yield_stream_created",
+                    action,
+                    txHash: result.txHash,
+                    streamId: result.streamId,
+                    asset,
+                    details: { runtime: runtimeConfig.kind },
+                });
             }
-            const result = await chainService.updateAssetMetadata({
-                tokenId: Number(tokenId),
-                metadataURI,
-                cidHash: hashText(metadataURI || ""),
-                publicMetadataHash: resolvedPublicMetadataHash,
-            });
-            const asset = await getHydratedAsset(services, Number(tokenId));
-            return res.json({
-                code: "asset_metadata_updated",
-                action,
-                txHash: result.txHash,
-                asset,
-                details: { runtime: runtimeConfig.kind },
-            });
-        }
 
-        if (action === "updateAssetEvidence") {
-            const { tokenId, evidenceRoot, evidenceManifestHash } = req.body || {};
-            const result = await chainService.updateAssetEvidence({
-                tokenId: Number(tokenId),
-                evidenceRoot,
-                evidenceManifestHash,
-            });
-            const asset = await getHydratedAsset(services, Number(tokenId));
-            return res.json({
-                code: "asset_evidence_updated",
-                action,
-                txHash: result.txHash,
-                asset,
-                details: { runtime: runtimeConfig.kind },
-            });
-        }
+            if (action === "claimYield") {
+                const { tokenId } = req.body || {};
+                const result = await chainService.claimYield({
+                    tokenId: Number(tokenId),
+                });
+                const asset = await getHydratedAsset(services, Number(tokenId));
+                return res.json({
+                    code: "yield_claimed",
+                    action,
+                    txHash: result.txHash,
+                    amount: result.amount,
+                    asset,
+                    details: { runtime: runtimeConfig.kind },
+                });
+            }
 
-        if (action === "updateVerificationTag") {
-            const { tokenId, tag } = req.body || {};
-            const result = await chainService.updateVerificationTag({
-                tokenId: Number(tokenId),
-                tagHash: hashText(tag || ""),
-            });
-            const asset = await getHydratedAsset(services, Number(tokenId));
-            return res.json({
-                code: "asset_tag_updated",
-                action,
-                txHash: result.txHash,
-                asset,
-                details: { runtime: runtimeConfig.kind },
-            });
+            if (action === "flashAdvance") {
+                const { tokenId, amount } = req.body || {};
+                const result = await chainService.flashAdvance({
+                    tokenId: Number(tokenId),
+                    amount: BigInt(String(amount || 0)),
+                });
+                const asset = await getHydratedAsset(services, Number(tokenId));
+                return res.json({
+                    code: "flash_advance_issued",
+                    action,
+                    txHash: result.txHash,
+                    asset,
+                    details: { runtime: runtimeConfig.kind },
+                });
+            }
+
+            if (action === "updateAssetMetadata") {
+                const { tokenId, metadataURI, publicMetadataHash } = req.body || {};
+                let resolvedPublicMetadataHash = publicMetadataHash || "";
+                if (!resolvedPublicMetadataHash && metadataURI) {
+                    try {
+                        const metadataResult = await services.ipfsService.fetchJSON(metadataURI);
+                        resolvedPublicMetadataHash = hashJson(metadataResult.metadata);
+                    } catch {
+                        resolvedPublicMetadataHash = "";
+                    }
+                }
+                const result = await chainService.updateAssetMetadata({
+                    tokenId: Number(tokenId),
+                    metadataURI,
+                    cidHash: hashText(metadataURI || ""),
+                    publicMetadataHash: resolvedPublicMetadataHash,
+                });
+                const asset = await getHydratedAsset(services, Number(tokenId));
+                return res.json({
+                    code: "asset_metadata_updated",
+                    action,
+                    txHash: result.txHash,
+                    asset,
+                    details: { runtime: runtimeConfig.kind },
+                });
+            }
+
+            if (action === "updateAssetEvidence") {
+                const { tokenId, evidenceRoot, evidenceManifestHash } = req.body || {};
+                const result = await chainService.updateAssetEvidence({
+                    tokenId: Number(tokenId),
+                    evidenceRoot,
+                    evidenceManifestHash,
+                });
+                const asset = await getHydratedAsset(services, Number(tokenId));
+                return res.json({
+                    code: "asset_evidence_updated",
+                    action,
+                    txHash: result.txHash,
+                    asset,
+                    details: { runtime: runtimeConfig.kind },
+                });
+            }
+
+            if (action === "updateVerificationTag") {
+                const { tokenId, tag } = req.body || {};
+                const result = await chainService.updateVerificationTag({
+                    tokenId: Number(tokenId),
+                    tagHash: hashText(tag || ""),
+                });
+                const asset = await getHydratedAsset(services, Number(tokenId));
+                return res.json({
+                    code: "asset_tag_updated",
+                    action,
+                    txHash: result.txHash,
+                    asset,
+                    details: { runtime: runtimeConfig.kind },
+                });
+            }
+        } catch (error) {
+            return sendActionError(res, error, action || "relayAction", "RWA relay action failed");
         }
 
         return res.status(400).json({

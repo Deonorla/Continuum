@@ -1,4 +1,11 @@
 const env = typeof import.meta !== 'undefined' ? import.meta.env || {} : {};
+const resolveStellarRuntimeId = (value, fallback) => {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
+    return fallback;
+  }
+  return normalized.startsWith('stellar:') && fallback ? fallback : normalized;
+};
 
 const chainId = Number(env.VITE_STREAM_ENGINE_CHAIN_ID || 0);
 
@@ -14,12 +21,16 @@ export const ACTIVE_NETWORK = {
   explorerUrl: env.VITE_STREAM_ENGINE_BLOCK_EXPLORER_URL || 'https://stellar.expert/explorer/testnet',
   nativeCurrency: { name: 'Stellar Lumens', symbol: 'XLM', decimals: 7 },
   contractAddress:
-    env.VITE_STREAM_ENGINE_CONTRACT_ADDRESS
-    || env.VITE_STELLA_CONTRACT_ADDRESS
-    || 'CBC4DKMWZTHTA35LHKNWYNC5DNVT4VBRZLR7YF7HMZIDYJTAUECIAMHE',
+    resolveStellarRuntimeId(
+      env.VITE_STREAM_ENGINE_CONTRACT_ADDRESS
+      || env.VITE_STELLA_CONTRACT_ADDRESS,
+      'CBC4DKMWZTHTA35LHKNWYNC5DNVT4VBRZLR7YF7HMZIDYJTAUECIAMHE',
+    ),
   paymentTokenAddress:
-    env.VITE_STREAM_ENGINE_PAYMENT_TOKEN_ADDRESS
-    || 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',
+    resolveStellarRuntimeId(
+      env.VITE_STREAM_ENGINE_PAYMENT_TOKEN_ADDRESS,
+      'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',
+    ),
   paymentAssetCode: env.VITE_STELLAR_PAYMENT_ASSET_CODE || 'USDC',
   paymentAssetIssuer: env.VITE_STELLAR_PAYMENT_ASSET_ISSUER || 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
   recipientAddress: env.VITE_STREAM_ENGINE_RECIPIENT_ADDRESS || '',

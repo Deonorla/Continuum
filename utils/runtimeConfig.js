@@ -3,6 +3,29 @@ const path = require("path");
 
 const STELLAR_TESTNET_PASSPHRASE = "Test SDF Network ; September 2015";
 const STELLAR_MAINNET_PASSPHRASE = "Public Global Stellar Network ; September 2015";
+const DEFAULT_STELLAR_DEPLOYMENTS = {
+    sessionMeter: "CBC4DKMWZTHTA35LHKNWYNC5DNVT4VBRZLR7YF7HMZIDYJTAUECIAMHE",
+    rwaRegistry: "CCONFVNIUX6L7Y6DQVDGPZ53T76JOS6ATOPCCAPMWISRK7DVUXKQOSPV",
+    attestationRegistry: "CBI3Y36NC644R23TXN7LOQGCKPKEVIJYVNBKZZEXXD75HAFBAAOMMPAA",
+    yieldVault: "CDZYOSO3LTHUXC3SL64SAGBT7JPNAMYPVS5EB2H5Y2M2MOLOIYLSQRHR",
+    nativeXlmSac: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+    usdcSac: "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+};
+
+function isStellarAlias(value) {
+    return /^stellar:/i.test(String(value || "").trim());
+}
+
+function resolveStellarRuntimeId(value, fallback = "") {
+    const normalized = String(value || "").trim();
+    if (!normalized) {
+        return fallback;
+    }
+    if (isStellarAlias(normalized) && fallback) {
+        return fallback;
+    }
+    return normalized;
+}
 
 function loadStellarDeploymentManifest() {
     const manifestPath = path.resolve(__dirname, "..", "soroban", "deployments", "testnet.json");
@@ -45,11 +68,12 @@ function createRuntimeConfig(overrides = {}) {
         || deploymentManifest?.network?.rpcUrl
         || "https://soroban-testnet.stellar.org";
     const paymentTokenAddress =
-        overrides.paymentTokenAddress
-        || process.env.STELLAR_USDC_SAC_ADDRESS
-        || process.env.STREAM_ENGINE_PAYMENT_TOKEN_ADDRESS
-        || deploymentManifest?.sac?.usdc
-        || "stellar:usdc-sac";
+        resolveStellarRuntimeId(
+            overrides.paymentTokenAddress
+            || process.env.STELLAR_USDC_SAC_ADDRESS
+            || process.env.STREAM_ENGINE_PAYMENT_TOKEN_ADDRESS,
+            deploymentManifest?.sac?.usdc || DEFAULT_STELLAR_DEPLOYMENTS.usdcSac
+        );
 
     return {
         kind: "stellar",
@@ -94,15 +118,26 @@ function createRuntimeConfig(overrides = {}) {
             || process.env.STELLAR_ASSET_ISSUER
             || "",
         settlement: "soroban-sac",
-        contracts: deploymentManifest?.contracts || {},
-        sac: deploymentManifest?.sac || {},
+        contracts: deploymentManifest?.contracts || {
+            sessionMeter: { contractId: DEFAULT_STELLAR_DEPLOYMENTS.sessionMeter },
+            rwaRegistry: { contractId: DEFAULT_STELLAR_DEPLOYMENTS.rwaRegistry },
+            attestationRegistry: { contractId: DEFAULT_STELLAR_DEPLOYMENTS.attestationRegistry },
+            yieldVault: { contractId: DEFAULT_STELLAR_DEPLOYMENTS.yieldVault },
+        },
+        sac: deploymentManifest?.sac || {
+            nativeXlm: DEFAULT_STELLAR_DEPLOYMENTS.nativeXlmSac,
+            usdc: DEFAULT_STELLAR_DEPLOYMENTS.usdcSac,
+        },
     };
 }
 
 module.exports = {
+    DEFAULT_STELLAR_DEPLOYMENTS,
     STELLAR_TESTNET_PASSPHRASE,
     STELLAR_MAINNET_PASSPHRASE,
     loadStellarDeploymentManifest,
     createRuntimeConfig,
     createStellarRuntimeConfig: createRuntimeConfig,
+    isStellarAlias,
+    resolveStellarRuntimeId,
 };

@@ -21,14 +21,14 @@
 |--------|------|---------|
 | `POST` | `/api/rwa/ipfs/metadata` | pin sanitized public metadata |
 | `POST` | `/api/rwa/evidence` | store private evidence bundle and return roots |
-| `POST` | `/api/rwa/assets` | mint a rental twin after issuer onboarding and return its current v2 verification state |
+| `POST` | `/api/rwa/assets` | active Stellar mint surface with backend-submitted Soroban writes and no issuer-signature ceremony |
 | `GET` | `/api/rwa/assets` | list hydrated assets |
 | `GET` | `/api/rwa/assets/:tokenId` | fetch one hydrated asset |
 | `GET` | `/api/rwa/assets/:tokenId/activity` | fetch indexed activity |
-| `POST` | `/api/rwa/attestations` | register or revoke attestation |
+| `POST` | `/api/rwa/attestations` | legacy backend/operator attestation surface; active Stellar attestations should be signed directly by the acting wallet |
 | `POST` | `/api/rwa/verify` | return structured verification result |
-| `POST` | `/api/rwa/relay` | backend-managed Stellar write surface for yield, metadata, and operator-assisted actions |
-| `POST` | `/api/rwa/admin` | backend/operator actions such as issuer approval and policy updates |
+| `POST` | `/api/rwa/relay` | legacy backend/operator write surface for metadata, yield, and other owner-auth actions; active Stellar writes should be wallet-native |
+| `POST` | `/api/rwa/admin` | backend/operator policy actions such as compliance and asset-policy updates |
 
 ## Verification Response Shape
 
@@ -60,9 +60,6 @@ Fresh v2 mints return:
 - `verificationUrl`
 - `verificationApiUrl`
 - top-level `verificationStatus`
-- `issuerOnboarding`
 - `attestationRequirements`
 
 If the asset type has required attestation roles, new mints typically start as `pending_attestation`. If no required role policy exists, the asset can start as `verified`. New v2 mints do not emit a new legacy verification payload.
-
-`issuerOnboarding` reports whether the issuer was already approved before minting or was auto-approved by the backend admin signer during the mint flow.

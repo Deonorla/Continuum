@@ -81,7 +81,7 @@ const STELLAR_RUNTIME_COMPONENT_DEFAULTS = {
     name: "Stella's Stream Engine Session Meter",
     onchainName: "SessionMeter",
     group: "Payment Rail",
-    address: "stellar:session-meter",
+    address: "CBC4DKMWZTHTA35LHKNWYNC5DNVT4VBRZLR7YF7HMZIDYJTAUECIAMHE",
     role: "Reusable paid-session rail for x402-compatible API access, rentals, cancellation, and refunds.",
   },
   usdcSac: {
@@ -102,21 +102,21 @@ const STELLAR_RUNTIME_COMPONENT_DEFAULTS = {
     name: "Stella's Stream Engine RWA Registry",
     onchainName: "RwaRegistry",
     group: "RWA Rail",
-    address: "stellar:rwa-registry",
+    address: "CCONFVNIUX6L7Y6DQVDGPZ53T76JOS6ATOPCCAPMWISRK7DVUXKQOSPV",
     role: "Asset identity anchor for rights model, property reference hash, public metadata hash, evidence roots, and verification status.",
   },
   attestationRegistry: {
     name: "Stella's Stream Engine Attestation Registry",
     onchainName: "AttestationRegistry",
     group: "RWA Rail",
-    address: "stellar:attestation-registry",
+    address: "CBI3Y36NC644R23TXN7LOQGCKPKEVIJYVNBKZZEXXD75HAFBAAOMMPAA",
     role: "Role-based attestation registry for lawyers, inspectors, valuers, insurers, registrars, issuers, and compliance operators.",
   },
   yieldVault: {
     name: "Stella's Stream Engine Yield Vault",
     onchainName: "YieldVault",
     group: "RWA Rail",
-    address: "stellar:yield-vault",
+    address: "CDZYOSO3LTHUXC3SL64SAGBT7JPNAMYPVS5EB2H5Y2M2MOLOIYLSQRHR",
     role: "Asset-linked revenue engine that keeps future yield coupled to the current twin owner.",
   },
   policyService: {
@@ -124,7 +124,7 @@ const STELLAR_RUNTIME_COMPONENT_DEFAULTS = {
     onchainName: "PolicyOrchestrator",
     group: "RWA Rail",
     address: "stellar:policy-orchestrator",
-    role: "Admin/operator policy surface for issuer onboarding, verification status, compliance, and asset policy actions.",
+    role: "Admin/operator policy surface for verification status, compliance, and asset policy actions.",
   },
 };
 
@@ -230,7 +230,7 @@ function getDeployedContractDescriptors(catalog) {
           catalog?.rwa?.hubAddress
           || STELLAR_RUNTIME_COMPONENT_DEFAULTS.policyService.address,
         note:
-          "This is the platform-facing policy surface for issuer onboarding, verification status changes, and asset freezes.",
+          "This is the platform-facing policy surface for verification status changes, compliance rules, and asset freezes.",
       },
     ];
   }
@@ -819,7 +819,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
       points: [
         {
           title: "Minting",
-          body: "The owner now uses a guided mint flow. They describe the asset in plain language, attach the supporting documents, and let the app generate the internal property reference, verification tag seed, and document fingerprints automatically. The backend still anchors evidence roots, verifies the owner's mint authorization, and auto-onboards a first-time issuer when the platform operator is configured, so ordinary owners do not face a separate issuer-approval step.",
+          body: "The owner now uses a guided mint flow. They describe the asset in plain language, attach the supporting documents, and let the app generate the internal property reference, verification tag seed, and document fingerprints automatically. The backend anchors evidence roots, pins public metadata, and submits the Soroban mint so the flow stays low-friction while ownership still lands onchain immediately.",
         },
         {
           title: "Verification",
@@ -842,8 +842,8 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
       steps: [
         "Describe the asset in plain language: what it is, where it is, and what monthly yield the owner expects.",
         "Attach the supporting documents. Stella's Stream Engine fingerprints them in-browser and keeps the raw files private by default.",
-        "Let the app generate the internal property reference, verification tag seed, and public metadata package automatically while the platform handles issuer onboarding in the background.",
-        "Mint the rental twin and read the signed v2 verification payload that comes back from the API.",
+        "Let the app generate the internal property reference, verification tag seed, and public metadata package automatically.",
+        "Mint the rental twin directly from Freighter and then read the current onchain verification state back through the API.",
         "If the asset type has required attestation roles, collect and record them to move from Pending Attestation to verified.",
         "Fund the asset-linked yield stream.",
         "Let renters stream payment for access while the owner keeps the NFT and revenue rights.",
@@ -1158,7 +1158,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
         },
         {
           title: "How the RWA half really works",
-          body: `The RWA architecture is not just 'mint NFT, done.' First the issuer is onboarded explicitly by a platform admin. Then the issuer signs a mint authorization and anchors public metadata plus private evidence roots. The new twin then starts either in Verified or Pending Attestation depending on the policy for that asset type. If roles are required, they are collected and recorded next. Then rental revenue can be routed into the ${stellar ? "yield vault" : "asset stream contract"} so future yield follows whoever owns the ${stellar ? "twin" : "NFT"}. That is the difference between a productive asset system and a passive onchain collectible.`,
+          body: `The RWA architecture is not just 'mint NFT, done.' The issuer anchors public metadata plus private evidence roots, and the backend submits the low-friction Stellar mint. The new twin then starts either in Verified or Pending Attestation depending on the policy for that asset type. If roles are required, they are collected and recorded next. Then rental revenue can be routed into the ${stellar ? "yield vault" : "asset stream contract"} so future yield follows whoever owns the ${stellar ? "twin" : "NFT"}. That is the difference between a productive asset system and a passive onchain collectible.`,
         },
         {
           title: "Why we only care about productive assets here",
@@ -1258,7 +1258,7 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
             ],
             [
               stellar ? "Stella's Stream Engine Policy Orchestrator" : "Stella's Stream Engine Compliance Guard",
-              stellar ? "Issuer onboarding, compliance, and freeze flags" : "Freeze and compliance flags",
+              stellar ? "Compliance, policy, and freeze flags" : "Freeze and compliance flags",
               stellar
                 ? "Without it there is no clean runtime boundary for admin and regulated actions"
                 : "Without it there is no contract-level stop switch for regulated or disputed actions",
@@ -1391,11 +1391,11 @@ claimable = (flowRate * elapsed) - amountWithdrawn`,
             ],
             [
               "POST /api/rwa/assets",
-              "Mints a new rental twin and returns the signed v2 verification payload plus the current verification state",
+              "Active Stellar mint surface; metadata and evidence go to the backend and mint is submitted without issuer-signature ceremony",
             ],
             [
               "POST /api/rwa/attestations",
-              "Registers or revokes evidence-backed attestations",
+              "Legacy backend/operator attestation surface; the active Stellar attestor flow signs directly from the wallet",
             ],
             ["GET /api/rwa/assets/:tokenId", "Reads asset detail"],
             [

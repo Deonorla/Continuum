@@ -44,7 +44,6 @@ import {
   hashJson,
   hashText,
 } from '../lib/stellarRwaContracts.ts';
-import { createIssuerAuthorization } from '../lib/rwaAuthorization.js';
 
 const ASSET_CATEGORIES = [
   { key: 'real_estate', label: 'Real Estate', Icon: Building2 },
@@ -813,7 +812,7 @@ function AssetWorkspacePanel({ asset, onAssetChanged }) {
 }
 
 function MintingTab({ onMinted, portfolioCount }) {
-  const { fetchPaymentBalance, signer, toast, walletAddress } = useWallet();
+  const { fetchPaymentBalance, toast, walletAddress } = useWallet();
   const [category, setCategory] = useState('real_estate');
   const [form, setForm] = useState(DEFAULT_FORM);
   const [evidenceFiles, setEvidenceFiles] = useState([]);
@@ -848,8 +847,8 @@ function MintingTab({ onMinted, portfolioCount }) {
   const handleMint = async (event) => {
     event.preventDefault();
 
-    if (!walletAddress || !signer) {
-      toast.warning('Connect Freighter before minting an asset.', {
+    if (!walletAddress) {
+      toast.warning('Connect a wallet so the new asset has an owner address.', {
         title: 'Wallet Required',
       });
       return;
@@ -872,7 +871,7 @@ function MintingTab({ onMinted, portfolioCount }) {
     let loadingToast = null;
     try {
       setIsSubmitting(true);
-      loadingToast = toast.transaction.pending('Preparing metadata, hashing evidence, and onboarding the issuer if needed...');
+      loadingToast = toast.transaction.pending('Preparing metadata, hashing evidence, and minting the asset on Stellar...');
 
       const evidenceBundle = await buildEvidenceBundle(evidenceFiles, {
         propertyRef,
@@ -891,30 +890,16 @@ function MintingTab({ onMinted, portfolioCount }) {
       ]);
 
       const publicMetadataURI = pinResult.uri;
-      const publicMetadataHash = hashJson(previewMetadata);
-      const tagSeed = `${propertyRef}-VERIFY`;
-      const issuerAuthorization = await createIssuerAuthorization({
-        signer,
-        issuer: walletAddress,
-        rightsModel: RIGHTS_MODEL,
-        jurisdiction: '',
-        propertyRef,
-        publicMetadataHash,
-        evidenceRoot: evidenceResult.evidenceRoot,
-      });
-
       const mintResult = await mintRwaAsset({
         issuer: walletAddress,
         assetType: TYPE_TO_CHAIN_ASSET_TYPE[category],
         rightsModel: RIGHTS_MODEL,
-        propertyRef,
+        publicMetadata: previewMetadata,
         publicMetadataURI,
         evidenceRoot: evidenceResult.evidenceRoot,
         evidenceManifestHash: evidenceResult.evidenceManifestHash,
+        propertyRef,
         jurisdiction: '',
-        tag: tagSeed,
-        issuerSignature: issuerAuthorization.signature,
-        issuerAuthorization,
         statusReason: 'Awaiting attestation review',
       });
 
@@ -933,7 +918,7 @@ function MintingTab({ onMinted, portfolioCount }) {
           issuer: walletAddress,
           metadataURI: publicMetadataURI,
           publicMetadata: previewMetadata,
-          publicMetadataHash,
+          publicMetadataHash: hashJson(previewMetadata),
           evidenceRoot: evidenceResult.evidenceRoot,
           evidenceManifestHash: evidenceResult.evidenceManifestHash,
           propertyRef,
@@ -953,21 +938,21 @@ function MintingTab({ onMinted, portfolioCount }) {
       onMinted?.(nextAsset);
       toast.dismiss(loadingToast);
       toast.transaction.success(
-        `Asset #${mintResult.tokenId} is now live on the Stellar network.`,
+        `Asset #${mintResult.tokenId} is now live on Soroban.`,
         mintResult.txHash,
       );
       toast.success(
-        mintResult.issuerOnboarding?.automaticallyApproved
-          ? `Private evidence stayed offchain while the rental twin was anchored on Soroban. The issuer was auto-onboarded in the background. Portfolio size: ${portfolioCount + 1}.`
-          : `Private evidence stayed offchain while the rental twin was anchored on Soroban. Portfolio size: ${portfolioCount + 1}.`,
+        `Private evidence stayed offchain while the rental twin was minted with the low-friction Stellar path. Portfolio size: ${portfolioCount + 1}.`,
         { title: 'Mint Complete' },
       );
     } catch (error) {
       const message = error?.message || 'Asset minting failed.';
       toast.dismiss(loadingToast);
       toast.error(
-        /issuer/i.test(message) && /(onboarding|approve)/i.test(message)
-          ? `${message} The backend admin signer may need to be configured for automatic onboarding, or a platform admin can onboard the issuer manually.`
+        /issuer_not_onboarded|onboard|approve/i.test(message)
+          ? `${message} This registry is still running the old issuer-gated mint logic. Redeploy the permissionless registry build and retry.`
+          : /direct wallet mint required/i.test(message)
+            ? `${message} The active build should no longer require a direct issuer signature for minting.`
           : message,
         { title: 'Mint Failed' },
       );

@@ -72,22 +72,6 @@ async function checkCompliance(chainService, { walletAddress, asset, action = 't
         }
     }
 
-    // 5. Issuer approval — issuer must be onboarded
-    if (chainService?.isConfigured?.() && asset?.issuer) {
-        try {
-            const approval = await chainService.getIssuerApproval(asset.issuer);
-            checks.push({
-                name: 'issuer_approval',
-                passed: Boolean(approval?.approved),
-                detail: approval?.approved
-                    ? `Issuer approved: ${asset.issuer.slice(0, 8)}…`
-                    : `Issuer not approved: ${asset.issuer.slice(0, 8)}…`,
-            });
-        } catch {
-            checks.push({ name: 'issuer_approval', passed: true, detail: 'Issuer check skipped' });
-        }
-    }
-
     const failed = checks.filter(c => !c.passed);
     return {
         allowed: failed.length === 0,

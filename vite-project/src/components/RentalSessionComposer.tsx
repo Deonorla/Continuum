@@ -3,7 +3,9 @@ import { Ban, Clock, RefreshCcw, WalletCards } from 'lucide-react';
 import { StrKey } from '@stellar/stellar-sdk';
 import { supportedPaymentAssets } from '../contactInfo.js';
 import { useWallet } from '../context/WalletContext';
+import { useAppMode } from '../context/AppModeContext';
 import { buildRentalStreamMetadata } from '../pages/rwa/rwaData.js';
+import Select from './ui/Select';
 
 const DURATION_OPTIONS = [
   { label: '1 Hour', seconds: 3600 },
@@ -44,6 +46,8 @@ function resolveRentalReadiness(asset) {
 }
 
 export default function RentalSessionComposer({ asset, onStarted }) {
+  const { mode } = useAppMode();
+  const isAgentMode = mode === 'agent';
   const {
     cancel,
     createStream,
@@ -90,6 +94,9 @@ export default function RentalSessionComposer({ asset, onStarted }) {
     }) || null;
   }, [asset?.id, asset?.tokenId, outgoingStreams]);
   const linkedSessionActive = Boolean(linkedSession?.isActive);
+
+  if (isOwner && walletAddress) return null;
+
   const canStart = Boolean(
     walletAddress
     && hasValidRecipient
@@ -157,33 +164,23 @@ export default function RentalSessionComposer({ asset, onStarted }) {
           <span className="block text-[10px] font-label font-bold uppercase tracking-widest text-slate-400">
             Settlement Asset
           </span>
-          <select
+          <Select
+            options={supportedPaymentAssets.map(a => ({ value: a.symbol, label: `${a.symbol} · ${a.name}` }))}
             value={assetSymbol}
-            onChange={(event) => setAssetSymbol(event.target.value)}
-            disabled={isProcessing}
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {supportedPaymentAssets.map((paymentAsset) => (
-              <option key={paymentAsset.symbol} value={paymentAsset.symbol}>
-                {paymentAsset.symbol} · {paymentAsset.name}
-              </option>
-            ))}
-          </select>
+            onChange={v => setAssetSymbol(String(v))}
+            disabled={isProcessing || isAgentMode}
+          />
         </label>
         <label className="space-y-1">
           <span className="block text-[10px] font-label font-bold uppercase tracking-widest text-slate-400">
             Rental Duration
           </span>
-          <select
+          <Select
+            options={DURATION_OPTIONS.map(o => ({ value: o.seconds, label: o.label }))}
             value={durationSeconds}
-            onChange={(event) => setDurationSeconds(Number(event.target.value))}
-            disabled={isProcessing}
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {DURATION_OPTIONS.map((option) => (
-              <option key={option.seconds} value={option.seconds}>{option.label}</option>
-            ))}
-          </select>
+            onChange={v => setDurationSeconds(Number(v))}
+            disabled={isProcessing || isAgentMode}
+          />
         </label>
       </div>
 
@@ -261,8 +258,8 @@ export default function RentalSessionComposer({ asset, onStarted }) {
       {!walletAddress && (
         <p className="text-xs text-amber-600">Connect Freighter to open a live Stellar rental session.</p>
       )}
-      {isOwner && walletAddress && (
-        <p className="text-xs text-amber-600">Switch to a renter wallet to start a session for your own asset.</p>
+      {isAgentMode && (
+        <p className="text-xs text-amber-600">Switch to Owner Mode to rent assets. Rentals are for humans only — the agent trades, not rents.</p>
       )}
       {!hasValidRecipient && (
         <p className="text-xs text-amber-600">{rentalReadiness.reason || 'This asset is not ready for live Stellar rental sessions yet.'}</p>
@@ -274,7 +271,7 @@ export default function RentalSessionComposer({ asset, onStarted }) {
       <button
         type="button"
         onClick={() => void handleStart()}
-        disabled={!canStart || isProcessing}
+        disabled={!canStart || isProcessing || isAgentMode}
         className="flex w-full items-center justify-center gap-2 rounded-2xl ethereal-gradient py-4 text-sm font-bold uppercase tracking-widest text-white shadow-lg shadow-blue-500/20 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Clock size={16} />

@@ -143,6 +143,50 @@ const defaultConfig = {
     },
 };
 
+function buildStartupContractReport() {
+    const resolved = {
+        sessionMeter:
+            defaultConfig.streamEngineContractAddress
+            || runtimeConfig.contracts?.sessionMeter?.contractId
+            || DEFAULT_STELLAR_DEPLOYMENTS.sessionMeter,
+        rwaHub:
+            defaultConfig.rwa?.hubAddress
+            || runtimeConfig.contracts?.rwaRegistry?.contractId
+            || DEFAULT_STELLAR_DEPLOYMENTS.rwaRegistry,
+        assetRegistry:
+            defaultConfig.rwa?.assetRegistryAddress
+            || runtimeConfig.contracts?.rwaRegistry?.contractId
+            || DEFAULT_STELLAR_DEPLOYMENTS.rwaRegistry,
+        attestationRegistry:
+            defaultConfig.rwa?.attestationRegistryAddress
+            || runtimeConfig.contracts?.attestationRegistry?.contractId
+            || DEFAULT_STELLAR_DEPLOYMENTS.attestationRegistry,
+        assetStream:
+            defaultConfig.rwa?.assetStreamAddress
+            || runtimeConfig.contracts?.yieldVault?.contractId
+            || DEFAULT_STELLAR_DEPLOYMENTS.yieldVault,
+    };
+
+    const raw = {
+        sessionMeter: process.env.STREAM_ENGINE_CONTRACT_ADDRESS || process.env.VITE_STREAM_ENGINE_CONTRACT_ADDRESS || "",
+        rwaHub: process.env.STREAM_ENGINE_RWA_HUB_ADDRESS || "",
+        assetRegistry: process.env.STREAM_ENGINE_RWA_ASSET_REGISTRY_ADDRESS || "",
+        attestationRegistry: process.env.STREAM_ENGINE_RWA_ATTESTATION_REGISTRY_ADDRESS || "",
+        assetStream: process.env.STREAM_ENGINE_RWA_ASSET_STREAM_ADDRESS || "",
+    };
+
+    const warnings = Object.entries(raw)
+        .filter(([, value]) => String(value || "").trim())
+        .filter(([key, value]) => String(value).trim() !== String(resolved[key] || "").trim())
+        .map(([key, value]) => ({
+            key,
+            raw: String(value).trim(),
+            resolved: String(resolved[key] || "").trim(),
+        }));
+
+    return { raw, resolved, warnings };
+}
+
 function asyncHandler(fn) {
     return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
@@ -1427,12 +1471,20 @@ function createApp(config = defaultConfig) {
 if (require.main === module) {
     const app = createApp();
     app.listen(PORT, () => {
+        const startupContracts = buildStartupContractReport();
         console.log(`Stream Engine server running on port ${PORT}`);
         console.log(`Payment recipient: ${RECIPIENT_ADDRESS}`);
-        console.log(`Stream contract: ${CONTRACT_ADDRESS}`);
+        console.log(`Stream contract: ${startupContracts.resolved.sessionMeter}`);
         console.log(`Payment token (${runtimeConfig.paymentTokenSymbol}): ${PAYMENT_TOKEN_ADDRESS}`);
-        console.log(`RWA hub: ${process.env.STREAM_ENGINE_RWA_HUB_ADDRESS || "not configured"}`);
-        console.log(`RWA attestation registry: ${process.env.STREAM_ENGINE_RWA_ATTESTATION_REGISTRY_ADDRESS || "not configured"}`);
+        console.log(`RWA hub: ${startupContracts.resolved.rwaHub || "not configured"}`);
+        console.log(`RWA asset registry: ${startupContracts.resolved.assetRegistry || "not configured"}`);
+        console.log(`RWA attestation registry: ${startupContracts.resolved.attestationRegistry || "not configured"}`);
+        console.log(`RWA asset stream: ${startupContracts.resolved.assetStream || "not configured"}`);
+        for (const warning of startupContracts.warnings) {
+            console.warn(
+                `[config] ${warning.key} env value "${warning.raw}" resolves to "${warning.resolved}" at runtime.`,
+            );
+        }
     });
 }
 

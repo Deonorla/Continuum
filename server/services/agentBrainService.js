@@ -34,8 +34,11 @@ function friendlyLlmError(error) {
     if (msg.includes('404') || msg.includes('not found')) {
         return 'AI model not found. Check AGENT_LLM_MODEL in your .env file.';
     }
-    if (msg.includes('API key') || msg.includes('403')) {
+    if (msg.includes('403') || (msg.includes('API key') && !msg.toLowerCase().includes('not configured'))) {
         return 'Invalid or missing Gemini API key. Check GEMINI_API_KEY in your .env file.';
+    }
+    if (msg.toLowerCase().includes('not configured')) {
+        return msg.replace('API key is not configured', 'API key is missing — check your .env file');
     }
     return `AI planning unavailable: ${msg.split('\n')[0].slice(0, 120)}`;
 }
@@ -409,30 +412,223 @@ ${JSON.stringify(recentMessages || [], null, 2)}
     }
 }
 
+class OpenRouterAgentModelProvider {
+    constructor(config = {}) {
+        this.apiKey = normalizeText(config.apiKey || "");
+        this.modelName = normalizeText(config.modelName || "mistralai/mistral-7b-instruct:free");
+    }
+
+    isAvailable() {
+        return Boolean(this.apiKey && this.apiKey !== "your_openrouter_api_key_here");
+    }
+
+    async _call(prompt) {
+        if (!this.isAvailable()) throw new Error("OpenRouter API key is not configured.");
+        const response = await retryWithBackoff(async () => {
+            const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
+                body: JSON.stringify({ model: this.modelName, messages: [{ role: "user", content: prompt }], temperature: 0.2 }),
+            });
+            if (r.status === 429 || r.status === 503) throw new Error(`OpenRouter ${r.status}`);
+            return r;
+        }, 4, 2000);
+        if (!response.ok) {
+            const text = await response.text().catch(() => response.statusText);
+            throw new Error(`OpenRouter ${response.status}: ${text}`);
+        }
+        const data = await response.json();
+        return data.choices?.[0]?.message?.content || "";
+    }
+
+    async generateJson(prompt) {
+        const text = await this._call(prompt);
+        const parsed = parseJsonObject(text);
+        if (!parsed) throw new Error("OpenRouter did not return valid JSON.");
+        return parsed;
+    }
+
+    async decide({ objective, context, memorySummary, wakeReason }) {
+        const prompt = `You are the autonomous market planner for Continuum, an agent-first RWA marketplace.
+Return JSON only.
+Rules: Choose exactly one next action. Allowed: analyze, bid, settle_auction, claim_yield, route_yield, rebalance_treasury, watch, hold. Keep rationale concise.
+Objective: ${JSON.stringify(objective || {})}
+Wake reason: ${wakeReason || "scheduled"}
+Memory: ${memorySummary || "none"}
+Context: ${JSON.stringify(context || {})}
+Response: {"actionType":"hold","actionArgs":{},"thesis":"","rationale":"","confidence":0,"blockedBy":"","requiresHuman":false,"wakeReason":"${wakeReason || "scheduled"}"}`;
+        return normalizeProposal(await this.generateJson(prompt), wakeReason);
+    }
+
+    async chat({ message, objective, brainState, context, recentMessages, memorySummary }) {
+        const prompt = `You are the live autonomous agent for Continuum. Reply in JSON only.
+Objective: ${JSON.stringify(objective || {})}
+Brain: ${JSON.stringify(brainState || {})}
+Memory: ${memorySummary || "none"}
+Recent chat: ${JSON.stringify((recentMessages || []).slice(-4))}
+User: ${message}
+Response: {"reply":"","objectivePatch":null,"wakeReason":"chat_message"}`;
+        const parsed = await this.generateJson(prompt);
+        return { reply: normalizeText(parsed.reply || ""), objectivePatch: parsed.objectivePatch || null, wakeReason: normalizeText(parsed.wakeReason || "chat_message") };
+    }
+
+    async summarize({ objective, journal, recentMessages }) {
+        if (!this.isAvailable()) return buildFallbackSummary({ objective, journal, recentMessages });
+        const prompt = `Summarize this agent's state in 2-3 sentences. Plain text only.\nObjective: ${JSON.stringify(objective || {})}\nJournal: ${JSON.stringify((journal || []).slice(-6))}\nChat: ${JSON.stringify((recentMessages || []).slice(-4))}`;
+        return normalizeText(await this._call(prompt));
+    }
+}
+
+class GroqAgentModelProvider {
+    constructor(config = {}) {
+        this.apiKey = normalizeText(config.apiKey || "");
+        this.modelName = normalizeText(config.modelName || "llama-3.3-70b-versatile");
+    }
+
+    isAvailable() {
+        return Boolean(this.apiKey && this.apiKey !== "your_groq_api_key_here");
+    }
+
+    async generateJson(prompt) {
+        if (!this.isAvailable()) throw new Error("Groq API key is not configured.");
+        const response = await retryWithBackoff(async () => {
+            const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
+                body: JSON.stringify({ model: this.modelName, messages: [{ role: "user", content: prompt }], temperature: 0.2 }),
+            });
+            if (r.status === 429 || r.status === 503) throw new Error(`Groq ${r.status}`);
+            return r;
+        });
+        if (!response.ok) {
+            const text = await response.text().catch(() => response.statusText);
+            throw new Error(`Groq ${response.status}: ${text}`);
+        }
+        const data = await response.json();
+        const text = data.choices?.[0]?.message?.content || "";
+        const parsed = parseJsonObject(text);
+        if (!parsed) throw new Error("Groq did not return valid JSON.");
+        return parsed;
+    }
+
+    async decide({ objective, context, memorySummary, wakeReason }) {
+        const prompt = `You are the autonomous market planner for Continuum, an agent-first RWA marketplace.
+Return JSON only.
+
+Rules:
+- Choose exactly one next action.
+- Allowed actions: analyze, bid, settle_auction, claim_yield, route_yield, rebalance_treasury, watch, hold.
+- Never propose minting, physical rental actions, or anything outside trade + treasury scope.
+- If an action is blocked by guardrails, return hold with blockedBy.
+- Keep rationale concise and operator-readable.
+
+Objective:
+${JSON.stringify(objective || {}, null, 2)}
+
+Wake reason: ${wakeReason || "scheduled"}
+
+Memory summary:
+${memorySummary || "No memory summary yet."}
+
+Runtime context:
+${JSON.stringify(context || {}, null, 2)}
+
+Response shape:
+{"actionType":"bid","actionArgs":{},"thesis":"short thesis","rationale":"why","confidence":0,"blockedBy":"","requiresHuman":false,"wakeReason":"${wakeReason || "scheduled"}"}`;
+        return normalizeProposal(await this.generateJson(prompt), wakeReason);
+    }
+
+    async chat({ message, objective, brainState, context, recentMessages, memorySummary }) {
+        const prompt = `You are the live autonomous agent for Continuum. Reply in JSON only.
+Rules: Explain your real current thesis, blocker, liquidity, and next action. You may update the objective only if the human is clearly changing strategy.
+
+Current objective: ${JSON.stringify(objective || {})}
+Brain state: ${JSON.stringify(brainState || {})}
+Memory: ${memorySummary || "none"}
+Recent chat: ${JSON.stringify((recentMessages || []).slice(-4))}
+User message: ${message}
+
+Response shape: {"reply":"assistant reply","objectivePatch":null,"wakeReason":"chat_message"}`;
+        const parsed = await this.generateJson(prompt);
+        return {
+            reply: normalizeText(parsed.reply || ""),
+            objectivePatch: parsed.objectivePatch && typeof parsed.objectivePatch === "object" ? parsed.objectivePatch : null,
+            wakeReason: normalizeText(parsed.wakeReason || "chat_message"),
+        };
+    }
+
+    async summarize({ objective, journal, recentMessages }) {
+        if (!this.isAvailable()) return buildFallbackSummary({ objective, journal, recentMessages });
+        const prompt = `Summarize this agent's current state in 2-3 sentences for use as memory context. Return plain text only.\n\nObjective:\n${JSON.stringify(objective || {})}\n\nJournal:\n${JSON.stringify((journal || []).slice(-6))}\n\nRecent chat:\n${JSON.stringify((recentMessages || []).slice(-4))}`;
+        const response = await retryWithBackoff(() =>
+            fetch("https://api.groq.com/openai/v1/chat/completions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
+                body: JSON.stringify({ model: this.modelName, messages: [{ role: "user", content: prompt }], temperature: 0.2 }),
+            })
+        );
+        if (!response.ok) throw new Error(`Groq ${response.status}`);
+        const data = await response.json();
+        return normalizeText(data.choices?.[0]?.message?.content || "");
+    }
+}
+
 class AgentBrainService {
     constructor(config = {}) {
         this.enabled = config.enabled ?? String(process.env.AGENT_LLM_ENABLED || "true").toLowerCase() !== "false";
         this.providerName = normalizeText(config.providerName || process.env.AGENT_LLM_PROVIDER || "gemini") || "gemini";
-        this.modelName = normalizeText(config.modelName || process.env.AGENT_LLM_MODEL || "gemini-2.5-flash") || "gemini-2.5-flash";
+        this.modelName = normalizeText(config.modelName || process.env.AGENT_LLM_MODEL || "gemini-2.0-flash-lite") || "gemini-2.0-flash-lite";
         this.provider = config.provider || this.createProvider();
+        this.fallbackProvider = config.fallbackProvider || this.createFallbackProvider();
     }
 
     createProvider() {
-        if (this.providerName === "gemini") {
-            return new GeminiAgentModelProvider({
-                apiKey: process.env.GEMINI_API_KEY || "",
-                modelName: this.modelName,
-            });
+        if (this.providerName === "groq") {
+            return new GroqAgentModelProvider({ apiKey: process.env.GROQ_API_KEY || "", modelName: this.modelName });
         }
+        if (this.providerName === "openrouter") {
+            return new OpenRouterAgentModelProvider({ apiKey: process.env.OPENROUTER_API_KEY || "", modelName: this.modelName });
+        }
+        return new GeminiAgentModelProvider({ apiKey: process.env.GEMINI_API_KEY || "", modelName: this.modelName });
+    }
+
+    createFallbackProvider() {
+        if (this.providerName === "groq") {
+            return new GeminiAgentModelProvider({ apiKey: process.env.GEMINI_API_KEY || "", modelName: process.env.AGENT_LLM_FALLBACK_MODEL || "gemini-2.0-flash-lite" });
+        }
+        return new OpenRouterAgentModelProvider({ apiKey: process.env.OPENROUTER_API_KEY || "", modelName: process.env.AGENT_LLM_FALLBACK_MODEL || "meta-llama/llama-3.3-70b-instruct:free" });
+    }
+
+    activeProvider() {
+        if (this.provider?.isAvailable()) return this.provider;
+        if (this.fallbackProvider?.isAvailable()) return this.fallbackProvider;
         return null;
     }
 
+    isRateLimitError(error) {
+        const msg = String(error?.message || '');
+        return msg.includes('429') || msg.includes('quota') || msg.includes('503') || msg.includes('Too Many Requests');
+    }
+
+    otherProvider(current) {
+        if (current === this.provider && this.fallbackProvider?.isAvailable()) return this.fallbackProvider;
+        if (current === this.fallbackProvider && this.provider?.isAvailable()) return this.provider;
+        return null;
+    }
+
+    getProviderLabel(p) {
+        if (p instanceof GroqAgentModelProvider) return 'groq';
+        if (p instanceof OpenRouterAgentModelProvider) return 'openrouter';
+        return 'gemini';
+    }
+
     getProviderStatus() {
-        const available = Boolean(this.enabled && this.provider?.isAvailable?.());
+        const active = this.activeProvider();
+        const available = Boolean(this.enabled && active);
         return {
             enabled: Boolean(this.enabled),
-            provider: this.providerName,
-            model: this.modelName,
+            provider: active ? this.getProviderLabel(active) : this.providerName,
+            model: active?.modelName || this.modelName,
             available,
             degradedMode: Boolean(this.enabled && !available),
             degradedReason: this.enabled && !available
@@ -443,90 +639,62 @@ class AgentBrainService {
 
     async decide({ objective, context, memorySummary, wakeReason }) {
         const fallback = buildFallbackDecision({ objective, context, wakeReason });
-        const status = this.getProviderStatus();
-        if (!status.enabled || !status.available) {
-            return {
-                proposal: fallback,
-                degradedMode: status.degradedMode,
-                degradedReason: status.degradedReason,
-                provider: status.provider,
-                model: status.model,
-            };
+        const primary = this.enabled && this.activeProvider();
+        if (!primary) {
+            const status = this.getProviderStatus();
+            return { proposal: fallback, degradedMode: status.degradedMode, degradedReason: status.degradedReason, provider: status.provider, model: status.model };
         }
-
         try {
-            const proposal = normalizeProposal(
-                await this.provider.decide({ objective, context, memorySummary, wakeReason }),
-                wakeReason,
-            );
-            return {
-                proposal,
-                degradedMode: false,
-                degradedReason: "",
-                provider: status.provider,
-                model: status.model,
-            };
+            const proposal = normalizeProposal(await primary.decide({ objective, context, memorySummary, wakeReason }), wakeReason);
+            return { proposal, degradedMode: false, degradedReason: "", provider: this.getProviderLabel(primary), model: primary.modelName };
         } catch (error) {
-            return {
-                proposal: fallback,
-                degradedMode: true,
-                degradedReason: `Platform LLM planning failed: ${friendlyLlmError(error)}`,
-                provider: status.provider,
-                model: status.model,
-            };
+            const backup = this.isRateLimitError(error) && this.otherProvider(primary);
+            if (backup) {
+                try {
+                    const proposal = normalizeProposal(await backup.decide({ objective, context, memorySummary, wakeReason }), wakeReason);
+                    return { proposal, degradedMode: false, degradedReason: "", provider: this.getProviderLabel(backup), model: backup.modelName };
+                } catch (backupError) {
+                    return { proposal: fallback, degradedMode: true, degradedReason: `Platform LLM planning failed: ${friendlyLlmError(backupError)}`, provider: this.getProviderLabel(backup), model: backup.modelName };
+                }
+            }
+            return { proposal: fallback, degradedMode: true, degradedReason: `Platform LLM planning failed: ${friendlyLlmError(error)}`, provider: this.getProviderLabel(primary), model: primary.modelName };
         }
     }
 
     async chat({ message, objective, brainState, context, recentMessages, memorySummary }) {
         const fallback = buildFallbackChat({ message, objective, brainState, context });
-        const status = this.getProviderStatus();
-        if (!status.enabled || !status.available) {
-            return {
-                ...fallback,
-                degradedMode: status.degradedMode,
-                degradedReason: status.degradedReason,
-                provider: status.provider,
-                model: status.model,
-            };
+        const primary = this.enabled && this.activeProvider();
+        if (!primary) {
+            const status = this.getProviderStatus();
+            return { ...fallback, degradedMode: status.degradedMode, degradedReason: status.degradedReason, provider: status.provider, model: status.model };
         }
-
         try {
-            const response = await this.provider.chat({
-                message,
-                objective,
-                brainState,
-                context,
-                recentMessages,
-                memorySummary,
-            });
-            return {
-                reply: normalizeText(response.reply || fallback.reply),
-                objectivePatch: response.objectivePatch || null,
-                wakeReason: normalizeText(response.wakeReason || fallback.wakeReason),
-                degradedMode: false,
-                degradedReason: "",
-                provider: status.provider,
-                model: status.model,
-            };
+            const response = await primary.chat({ message, objective, brainState, context, recentMessages, memorySummary });
+            return { reply: normalizeText(response.reply || fallback.reply), objectivePatch: response.objectivePatch || null, wakeReason: normalizeText(response.wakeReason || fallback.wakeReason), degradedMode: false, degradedReason: "", provider: this.getProviderLabel(primary), model: primary.modelName };
         } catch (error) {
-            return {
-                ...fallback,
-                degradedMode: true,
-                degradedReason: `Platform LLM chat failed: ${friendlyLlmError(error)}`,
-                provider: status.provider,
-                model: status.model,
-            };
+            const backup = this.isRateLimitError(error) && this.otherProvider(primary);
+            if (backup) {
+                try {
+                    const response = await backup.chat({ message, objective, brainState, context, recentMessages, memorySummary });
+                    return { reply: normalizeText(response.reply || fallback.reply), objectivePatch: response.objectivePatch || null, wakeReason: normalizeText(response.wakeReason || fallback.wakeReason), degradedMode: false, degradedReason: "", provider: this.getProviderLabel(backup), model: backup.modelName };
+                } catch (backupError) {
+                    return { ...fallback, degradedMode: true, degradedReason: `Platform LLM chat failed: ${friendlyLlmError(backupError)}`, provider: this.getProviderLabel(backup), model: backup.modelName };
+                }
+            }
+            return { ...fallback, degradedMode: true, degradedReason: `Platform LLM chat failed: ${friendlyLlmError(error)}`, provider: this.getProviderLabel(primary), model: primary.modelName };
         }
     }
 
     async summarize({ objective, journal, recentMessages }) {
-        const status = this.getProviderStatus();
-        if (!status.enabled || !status.available) {
-            return buildFallbackSummary({ objective, journal, recentMessages });
-        }
+        const primary = this.enabled && this.activeProvider();
+        if (!primary) return buildFallbackSummary({ objective, journal, recentMessages });
         try {
-            return await this.provider.summarize({ objective, journal, recentMessages });
-        } catch {
+            return await primary.summarize({ objective, journal, recentMessages });
+        } catch (error) {
+            const backup = this.isRateLimitError(error) && this.otherProvider(primary);
+            if (backup) {
+                try { return await backup.summarize({ objective, journal, recentMessages }); } catch { /* fall through */ }
+            }
             return buildFallbackSummary({ objective, journal, recentMessages });
         }
     }

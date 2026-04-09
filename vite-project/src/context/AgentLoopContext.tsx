@@ -51,6 +51,10 @@ export function AgentLoopProvider({ children }: { children: ReactNode }) {
       const running = s?.runtime?.running;
       const status = s?.runtime?.status;
       setAgentStatus(running ? 'running' : status === 'paused' ? 'paused' : 'idle');
+      // Auto-start polling if agent is already running and no poll is active
+      if (running && !pollRef.current) {
+        pollRef.current = setInterval(() => refreshState(agentPublicKey), 5000);
+      }
     } catch { /* non-critical */ }
   }, []);
 

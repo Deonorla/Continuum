@@ -270,6 +270,13 @@ export default function AgentConsolePage() {
 
   useEffect(() => { void doRefreshState(); }, [doRefreshState]);
 
+  // Poll while agent is running so brain/thesis/action update live
+  useEffect(() => {
+    if (agentStatus !== 'running') return;
+    const id = setInterval(() => void doRefreshState(), 15000);
+    return () => clearInterval(id);
+  }, [agentStatus, doRefreshState]);
+
   const startAgent = useCallback(async () => {
     if (!agentPublicKey) return;
     setRuntimeActionError('');
@@ -1060,7 +1067,7 @@ export default function AgentConsolePage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <KV label="Confidence" value={`${Number(brain.confidence || 0)}%`} />
-                <KV label="Planner" value={String(brain.provider || 'fallback')} />
+                <KV label="Planner" value={brain.provider ? String(brain.provider) : degradedMode ? 'fallback' : '—'} />
               </div>
               <div className="space-y-2">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Recent Journal</p>

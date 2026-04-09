@@ -485,7 +485,11 @@ async function loadAgentStateBundle(services, { agentId, ownerPublicKey, agentPu
         walletState,
         mandate,
         objective,
-        brain,
+        brain: {
+            ...brain,
+            provider: brain?.provider || services.agentBrain?.getProviderStatus?.()?.provider || '',
+            model: brain?.model || services.agentBrain?.getProviderStatus?.()?.model || '',
+        },
         liquidity,
         performance,
         treasury,

@@ -14,6 +14,7 @@ const rwaPagePath = path.resolve(__dirname, "../src/pages/RWA.tsx");
 const docsPagePath = path.resolve(__dirname, "../src/pages/Docs.tsx");
 const marketplacePagePath = path.resolve(__dirname, "../src/pages/Marketplace.tsx");
 const agentConsolePagePath = path.resolve(__dirname, "../src/pages/AgentConsolePage.tsx");
+const stellarContractsPath = path.resolve(__dirname, "../src/lib/stellarRwaContracts.ts");
 
 test("mapApiAssetToUiAsset preserves v2 verification fields", () => {
   const mapped = mapApiAssetToUiAsset({
@@ -128,4 +129,12 @@ test("Agent Console source surfaces the managed session rail and widened mandate
   assert.match(source, /Optimize Treasury/);
   assert.match(source, /\bClaim\b/);
   assert.match(source, /\bRoute\b/);
+});
+
+test("Stellar RWA contract client prefers the live backend catalog over stale env ids", async () => {
+  const source = await fs.readFile(stellarContractsPath, "utf8");
+
+  assert.match(source, /fetchProtocolCatalog/);
+  assert.match(source, /resolveRuntimeContractIds/);
+  assert.match(source, /catalog\?\.rwa\?\.assetRegistryAddress/);
 });

@@ -7,6 +7,7 @@ const { MemoryIndexerStore } = require("../services/indexerStore");
 const { AgentStateService } = require("../services/agentStateService");
 
 describe("Continuum API Integration", function () {
+    const originalGeminiApiKey = process.env.GEMINI_API_KEY;
     let app;
     let store;
     let services;
@@ -73,6 +74,7 @@ describe("Continuum API Integration", function () {
     }
 
     beforeEach(async () => {
+        process.env.GEMINI_API_KEY = "your_gemini_api_key_here";
         store = new MemoryIndexerStore();
         await store.init();
         agentState = new AgentStateService({ store });
@@ -535,6 +537,14 @@ describe("Continuum API Integration", function () {
         });
     });
 
+    after(() => {
+        if (originalGeminiApiKey == null) {
+            delete process.env.GEMINI_API_KEY;
+            return;
+        }
+        process.env.GEMINI_API_KEY = originalGeminiApiKey;
+    });
+
     it("lists productive market assets with active auction state", async () => {
         const response = await request(app)
             .get("/api/market/assets")
@@ -940,6 +950,60 @@ describe("Continuum API Integration", function () {
     });
 
     it("runs the managed backend runtime and exposes live runtime state", async () => {
+        installAgentBrain({
+            async decide({ wakeReason }) {
+                if (wakeReason === "start") {
+                    return {
+                        proposal: {
+                            actionType: "route_yield",
+                            actionArgs: {
+                                tokenId: 7,
+                            },
+                            thesis: "Claim yield from productive twins and route it into treasury on startup.",
+                            rationale: "Twin #7 already has claimable yield and treasury automation is enabled.",
+                            confidence: 82,
+                            blockedBy: "",
+                            requiresHuman: false,
+                            wakeReason,
+                        },
+                        degradedMode: false,
+                        degradedReason: "",
+                        provider: "test",
+                        model: "deterministic",
+                    };
+                }
+
+                return {
+                    proposal: {
+                        actionType: "hold",
+                        actionArgs: {},
+                        thesis: "Keep monitoring after the initial treasury route.",
+                        rationale: "No additional deterministic action is required on this follow-up tick.",
+                        confidence: 61,
+                        blockedBy: "No deterministic test opportunity requires action.",
+                        requiresHuman: false,
+                        wakeReason,
+                    },
+                    degradedMode: false,
+                    degradedReason: "",
+                    provider: "test",
+                    model: "deterministic",
+                };
+            },
+            async chat() {
+                return {
+                    reply: "Deterministic test planner chat reply.",
+                    objectivePatch: null,
+                    wakeReason: "chat_message",
+                    degradedMode: false,
+                    degradedReason: "",
+                };
+            },
+            async summarize({ objective }) {
+                return `Goal: ${objective?.goal || "test objective"}`;
+            },
+        });
+
         await request(app)
             .post(`/api/agents/${agentId}/screens`)
             .set("Authorization", `Bearer ${token}`)
@@ -1006,12 +1070,12 @@ describe("Continuum API Integration", function () {
             .expect(200);
 
         expect(stateResponse.body.state.runtime.running).to.equal(true);
-        expect(stateResponse.body.state.brain.degradedMode).to.equal(true);
-        expect(stateResponse.body.state.degradedMode).to.equal(true);
+        expect(stateResponse.body.state.brain.degradedMode).to.equal(false);
+        expect(stateResponse.body.state.degradedMode).to.equal(false);
         expect(stateResponse.body.state.lastWakeReason).to.equal("manual");
-        expect(stateResponse.body.state.performance.realizedYield).to.equal("7000000");
-        expect(stateResponse.body.state.performance.attribution.yieldContribution).to.equal("7000000");
-        expect(stateResponse.body.state.performance.attribution.grossPositivePnL).to.equal("7000000");
+        expect(stateResponse.body.state.performance.realizedYield).to.equal("3500000");
+        expect(stateResponse.body.state.performance.attribution.yieldContribution).to.equal("3500000");
+        expect(stateResponse.body.state.performance.attribution.grossPositivePnL).to.equal("3500000");
         expect(stateResponse.body.state.performance.recentEvents.some((event) => event.category === "yield")).to.equal(true);
         expect(stateResponse.body.state.treasury.positions).to.have.length(1);
         expect(stateResponse.body.state.runtime.lastSummary.screenHighlights[0].topTokenId).to.equal(7);

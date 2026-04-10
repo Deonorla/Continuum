@@ -184,6 +184,14 @@ export async function syncPaymentSessionMetadata(sessionId, payload) {
   return response.session || null;
 }
 
+export async function transferManagedAsset(payload) {
+  return request('/api/agent/assets/transfer', {
+    method: 'POST',
+    headers: agentHeaders(),
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function fetchMarketAssets(query = {}) {
   const response = await request('/api/market/assets', { method: 'GET' }, query);
   return response.assets || [];

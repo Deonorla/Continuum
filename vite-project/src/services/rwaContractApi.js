@@ -20,6 +20,7 @@ import {
   resolveIpfsGatewayUrl,
   resolveStellarPaymentToken,
   revokeStellarAttestation,
+  transferStellarAsset,
   updateStellarAssetEvidence,
   updateStellarAssetMetadata,
   updateStellarVerificationTag,
@@ -358,6 +359,25 @@ export async function updateAssetVerificationTag({ signer, substrateSession, hub
   const hub = new Contract(hubAddress, HUB_ABI, signer);
   const tx = await hub.updateVerificationTag(tokenId, hashText(tag));
   return tx.wait();
+}
+
+export async function transferAssetOwnershipOnChain({
+  signer,
+  substrateSession,
+  tokenId,
+  to,
+}) {
+  if (isStellarRuntime()) {
+    requireWriteWallet({ signer, substrateSession });
+    const owner = await signer.getAddress();
+    return transferStellarAsset({
+      owner,
+      tokenId: Number(tokenId),
+      to,
+    });
+  }
+
+  throw new Error('Automatic custody transfer is only implemented on the Stellar runtime.');
 }
 
 export async function readClaimableYield({ provider, substrateSession, hubAddress, tokenId }) {

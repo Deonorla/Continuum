@@ -15,8 +15,8 @@ interface AppModeContextValue {
   agentPublicKey: string | null;
   agentLoading: boolean;
   agentError: string;
-  activateAgent: (ownerPublicKey: string) => Promise<void>;
-  silentRestore: (ownerPublicKey: string) => Promise<void>;
+  activateAgent: (ownerPublicKey: string) => Promise<{ agentPublicKey: string | null; token?: string } | null>;
+  silentRestore: (ownerPublicKey: string) => Promise<{ agentPublicKey: string | null; token?: string } | null>;
 }
 
 const AppModeContext = createContext<AppModeContextValue>({
@@ -25,8 +25,8 @@ const AppModeContext = createContext<AppModeContextValue>({
   agentPublicKey: null,
   agentLoading: false,
   agentError: '',
-  activateAgent: async () => {},
-  silentRestore: async () => {},
+  activateAgent: async () => null,
+  silentRestore: async () => null,
 });
 
 export function AppModeProvider({ children }: { children: React.ReactNode }) {
@@ -72,7 +72,9 @@ export function AppModeProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
       storeAgentSessionToken(data.token);
       setAgentPublicKey(data.agentPublicKey);
+      return data;
     } catch {}
+    return null;
   }, [agentPublicKey]);
 
   const activateAgent = useCallback(async (ownerPublicKey: string) => {
@@ -91,10 +93,13 @@ export function AppModeProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
       storeAgentSessionToken(data.token);
       setAgentPublicKey(data.agentPublicKey);
+      return data;
     } catch (err: any) {
       setAgentError(err.message || 'Activation failed.');
+      return null;
+    } finally {
+      setAgentLoading(false);
     }
-    setAgentLoading(false);
   }, []);
 
   return (

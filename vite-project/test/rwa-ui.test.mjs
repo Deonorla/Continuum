@@ -84,6 +84,9 @@ test("RWA page source still exposes the active Stellar studio layout", async () 
   assert.match(source, /Stellar network/i);
   assert.match(source, /Land/);
   assert.match(source, /mintRwaAsset\(/);
+  assert.match(source, /transferAssetOwnershipOnChain/);
+  assert.match(source, /createMarketAuction/);
+  assert.match(source, /Mint \+ Auction Live/);
 });
 
 test("Docs page source states the v2 legal boundary clearly", async () => {

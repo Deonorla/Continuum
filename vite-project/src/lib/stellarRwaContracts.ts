@@ -383,6 +383,27 @@ export async function updateStellarAssetMetadata({
   };
 }
 
+export async function transferStellarAsset({
+  owner,
+  tokenId,
+  to,
+}: {
+  owner: string;
+  tokenId: number;
+  to: string;
+}) {
+  const client = await createRegistryClient(owner);
+  const assembled = await client.transfer_asset({
+    owner,
+    token_id: BigInt(tokenId),
+    to,
+  });
+  const sent = await assembled.signAndSend();
+  return {
+    txHash: extractTxHash(sent),
+  };
+}
+
 export async function updateStellarAssetEvidence({
   owner,
   tokenId,

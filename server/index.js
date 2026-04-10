@@ -563,9 +563,45 @@ function createApp(config = defaultConfig) {
         const services = await app.locals.ready;
         void beginIndexerSync(app);
         void beginAssetPrime(app);
-        const rawAssets = services.chainService?.isConfigured?.()
-            ? await services.chainService.listAssetSnapshots({ owner: req.query.owner, limit: 200 })
-            : await services.store.listAssets({ owner: req.query.owner });
+        const ownerPublicKey = String(req.query.owner || "").trim();
+        const managedWallet = ownerPublicKey && services.agentWallet?.getWallet
+            ? await services.agentWallet.getWallet(ownerPublicKey).catch(() => null)
+            : null;
+
+        const mergeByTokenId = (records = []) => Array.from(
+            new Map(
+                (records || [])
+                    .filter(Boolean)
+                    .map((asset) => [Number(asset.tokenId || 0), asset])
+            ).values()
+        );
+
+        let rawAssets;
+        if (services.chainService?.isConfigured?.()) {
+            if (!ownerPublicKey) {
+                rawAssets = await services.chainService.listAssetSnapshots({ limit: 200 });
+            } else {
+                const [ownedAssets, managedAssets] = await Promise.all([
+                    services.chainService.listAssetSnapshots({ owner: ownerPublicKey, limit: 200 }),
+                    managedWallet?.publicKey && String(managedWallet.publicKey).toUpperCase() !== ownerPublicKey.toUpperCase()
+                        ? services.chainService.listAssetSnapshots({ owner: managedWallet.publicKey, limit: 200 })
+                        : Promise.resolve([]),
+                ]);
+                rawAssets = mergeByTokenId([...(ownedAssets || []), ...(managedAssets || [])]);
+            }
+        } else {
+            if (!ownerPublicKey) {
+                rawAssets = await services.store.listAssets();
+            } else {
+                const [ownedAssets, managedAssets] = await Promise.all([
+                    services.store.listAssets({ owner: ownerPublicKey }),
+                    managedWallet?.publicKey && String(managedWallet.publicKey).toUpperCase() !== ownerPublicKey.toUpperCase()
+                        ? services.store.listAssets({ owner: managedWallet.publicKey })
+                        : Promise.resolve([]),
+                ]);
+                rawAssets = mergeByTokenId([...(ownedAssets || []), ...(managedAssets || [])]);
+            }
+        }
         const supportedAssets = rawAssets.filter(isSupportedProductiveTwin);
         for (const asset of supportedAssets) {
             await services.store.upsertAsset(asset);

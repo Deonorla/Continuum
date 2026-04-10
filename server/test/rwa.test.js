@@ -15,6 +15,7 @@ describe("RWA API Integration", function () {
     let store;
     let issuerWallet;
     let backendSigner;
+    let managedAgentPublicKey;
     let ipfsPins;
 
     function createMockStellarSigner() {
@@ -101,6 +102,7 @@ describe("RWA API Integration", function () {
     beforeEach(() => {
         issuerWallet = createMockStellarSigner();
         backendSigner = createMockStellarSigner();
+        managedAgentPublicKey = Keypair.random().publicKey();
         ipfsPins = new Map();
 
         const activities = [
@@ -117,8 +119,20 @@ describe("RWA API Integration", function () {
         store = {
             asset: null,
             session: null,
-            async listAssets() {
-                return this.asset ? [this.asset] : [];
+            async listAssets({ owner } = {}) {
+                if (!this.asset) {
+                    return [];
+                }
+                if (!owner) {
+                    return [this.asset];
+                }
+                const normalizedOwner = String(owner || "").toUpperCase();
+                return (
+                    normalizedOwner === String(this.asset.currentOwner || "").toUpperCase()
+                    || normalizedOwner === String(this.asset.issuer || "").toUpperCase()
+                )
+                    ? [this.asset]
+                    : [];
             },
             async getAsset(tokenId) {
                 return Number(tokenId) === 7 ? this.asset : null;
@@ -388,6 +402,14 @@ describe("RWA API Integration", function () {
                         };
                     },
                 },
+                agentWallet: {
+                    async getWallet(ownerPublicKey) {
+                        if (String(ownerPublicKey || "").toUpperCase() !== String(issuerWallet.address || "").toUpperCase()) {
+                            return null;
+                        }
+                        return { publicKey: managedAgentPublicKey };
+                    },
+                },
                 store,
                 indexer: {
                     async sync() {
@@ -466,6 +488,67 @@ describe("RWA API Integration", function () {
         expect(response.body.asset.issuer).to.equal(issuerWallet.address);
         expect(response.body.asset.currentOwner).to.equal(issuerWallet.address);
         expect(response.body.details.authMode).to.equal("platform_operator");
+    });
+
+    it("lists owner portfolio assets even after managed custody takes over", async function () {
+        store.asset = {
+            tokenId: 7,
+            schemaVersion: 2,
+            assetType: 1,
+            rightsModel: 1,
+            rightsModelLabel: "verified_rental_asset",
+            verificationStatus: 1,
+            verificationStatusLabel: "pending_attestation",
+            issuer: issuerWallet.address,
+            currentOwner: managedAgentPublicKey,
+            activeStreamId: 0,
+            publicMetadataURI: "ipfs://bafytestcid",
+            metadataURI: "ipfs://bafytestcid",
+            tokenURI: "ipfs://bafytestcid",
+            propertyRefHash: "0xproperty",
+            publicMetadataHash: "0xmeta",
+            evidenceRoot: "0xevidence",
+            evidenceManifestHash: "0xmanifest",
+            statusReason: "Awaiting attestation review",
+            claimableYield: "0",
+            totalYieldDeposited: "0",
+            flashAdvanceOutstanding: "0",
+            stream: null,
+            compliance: {
+                approved: true,
+                expiry: 1710806400,
+                jurisdiction: "NG-LA",
+                currentlyValid: true,
+            },
+            assetPolicy: {
+                frozen: false,
+                disputed: false,
+                revoked: false,
+                updatedAt: 1710720000,
+                updatedBy: backendSigner.address,
+                reason: "",
+            },
+            rentalReady: true,
+            rentalReadiness: {
+                ready: true,
+                code: "ready_pending_attestation",
+                label: "Stellar Rental Ready",
+                reason: "The asset can open rental sessions while attestation review is still pending.",
+                severity: "info",
+            },
+            attestationPolicies: [],
+            attestations: [],
+        };
+
+        const response = await request(app)
+            .get("/api/rwa/assets")
+            .query({ owner: issuerWallet.address });
+
+        expect(response.status).to.equal(200);
+        expect(response.body.code).to.equal("assets_listed");
+        expect(response.body.assets).to.have.length(1);
+        expect(response.body.assets[0].issuer).to.equal(issuerWallet.address);
+        expect(response.body.assets[0].currentOwner).to.equal(managedAgentPublicKey);
     });
 
     it("mints a v2 asset through the managed operator path and returns structured verification payloads", async function () {

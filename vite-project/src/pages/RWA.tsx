@@ -19,14 +19,17 @@ import {
 } from './rwa/rwaData';
 import { AssetCard, AssetDetailPortal } from '../components/AssetCard';
 import RentalSessionComposer from '../components/RentalSessionComposer.tsx';
+import { useAppMode } from '../context/AppModeContext';
 import { useWallet } from '../context/WalletContext';
 import { supportedPaymentAssets } from '../contactInfo.js';
 import {
+  createMarketAuction,
   fetchRwaAsset,
   fetchRwaAssets,
   mintRwaAsset,
   pinRwaMetadata,
   storeRwaEvidence,
+  transferManagedAsset,
 } from '../services/rwaApi.js';
 import {
   approveAndCreateAssetYieldStream,
@@ -35,6 +38,7 @@ import {
   parseTokenAmount,
   registerAssetAttestationWithFreighter,
   revokeAssetAttestationWithFreighter,
+  transferAssetOwnershipOnChain,
   updateAssetEvidenceOnChain,
   updateAssetMetadataOnChain,
   updateAssetVerificationTag,
@@ -57,6 +61,8 @@ const DEFAULT_FORM = {
 };
 
 const RIGHTS_MODEL = 'verified_rental_asset';
+const AUTO_AUCTION_RESERVE_PRICE = '250';
+const AUTO_AUCTION_DURATION_HOURS = 24;
 const DOCUMENT_ORDER = ['deed', 'survey', 'valuation', 'inspection', 'insurance', 'tax', 'tenancy', 'encumbrance'];
 const ACCESS_MECHANISMS = {
   real_estate: 'Smart lock + concierge verification',
@@ -253,6 +259,7 @@ function buildOptimisticAsset({
   tokenId,
   category,
   issuer,
+  currentOwner = issuer,
   metadataURI,
   publicMetadata,
   publicMetadataHash,
@@ -274,7 +281,7 @@ function buildOptimisticAsset({
     metadataURI,
     tokenURI: metadataURI,
     publicMetadata,
-    currentOwner: issuer,
+    currentOwner,
     issuer,
     activeStreamId: 0,
     claimableYield: '0',
@@ -301,6 +308,26 @@ function buildUpdatedPublicMetadata(asset, { description, location, tagSeed }) {
     location: nextLocation,
     tagSeed: tagSeed.trim() || current.tagSeed || `${current.propertyRef || asset.id}-VERIFY`,
   };
+}
+
+async function openAutoAuction(tokenId) {
+  const payload = {
+    reservePrice: AUTO_AUCTION_RESERVE_PRICE,
+    startTime: Math.floor(Date.now() / 1000),
+    endTime: Math.floor(Date.now() / 1000) + (AUTO_AUCTION_DURATION_HOURS * 3600),
+    note: 'Auto-listed from RWA Studio mint',
+  };
+
+  try {
+    return await createMarketAuction(tokenId, payload);
+  } catch (error) {
+    const message = String(error?.message || '');
+    if (!/own the twin|owned by the managed agent|asset_not_owned_by_agent/i.test(message)) {
+      throw error;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 1200));
+    return createMarketAuction(tokenId, payload);
+  }
 }
 
 function AssetWorkspacePanel({ asset, onAssetChanged }) {
@@ -809,7 +836,8 @@ function AssetWorkspacePanel({ asset, onAssetChanged }) {
 }
 
 function MintingTab({ onMinted, portfolioCount }) {
-  const { fetchPaymentBalance, toast, walletAddress } = useWallet();
+  const { fetchPaymentBalance, toast, walletAddress, signer } = useWallet();
+  const { activateAgent, agentPublicKey } = useAppMode();
   const [category, setCategory] = useState('real_estate');
   const [form, setForm] = useState(DEFAULT_FORM);
   const [evidenceFiles, setEvidenceFiles] = useState([]);
@@ -851,6 +879,13 @@ function MintingTab({ onMinted, portfolioCount }) {
       return;
     }
 
+    if (!signer) {
+      toast.warning('Connect Freighter before minting so Studio can move the new twin into managed custody automatically.', {
+        title: 'Freighter Required',
+      });
+      return;
+    }
+
     if (!form.name.trim() || !form.location.trim()) {
       toast.warning('Add an asset name and location before minting.', {
         title: 'Missing Asset Details',
@@ -868,7 +903,13 @@ function MintingTab({ onMinted, portfolioCount }) {
     let loadingToast = null;
     try {
       setIsSubmitting(true);
-      loadingToast = toast.transaction.pending('Preparing metadata, hashing evidence, and minting the asset on Stellar...');
+      loadingToast = toast.transaction.pending('Preparing metadata, minting the twin, and opening its first timed auction...');
+
+      const activation = await activateAgent(walletAddress);
+      const managedAgentPublicKey = activation?.agentPublicKey || agentPublicKey || '';
+      if (!managedAgentPublicKey) {
+        throw new Error('Managed agent activation failed. Automatic auction listing cannot continue.');
+      }
 
       const evidenceBundle = await buildEvidenceBundle(evidenceFiles, {
         propertyRef,
@@ -900,6 +941,34 @@ function MintingTab({ onMinted, portfolioCount }) {
         statusReason: 'Awaiting attestation review',
       });
 
+      let auctionResult = null;
+      let transferredToManagedWallet = false;
+      try {
+        await transferAssetOwnershipOnChain({
+          signer,
+          substrateSession: null,
+          tokenId: mintResult.tokenId,
+          to: managedAgentPublicKey,
+        });
+        transferredToManagedWallet = true;
+
+        auctionResult = await openAutoAuction(mintResult.tokenId);
+      } catch (autoListError: any) {
+        let detail = String(autoListError?.message || 'Automatic auction listing failed.');
+        if (transferredToManagedWallet) {
+          try {
+            await transferManagedAsset({
+              tokenId: mintResult.tokenId,
+              to: walletAddress,
+            });
+            detail = `${detail} The twin was returned to the owner wallet.`;
+          } catch {
+            detail = `${detail} The twin remains in managed custody and may need manual recovery.`;
+          }
+        }
+        throw new Error(`Asset #${mintResult.tokenId} minted, but automatic auction listing failed. ${detail}`);
+      }
+
       let nextAsset = null;
       try {
         const fetchedAsset = await fetchRwaAsset(mintResult.tokenId);
@@ -913,6 +982,7 @@ function MintingTab({ onMinted, portfolioCount }) {
           tokenId: mintResult.tokenId,
           category,
           issuer: walletAddress,
+          currentOwner: managedAgentPublicKey,
           metadataURI: publicMetadataURI,
           publicMetadata: previewMetadata,
           publicMetadataHash: hashJson(previewMetadata),
@@ -935,12 +1005,12 @@ function MintingTab({ onMinted, portfolioCount }) {
       onMinted?.(nextAsset);
       toast.dismiss(loadingToast);
       toast.transaction.success(
-        `Asset #${mintResult.tokenId} is now live on Soroban.`,
+        `Asset #${mintResult.tokenId} minted and auction #${auctionResult?.auction?.auctionId || 'live'} opened.`,
         mintResult.txHash,
       );
       toast.success(
-        `Private evidence stayed offchain while the rental twin was minted with the low-friction Stellar path. Portfolio size: ${portfolioCount + 1}.`,
-        { title: 'Mint Complete' },
+        `Private evidence stayed offchain, the twin moved into managed custody, and a ${AUTO_AUCTION_DURATION_HOURS}h timed auction opened at ${AUTO_AUCTION_RESERVE_PRICE} USDC. Portfolio size: ${portfolioCount + 1}.`,
+        { title: 'Mint + Auction Live' },
       );
     } catch (error) {
       const message = error?.message || 'Asset minting failed.';

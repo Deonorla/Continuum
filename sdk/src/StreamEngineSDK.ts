@@ -506,3 +506,21 @@ export class StreamEngineSDK {
         return this.adapter.getSession(streamId);
     }
 }
+
+export { ContinuumAgentClient } from './ContinuumAgentClient';
+export type {
+    ContinuumAgentClientConfig,
+    ContinuumMarketAssetQuery,
+    EnsureAgentResult,
+    OpenManagedSessionParams,
+    CreateAuctionParams,
+    PlaceBidParams,
+    RuntimeControlParams,
+} from './ContinuumAgentClient';
+export { StreamEngineRWAClient } from './StreamEngineRWAClient';
+export type {
+    RWAClientConfig,
+    MintAssetParams,
+    StoreEvidenceParams,
+    SubmitAttestationParams,
+} from './StreamEngineRWAClient';

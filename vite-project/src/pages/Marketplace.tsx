@@ -37,6 +37,10 @@ const SORT_OPTIONS = [
 
 const TYPE_FILTERS = ['all', 'real_estate', 'land'];
 
+// Module-level cache — survives page navigation
+let _cachedAssets: any[] | null = null;
+let _cachedPositions: any | null = null;
+
 function buildUiAsset(asset: any) {
   return {
     ...mapApiAssetToUiAsset(asset),
@@ -416,9 +420,9 @@ function MarketStats({ assets }: { assets: any[] }) {
 export default function Marketplace() {
   const { walletAddress } = useWallet();
   const { agentPublicKey, activate } = useAgentWallet(walletAddress);
-  const [allAssets, setAllAssets] = useState<any[]>([]);
-  const [marketPositions, setMarketPositions] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [allAssets, setAllAssets] = useState<any[]>(_cachedAssets ?? []);
+  const [marketPositions, setMarketPositions] = useState<any>(_cachedPositions ?? null);
+  const [loading, setLoading] = useState(_cachedAssets === null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [sort, setSort] = useState('yield_desc');
@@ -427,25 +431,27 @@ export default function Marketplace() {
 
   const actorAddress = agentPublicKey || walletAddress;
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [response, positions] = await Promise.all([
         fetchMarketCatalog(),
         agentPublicKey ? fetchMarketPositions() : Promise.resolve(null),
       ]);
-      setAllAssets((response.assets || []).map(buildUiAsset));
+      const assets = (response.assets || []).map(buildUiAsset);
+      _cachedAssets = assets;
+      _cachedPositions = positions;
+      setAllAssets(assets);
       setMarketPositions(positions);
     } catch {
-      setAllAssets([]);
-      setMarketPositions(null);
+      if (!silent) { setAllAssets([]); setMarketPositions(null); }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [agentPublicKey]);
 
   useEffect(() => {
-    void load();
+    void load(_cachedAssets !== null);
   }, [load]);
 
   useEffect(() => {

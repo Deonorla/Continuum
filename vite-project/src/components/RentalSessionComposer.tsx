@@ -108,12 +108,18 @@ export default function RentalSessionComposer({ asset, onStarted }) {
     </div>
   );
 
+  const numericBalance = selectedAsset?.symbol === 'XLM'
+    ? parseFloat(xlmBalance || '0')
+    : parseFloat(paymentBalance || '0');
+  const hasEnoughBalance = numericBalance >= budgetAmount;
+
   const canStart = Boolean(
     walletAddress
     && hasValidRecipient
     && !isOwner
     && !linkedSessionActive
-    && budgetAmount > 0,
+    && budgetAmount > 0
+    && hasEnoughBalance,
   );
 
   const handleStart = async () => {
@@ -219,7 +225,7 @@ export default function RentalSessionComposer({ asset, onStarted }) {
           </div>
           <div className="text-right">
             <p className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400">Available</p>
-            <p className="mt-1 text-sm font-semibold text-slate-700">{availableBalance}</p>
+            <p className={`mt-1 text-sm font-semibold ${!hasEnoughBalance && budgetAmount > 0 ? 'text-red-500' : 'text-slate-700'}`}>{availableBalance}</p>
           </div>
         </div>
       </div>
@@ -293,6 +299,9 @@ export default function RentalSessionComposer({ asset, onStarted }) {
         <p className="text-xs text-blue-600">End the current session first if you want to reopen this asset with a different duration or payment asset.</p>
       )}
 
+      {!hasEnoughBalance && budgetAmount > 0 && walletAddress && !linkedSessionActive && (
+        <p className="text-xs text-red-500">Insufficient {selectedAsset?.symbol || 'balance'} — need {formatBudget(budgetAmount, selectedAsset?.symbol || '')} to rent for this duration.</p>
+      )}
       <button
         type="button"
         onClick={() => void handleStart()}

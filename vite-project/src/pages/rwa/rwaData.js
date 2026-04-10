@@ -414,6 +414,21 @@ function enrichAsset(asset, index) {
     evidenceRoot,
     evidenceManifestHash,
     verificationUpdatedAt: Math.floor(Date.now() / 1000) - (index + 1) * 3600,
+    rentalReady: true,
+    rentalReadiness: {
+      ready: true,
+      code: 'ready',
+      label: 'Rental Ready',
+      reason: 'This twin is verified and ready for live rental sessions.',
+    },
+    rentalActivity: {
+      currentlyRented: index % 3 === 0,
+      activeRevenueStream: index % 3 === 0,
+      status: index % 3 === 0 ? 'rented' : (index % 3 === 1 ? 'idle' : 'ready'),
+      label: index % 3 === 0 ? 'Currently Rented' : (index % 3 === 1 ? 'Rental Idle' : 'Ready To Rent'),
+      reason: index % 3 === 0 ? 'A live rental session is active on this twin.' : '',
+      sessionId: index % 3 === 0 ? index + 1 : 0,
+    },
     publicMetadata: {
       name: asset.name,
       description: asset.description,

@@ -92,11 +92,18 @@ export function AssetCard({ asset, onDetails }) {
           </span>
         </div>
         <div className={`absolute bottom-4 left-4 rounded-full border px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest shadow-lg ${
-          isRentalReady
-            ? 'border-emerald-200 bg-emerald-50/95 text-emerald-600'
-            : 'border-amber-200 bg-amber-50/95 text-amber-700'
+          isCurrentlyRented
+            ? 'border-emerald-300 bg-emerald-500/90 text-white'
+            : isRentalReady
+              ? 'border-emerald-200 bg-emerald-50/95 text-emerald-600'
+              : 'border-amber-200 bg-amber-50/95 text-amber-700'
         }`}>
-          {rentalReadiness.label}
+          {isCurrentlyRented ? (
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+              {rentalActivity.label}
+            </span>
+          ) : rentalReadiness.label}
         </div>
       </div>
       <div className="p-8">
@@ -107,10 +114,18 @@ export function AssetCard({ asset, onDetails }) {
         <h3 className="text-xl font-headline font-bold text-slate-900 mb-2">{asset.name}</h3>
         <p className="text-sm text-slate-500 line-clamp-2 mb-4">{asset.description}</p>
         <div className={`mb-4 flex items-center gap-2 text-xs ${
-          isCurrentlyRented ? 'text-emerald-600' : isRentalReady ? 'text-slate-500' : 'text-amber-700'
+          rentalActivity.status === 'rented' ? 'text-emerald-600'
+          : rentalActivity.status === 'idle'  ? 'text-blue-500'
+          : isRentalReady                      ? 'text-slate-500'
+          :                                      'text-amber-700'
         }`}>
           <Clock size={12} />
           <span className="font-medium">{rentalActivity.label}</span>
+          {rentalActivity.status === 'rented' && rentalActivity.sessionId > 0 && (
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700">
+              Session #{rentalActivity.sessionId}
+            </span>
+          )}
           {rentalActivity.activeRevenueStream && (
             <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700">
               Revenue Live
@@ -221,6 +236,18 @@ export function DetailDrawer({ asset, onClose, renderBody, renderFooter }) {
             </span>
           </div>
 
+          {isCurrentlyRented && (
+            <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-emerald-700 uppercase tracking-widest">Currently Rented</p>
+                {rentalActivity.sessionId > 0 && (
+                  <p className="text-[10px] text-emerald-600 mt-0.5">Session #{rentalActivity.sessionId} · {rentalActivity.reason || 'A live rental session is active on this twin.'}</p>
+                )}
+              </div>
+            </div>
+          )}
+
           <p className="text-slate-600 text-sm leading-relaxed">{asset.description}</p>
 
           {rentalReadiness.reason && (
@@ -234,13 +261,15 @@ export function DetailDrawer({ asset, onClose, renderBody, renderFooter }) {
           )}
 
           <div className={`rounded-2xl border px-4 py-3 text-xs ${
-            isCurrentlyRented
-              ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
-              : isRentalReady
-                ? 'border-slate-200 bg-slate-50 text-slate-600'
-                : 'border-amber-100 bg-amber-50 text-amber-700'
+            rentalActivity.status === 'rented' ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+            : rentalActivity.status === 'idle'  ? 'border-blue-100 bg-blue-50 text-blue-700'
+            : isRentalReady                      ? 'border-slate-200 bg-slate-50 text-slate-600'
+            :                                      'border-amber-100 bg-amber-50 text-amber-700'
           }`}>
             <span className="font-bold uppercase tracking-widest text-[10px] mr-2">Rent Status</span>
+            {rentalActivity.status === 'rented' && rentalActivity.sessionId > 0 && (
+              <span className="mr-1 font-bold">Session #{rentalActivity.sessionId} · </span>
+            )}
             {rentalActivity.label}
             {rentalActivity.reason ? ` · ${rentalActivity.reason}` : ''}
           </div>

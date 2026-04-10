@@ -222,6 +222,7 @@ export default function AgentConsolePage() {
   const [chatInput, setChatInput] = useState('');
   const [chatPending, setChatPending] = useState(false);
   const [chatError, setChatError] = useState('');
+  const [startingAgent, setStartingAgent] = useState(false);
 
   const activeState = contextState || state;
   const runtime = activeState?.runtime || {};
@@ -272,10 +273,13 @@ export default function AgentConsolePage() {
   const startAgent = useCallback(async () => {
     if (!agentPublicKey) return;
     setRuntimeActionError('');
+    setStartingAgent(true);
     try {
       await ctxStart(agentPublicKey);
     } catch (runtimeError: any) {
       setRuntimeActionError(runtimeError.message || 'Failed to start the managed runtime.');
+    } finally {
+      setStartingAgent(false);
     }
   }, [agentPublicKey, ctxStart]);
 
@@ -605,9 +609,9 @@ export default function AgentConsolePage() {
                 <Pause size={14} /> Pause
               </button>
             ) : (
-              <button onClick={startAgent}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-bold shadow-lg shadow-blue-500/20 hover:scale-105 transition-all">
-                <Play size={14} /> Run Agent
+              <button onClick={startAgent} disabled={startingAgent}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-bold shadow-lg shadow-blue-500/20 hover:scale-105 transition-all disabled:opacity-60">
+                {startingAgent ? <><span className="w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Starting…</> : <><Play size={14} /> Run Agent</>}
               </button>
             )}
           </div>

@@ -95,6 +95,7 @@ export default function Dashboard() {
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawBusy, setWithdrawBusy] = useState(false);
   const [withdrawMsg, setWithdrawMsg] = useState('');
+  const [startingAgent, setStartingAgent] = useState(false);
 
   const handleWithdrawToOwner = async () => {
     if (!withdrawAmount || !walletAddress) return;
@@ -152,7 +153,12 @@ export default function Dashboard() {
 
   const startAgent = useCallback(async () => {
     if (!agentPublicKey) return;
-    await ctxStart(agentPublicKey);
+    setStartingAgent(true);
+    try {
+      await ctxStart(agentPublicKey);
+    } finally {
+      setStartingAgent(false);
+    }
   }, [agentPublicKey, ctxStart]);
 
   const stopAgent = useCallback(async () => {
@@ -207,9 +213,9 @@ export default function Dashboard() {
                   <Pause size={12} /> Pause
                 </button>
               ) : (
-                <button onClick={startAgent} disabled={!agentPublicKey}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500 text-white text-xs font-bold hover:opacity-90 transition-all disabled:opacity-40">
-                  <Play size={12} /> Run Agent
+                <button onClick={startAgent} disabled={!agentPublicKey || startingAgent}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500 text-white text-xs font-bold hover:opacity-90 transition-all disabled:opacity-60">
+                  {startingAgent ? <><span className="w-3 h-3 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Starting…</> : <><Play size={12} /> Run Agent</>}
                 </button>
               )}
               <button onClick={() => setShowFundModal(true)} disabled={!agentPublicKey}

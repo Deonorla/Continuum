@@ -1,12 +1,14 @@
 const request = require('supertest');
 const { expect } = require('chai');
 const createApp = require('../index');
+const { MemoryIndexerStore } = require('../services/indexerStore');
 
 describe('x402 Middleware Integration', function () {
     let app;
     let sessions;
+    let store;
 
-    beforeEach(() => {
+    beforeEach(async () => {
         sessions = {
             "100": {
                 id: "100",
@@ -38,6 +40,9 @@ describe('x402 Middleware Integration', function () {
             },
         };
 
+        store = new MemoryIndexerStore();
+        await store.init();
+
         const testConfig = {
             runtimeKind: "stellar",
             sorobanRpcUrl: "https://soroban-testnet.stellar.org",
@@ -49,6 +54,7 @@ describe('x402 Middleware Integration', function () {
             settlement: "soroban-sac",
             sessionApiUrl: "http://localhost:3001",
             services: {
+                store,
                 chainService: {
                     async getSessionSnapshot(id) {
                         const normalizedId = String(id);

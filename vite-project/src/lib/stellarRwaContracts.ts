@@ -1,5 +1,14 @@
 import { signTransaction as signFreighterTransaction } from '@stellar/freighter-api';
 import { ethers } from 'ethers';
+import {
+  Address,
+  BASE_FEE,
+  Contract,
+  Horizon,
+  TransactionBuilder,
+  nativeToScVal,
+  rpc,
+} from '@stellar/stellar-sdk';
 import { ACTIVE_NETWORK } from '../networkConfig.js';
 import {
   nativeTokenAddress,
@@ -45,6 +54,106 @@ function bigintToNumber(value: bigint | number | string | undefined, fallback = 
 
 function extractTxHash(sent: any) {
   return sent?.sendTransactionResponse?.hash || sent?.getTransactionResponse?.txHash || '';
+}
+
+function toScVal(type: string, value: any) {
+  switch (type) {
+    case 'address':
+      return Address.fromString(String(value || '')).toScVal();
+    case 'bool':
+      return nativeToScVal(Boolean(value));
+    case 'u32':
+      return nativeToScVal(Number(value || 0), { type: 'u32' });
+    case 'u64':
+      return nativeToScVal(BigInt(value || 0), { type: 'u64' });
+    case 'i128':
+      return nativeToScVal(BigInt(value || 0), { type: 'i128' });
+    case 'string':
+      return nativeToScVal(String(value || ''));
+    case 'bytes32': {
+      if (value instanceof Uint8Array) {
+        return nativeToScVal(Buffer.from(value));
+      }
+      const hex = String(value || '').replace(/^0x/, '');
+      return nativeToScVal(Buffer.from(hex, 'hex'));
+    }
+    default:
+      return nativeToScVal(value);
+  }
+}
+
+function resolveFreighterSignedXdr(response: any): string {
+  if (typeof response === 'string') {
+    return response;
+  }
+  if (response?.error) {
+    const message = response?.error?.message || 'Freighter could not sign this transaction.';
+    throw new Error(message);
+  }
+  return String(response?.signedTxXdr || response?.signedXdr || '');
+}
+
+async function invokeSorobanWriteWithFreighter({
+  sourceAccount,
+  contractId,
+  method,
+  args = [],
+}: {
+  sourceAccount: string;
+  contractId: string;
+  method: string;
+  args?: Array<{ type: string; value: any }>;
+}) {
+  const rpcUrl = String(ACTIVE_NETWORK.rpcUrl || '').trim();
+  const horizonUrl = String(ACTIVE_NETWORK.horizonUrl || '').trim();
+  const networkPassphrase = String(ACTIVE_NETWORK.passphrase || '').trim();
+
+  if (!rpcUrl || !horizonUrl || !networkPassphrase) {
+    throw new Error('Soroban network configuration is incomplete for direct wallet writes.');
+  }
+
+  const rpcServer = new rpc.Server(rpcUrl, { allowHttp: /^http:\/\//i.test(rpcUrl) });
+  const horizonServer = new Horizon.Server(horizonUrl);
+  const account = await horizonServer.loadAccount(sourceAccount);
+  const contract = new Contract(contractId);
+
+  const tx = new TransactionBuilder(account, {
+    fee: String(BASE_FEE),
+    networkPassphrase,
+  })
+    .addOperation(contract.call(method, ...args.map((arg) => toScVal(arg.type, arg.value))))
+    .setTimeout(30)
+    .build();
+
+  const simulation = await rpcServer.simulateTransaction(tx);
+  if (rpc.Api.isSimulationError(simulation)) {
+    throw new Error(simulation.error || `Failed to simulate ${method}.`);
+  }
+
+  const prepared = await rpcServer.prepareTransaction(tx);
+  const signedResponse = await signFreighterTransaction(prepared.toXDR(), {
+    networkPassphrase,
+    address: sourceAccount,
+  });
+  const signedXdr = resolveFreighterSignedXdr(signedResponse);
+  if (!signedXdr) {
+    throw new Error('Freighter returned an empty signed transaction.');
+  }
+
+  const signedTx = TransactionBuilder.fromXDR(signedXdr, networkPassphrase);
+  const submission = await rpcServer.sendTransaction(signedTx);
+  if (submission.status !== 'PENDING') {
+    throw new Error(`Soroban write ${method} was not accepted for processing.`);
+  }
+
+  const finalTx = await rpcServer.pollTransaction(submission.hash);
+  if (finalTx.status !== 'SUCCESS') {
+    throw new Error(`Soroban write ${method} did not finalize successfully.`);
+  }
+
+  return {
+    txHash: finalTx.txHash || submission.hash,
+  };
 }
 
 function createClientOptions(publicKey?: string) {
@@ -392,15 +501,23 @@ export async function transferStellarAsset({
   tokenId: number;
   to: string;
 }) {
-  const client = await createRegistryClient(owner);
-  const assembled = await client.transfer_asset({
-    owner,
-    token_id: BigInt(tokenId),
-    to,
+  const { registry } = await resolveRuntimeContractIds();
+  if (!isConfiguredContractId(registry)) {
+    throw new Error('RWA registry contract ID is not configured for Stellar.');
+  }
+
+  const write = await invokeSorobanWriteWithFreighter({
+    sourceAccount: owner,
+    contractId: registry,
+    method: 'transfer_asset',
+    args: [
+      { type: 'address', value: owner },
+      { type: 'u64', value: BigInt(tokenId) },
+      { type: 'address', value: to },
+    ],
   });
-  const sent = await assembled.signAndSend();
   return {
-    txHash: extractTxHash(sent),
+    txHash: write.txHash,
   };
 }
 

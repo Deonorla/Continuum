@@ -141,6 +141,8 @@ test("Stellar RWA contract client prefers the live backend catalog over stale en
   assert.match(source, /fetchProtocolCatalog/);
   assert.match(source, /resolveRuntimeContractIds/);
   assert.match(source, /catalog\?\.rwa\?\.assetRegistryAddress/);
+  assert.match(source, /invokeSorobanWriteWithFreighter/);
+  assert.match(source, /method: 'transfer_asset'/);
 });
 
 test("Agent auth storage source keeps per-owner managed agent sessions", async () => {

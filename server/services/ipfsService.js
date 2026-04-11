@@ -24,8 +24,54 @@ class IPFSService {
             config.gatewayBase ||
             process.env.IPFS_GATEWAY_URL ||
             "https://gateway.pinata.cloud/ipfs";
+        this.gatewayFallbacks = (
+            config.gatewayFallbacks
+            || process.env.IPFS_GATEWAY_FALLBACKS
+            || "https://ipfs.io/ipfs,https://cloudflare-ipfs.com/ipfs"
+        )
+            .split(",")
+            .map((value) => String(value || "").trim())
+            .filter(Boolean);
         this.fetchImpl = config.fetchImpl || global.fetch?.bind(global);
         this.localPins = config.localPins || new Map();
+    }
+
+    async fetchFromGateway(base, cid, timeoutMs) {
+        const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+        let timeoutHandle = null;
+        if (controller) {
+            timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+        }
+        try {
+            const response = await this.fetchImpl(
+                `${String(base || "").replace(/\/$/, "")}/${cid}`,
+                controller ? { signal: controller.signal } : undefined
+            );
+            if (!response.ok) {
+                throw new Error(`IPFSService: failed to fetch metadata for ${cid}`);
+            }
+
+            const raw = await response.json();
+            const metadata = raw && typeof raw === "object" && raw.metadata && typeof raw.metadata === "object"
+                ? raw.metadata
+                : raw;
+
+            return {
+                cid,
+                uri: `ipfs://${cid}`,
+                metadata,
+                source: "gateway",
+            };
+        } catch (error) {
+            if (error?.name === "AbortError") {
+                throw new Error(`IPFSService: metadata fetch timed out for ${cid}`);
+            }
+            throw error;
+        } finally {
+            if (timeoutHandle) {
+                clearTimeout(timeoutHandle);
+            }
+        }
     }
 
     async pinJSON(metadata) {
@@ -79,40 +125,30 @@ class IPFSService {
             throw new Error("IPFSService: fetch is unavailable");
         }
 
-        const timeoutMs = Math.max(250, Number(process.env.IPFS_FETCH_TIMEOUT_MS || 3000));
-        const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-        let timeoutHandle = null;
-        if (controller) {
-            timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
-        }
-        let response;
+        const timeoutMs = Math.max(250, Number(process.env.IPFS_FETCH_TIMEOUT_MS || 4000));
+        const candidateGateways = [
+            this.gatewayBase,
+            ...this.gatewayFallbacks,
+        ]
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+            .filter((value, index, self) => self.indexOf(value) === index);
+
         try {
-            response = await this.fetchImpl(
-                `${this.gatewayBase.replace(/\/$/, "")}/${cid}`,
-                controller ? { signal: controller.signal } : undefined
+            const result = await Promise.any(
+                candidateGateways.map((gateway) => this.fetchFromGateway(gateway, cid, timeoutMs))
             );
+            this.localPins.set(cid, result.metadata);
+            return result;
         } catch (error) {
-            if (error?.name === "AbortError") {
-                throw new Error(`IPFSService: metadata fetch timed out for ${cid}`);
+            const reasons = Array.isArray(error?.errors)
+                ? error.errors.map((reason) => String(reason?.message || reason)).filter(Boolean)
+                : [];
+            if (reasons.length > 0) {
+                throw new Error(`IPFSService: failed to fetch metadata for ${cid}. ${reasons.join(" | ")}`);
             }
             throw error;
-        } finally {
-            if (timeoutHandle) {
-                clearTimeout(timeoutHandle);
-            }
         }
-        if (!response.ok) {
-            throw new Error(`IPFSService: failed to fetch metadata for ${cid}`);
-        }
-
-        const metadata = await response.json();
-        this.localPins.set(cid, metadata);
-        return {
-            cid,
-            uri: `ipfs://${cid}`,
-            metadata,
-            source: "gateway",
-        };
     }
 }
 

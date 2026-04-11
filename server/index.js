@@ -243,24 +243,43 @@ function mergeAssetWithCachedMetadata(incoming = {}, cached = null) {
 }
 
 async function hydrateAssetMetadata(services, asset) {
-    const publicMetadataURI = asset?.publicMetadataURI || asset?.metadataURI;
-    if (!publicMetadataURI) {
-        return asset;
+    let resolved = asset || {};
+    const cached = resolved?.tokenId != null
+        ? await services.store.getAsset(resolved.tokenId).catch(() => null)
+        : null;
+    resolved = mergeAssetWithCachedMetadata(resolved, cached);
+    if (hasNonEmptyObject(resolved.publicMetadata) || hasNonEmptyObject(resolved.metadata)) {
+        return resolved;
     }
+
+    let publicMetadataURI = resolved?.publicMetadataURI || resolved?.metadataURI || resolved?.tokenURI || "";
     if (
-        asset?.publicMetadata
-        && typeof asset.publicMetadata === "object"
-        && Object.keys(asset.publicMetadata).length > 0
+        !publicMetadataURI
+        && resolved?.tokenId != null
+        && services.chainService?.isConfigured?.()
+        && typeof services.chainService.getAssetSnapshot === "function"
     ) {
-        return asset;
+        try {
+            const refreshed = await services.chainService.getAssetSnapshot(Number(resolved.tokenId), { lightweight: false });
+            if (refreshed) {
+                resolved = mergeAssetWithCachedMetadata(refreshed, resolved);
+                publicMetadataURI = resolved.publicMetadataURI || resolved.metadataURI || resolved.tokenURI || "";
+            }
+        } catch {
+            // Keep fallback path below.
+        }
+    }
+    if (!publicMetadataURI) {
+        return resolved;
     }
 
     try {
         const ipfsMetadata = await services.ipfsService.fetchJSON(publicMetadataURI);
         const hydrated = {
-            ...asset,
+            ...resolved,
             publicMetadataURI,
             metadataURI: publicMetadataURI,
+            tokenURI: publicMetadataURI,
             publicMetadata: ipfsMetadata.metadata,
             metadata: ipfsMetadata.metadata,
         };
@@ -269,12 +288,11 @@ async function hydrateAssetMetadata(services, asset) {
         }
         return hydrated;
     } catch (error) {
-        const cached = asset?.tokenId != null ? await services.store.getAsset(asset.tokenId).catch(() => null) : null;
         const merged = mergeAssetWithCachedMetadata({
-            ...asset,
-            publicMetadataURI: asset?.publicMetadataURI || publicMetadataURI,
-            metadataURI: asset?.metadataURI || publicMetadataURI,
-            tokenURI: asset?.tokenURI || publicMetadataURI,
+            ...resolved,
+            publicMetadataURI: resolved?.publicMetadataURI || publicMetadataURI,
+            metadataURI: resolved?.metadataURI || publicMetadataURI,
+            tokenURI: resolved?.tokenURI || publicMetadataURI,
         }, cached);
         return {
             ...merged,

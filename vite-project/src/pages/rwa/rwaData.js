@@ -716,6 +716,8 @@ export function mapApiAssetToUiAsset(asset = {}) {
   const monthlyYieldTarget = Number(
     metadata.monthlyYieldTarget
     || metadata.monthlyYield
+    || asset.monthlyYieldTarget
+    || asset.monthlyYield
     || metadata.attributes?.find((item) => item?.trait_type === 'Monthly Yield Target')?.value
     || 0
   );
@@ -726,8 +728,8 @@ export function mapApiAssetToUiAsset(asset = {}) {
   const flowRatePerSecond = parseUnits(stream.flowRate, 6);
   const durationSeconds = Math.max(0, Number(stream.stopTime || 0) - Number(stream.startTime || 0));
   const fallbackPerHour = durationSeconds > 0 ? (totalAmount / durationSeconds) * 3600 : 0;
-  const assetName = metadata.name || metadata.title || `Asset #${asset.tokenId}`;
-  const assetDescription = metadata.description || 'Indexed rental asset';
+  const assetName = metadata.name || metadata.title || asset.name || `Asset #${asset.tokenId}`;
+  const assetDescription = metadata.description || asset.description || 'Indexed rental asset';
 
   const verificationStatus = asset.verificationStatusLabel || 'pending_attestation';
   const statusLabel = VERIFICATION_STATUS_LABELS[verificationStatus] || verificationStatus;
@@ -740,8 +742,8 @@ export function mapApiAssetToUiAsset(asset = {}) {
     tokenId: String(asset.tokenId),
     type,
     name: assetName,
-    location: metadata.location || metadata.properties?.location || 'Undisclosed',
-    pricePerHour: Number((metadata.pricePerHour || fallbackPerHour || (monthlyYieldTarget / 720) || 0).toFixed(6)),
+    location: metadata.location || metadata.properties?.location || asset.location || 'Undisclosed',
+    pricePerHour: Number((metadata.pricePerHour || asset.pricePerHour || fallbackPerHour || (monthlyYieldTarget / 720) || 0).toFixed(6)),
     yieldBalance: parseUnits(asset.claimableYield, 6),
     yieldRatePerSecond: Number(flowRatePerSecond.toFixed(6)),
     description: assetDescription,

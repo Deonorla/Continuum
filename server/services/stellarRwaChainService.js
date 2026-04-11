@@ -360,6 +360,23 @@ function normalizeChainAsset(asset, extras = {}) {
         return null;
     }
 
+    let inlineMetadata = asset.public_metadata || asset.publicMetadata || asset.metadata || null;
+    if (typeof inlineMetadata === "string") {
+        try {
+            inlineMetadata = JSON.parse(inlineMetadata);
+        } catch {
+            inlineMetadata = null;
+        }
+    }
+    const metadataURI =
+        asset.public_metadata_uri
+        || asset.publicMetadataURI
+        || asset.metadata_uri
+        || asset.metadataURI
+        || asset.token_uri
+        || asset.tokenURI
+        || "";
+
     const verificationStatus = Number(asset.verification_status || asset.verificationStatus || 0);
     const statusReason = asset.status_reason || asset.statusReason || "";
     const normalizedAsset = {
@@ -378,9 +395,11 @@ function normalizeChainAsset(asset, extras = {}) {
         publicMetadataHash: asset.public_metadata_hash || asset.publicMetadataHash || "",
         evidenceRoot: asset.evidence_root || asset.evidenceRoot || "",
         evidenceManifestHash: asset.evidence_manifest_hash || asset.evidenceManifestHash || "",
-        publicMetadataURI: asset.public_metadata_uri || asset.publicMetadataURI || "",
-        metadataURI: asset.public_metadata_uri || asset.publicMetadataURI || "",
-        tokenURI: asset.public_metadata_uri || asset.publicMetadataURI || "",
+        publicMetadataURI: metadataURI,
+        metadataURI,
+        tokenURI: metadataURI,
+        publicMetadata: inlineMetadata && typeof inlineMetadata === "object" ? inlineMetadata : undefined,
+        metadata: inlineMetadata && typeof inlineMetadata === "object" ? inlineMetadata : undefined,
         jurisdiction: asset.jurisdiction || "",
         statusReason,
         createdAt: Number(asset.created_at || asset.createdAt || nowSeconds()),

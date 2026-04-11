@@ -1038,9 +1038,24 @@ router.post("/market/auctions/:auctionId/settle", requireJwt, asyncHandler(async
 
 router.get("/market/positions", requireJwt, asyncHandler(async (req, res) => {
     const { services, agentId, agentPublicKey, ownerPublicKey } = await resolveAgentContext(req);
+    const forceRefresh = ["1", "true", "yes"].includes(
+        String(req.query.refresh || req.query.sync || "").trim().toLowerCase()
+    );
+    const [cachedAssets, cachedSessions] = forceRefresh
+        ? [[], []]
+        : await Promise.all([
+            services.store.listAssets({ owner: agentPublicKey }).catch(() => []),
+            services.store.listSessions({ owner: agentPublicKey }).catch(() => []),
+        ]);
+    const shouldRefreshAssets = forceRefresh || !Array.isArray(cachedAssets) || cachedAssets.length === 0;
+    const shouldRefreshSessions = forceRefresh || !Array.isArray(cachedSessions) || cachedSessions.length === 0;
     const [assets, sessions, walletState, mandate, treasury, reservations, performance] = await Promise.all([
-        services.chainService.listAssetSnapshots({ owner: agentPublicKey }),
-        services.chainService.listSessions({ owner: agentPublicKey }),
+        shouldRefreshAssets && services.chainService?.isConfigured?.()
+            ? services.chainService.listAssetSnapshots({ owner: agentPublicKey })
+            : Promise.resolve(cachedAssets || []),
+        shouldRefreshSessions && services.chainService?.isConfigured?.()
+            ? services.chainService.listSessions({ owner: agentPublicKey })
+            : Promise.resolve(cachedSessions || []),
         services.agentWallet.getBalances({ owner: ownerPublicKey }),
         services.agentState.getMandate(agentId),
         services.agentState.getTreasury(agentId),

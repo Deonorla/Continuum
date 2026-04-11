@@ -434,19 +434,28 @@ export default function Marketplace() {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const [response, positions] = await Promise.all([
-        fetchMarketCatalog(),
-        agentPublicKey ? fetchMarketPositions() : Promise.resolve(null),
-      ]);
+      const response = await fetchMarketCatalog();
       const assets = (response.assets || []).map(buildUiAsset);
       _cachedAssets = assets;
-      _cachedPositions = positions;
       setAllAssets(assets);
-      setMarketPositions(positions);
+      if (!agentPublicKey) {
+        _cachedPositions = null;
+        setMarketPositions(null);
+      }
     } catch {
       if (!silent) { setAllAssets([]); setMarketPositions(null); }
     } finally {
       if (!silent) setLoading(false);
+    }
+    if (agentPublicKey) {
+      void fetchMarketPositions()
+        .then((positions) => {
+          _cachedPositions = positions;
+          setMarketPositions(positions);
+        })
+        .catch(() => {
+          // Keep stale positions on transient failures so list rendering remains instant.
+        });
     }
   }, [agentPublicKey]);
 

@@ -132,6 +132,46 @@ describe("AgentBrainService provider fallback", function () {
         expect(secondaryCalls).to.equal(2);
     });
 
+    it("reports cooldown-based degraded status when configured providers are temporarily cooling down", async () => {
+        const brain = new AgentBrainService({
+            enabled: true,
+            providers: [
+                stubProvider({ name: "groq", available: true, modelName: "llama-3.3-70b-versatile" }),
+                stubProvider({ name: "gemini", available: true, modelName: "gemini-2.5-flash" }),
+            ],
+        });
+
+        brain.cooldowns.set("groq", Date.now() + 45_000);
+        brain.cooldowns.set("gemini", Date.now() + 30_000);
+
+        const status = brain.getProviderStatus();
+
+        expect(status.available).to.equal(false);
+        expect(status.degradedMode).to.equal(true);
+        expect(status.degradedReason).to.include("temporarily cooling down after recent failures");
+        expect(status.degradedReason).to.include("groq");
+        expect(status.degradedReason).to.include("gemini");
+        expect(status.degradedReason).to.match(/retry in \d+s/i);
+    });
+
+    it("reports missing-credential degraded status when no provider is configured", async () => {
+        const brain = new AgentBrainService({
+            enabled: true,
+            providers: [
+                stubProvider({ name: "groq", available: false }),
+                stubProvider({ name: "gemini", available: false }),
+            ],
+        });
+
+        const status = brain.getProviderStatus();
+
+        expect(status.available).to.equal(false);
+        expect(status.degradedMode).to.equal(true);
+        expect(status.degradedReason).to.equal(
+            "No configured agent LLM provider with valid credentials is currently available, so the agent is using deterministic fallback planning.",
+        );
+    });
+
     it("prioritizes eligible live bids ahead of treasury rebalance in deterministic fallback mode", async () => {
         const brain = new AgentBrainService({
             enabled: false,

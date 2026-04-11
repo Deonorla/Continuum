@@ -401,6 +401,11 @@ function defaultModelForProvider(name, fallbackModel = "") {
     return fallbackModel || "gemini-2.5-flash";
 }
 
+function formatRetryWindow(ms = 0) {
+    const seconds = Math.max(1, Math.ceil(Number(ms || 0) / 1000));
+    return `retry in ${seconds}s`;
+}
+
 function extractProviderErrorMessage(payload, response) {
     return normalizeText(
         payload?.error?.message
@@ -679,7 +684,43 @@ class AgentBrainService {
         return this.providers.find((provider) => this.isProviderReady(provider)) || null;
     }
 
+    getProviderSnapshots() {
+        return this.providers.map((provider) => {
+            const cooldownUntil = Number(this.cooldowns.get(provider?.name) || 0);
+            const cooldownRemainingMs = Math.max(0, cooldownUntil - Date.now());
+            const configured = Boolean(provider?.isAvailable?.());
+            const ready = configured && cooldownRemainingMs <= 0;
+            return {
+                name: provider?.name || "unknown",
+                model: provider?.modelName || "",
+                configured,
+                ready,
+                coolingDown: configured && cooldownRemainingMs > 0,
+                cooldownRemainingMs,
+            };
+        });
+    }
+
+    buildUnavailableReason(snapshots = []) {
+        const configured = snapshots.filter((provider) => provider.configured);
+        if (configured.length === 0) {
+            return "No configured agent LLM provider with valid credentials is currently available, so the agent is using deterministic fallback planning.";
+        }
+
+        const coolingDown = configured.filter((provider) => provider.coolingDown);
+        if (coolingDown.length === configured.length) {
+            const retryMs = Math.min(...coolingDown.map((provider) => provider.cooldownRemainingMs).filter((value) => value > 0));
+            const providerLabel = configured.length === 1
+                ? `The configured agent LLM provider (${configured[0].name}) is`
+                : `All configured agent LLM providers (${configured.map((provider) => provider.name).join(", ")}) are`;
+            return `${providerLabel} temporarily cooling down after recent failures, so the agent is using deterministic fallback planning${Number.isFinite(retryMs) && retryMs > 0 ? ` (${formatRetryWindow(retryMs)})` : ""}.`;
+        }
+
+        return "Configured agent LLM providers are temporarily unavailable, so the agent is using deterministic fallback planning.";
+    }
+
     getProviderStatus() {
+        const snapshots = this.getProviderSnapshots();
         const provider = this.enabled ? this.firstReadyProvider() : null;
         const available = Boolean(provider);
         return {
@@ -689,8 +730,9 @@ class AgentBrainService {
             available,
             degradedMode: Boolean(this.enabled && !available),
             degradedReason: this.enabled && !available
-                ? "No configured agent LLM provider is currently available, so the agent is using deterministic fallback planning."
+                ? this.buildUnavailableReason(snapshots)
                 : "",
+            providers: snapshots,
         };
     }
 

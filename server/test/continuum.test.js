@@ -1171,6 +1171,70 @@ describe("Continuum API Integration", function () {
         expect(pauseResponse.body.runtime.status).to.equal("paused");
     });
 
+    it("marks treasury rebalance as skipped when reserve floor blocks deployment", async () => {
+        installAgentBrain({
+            async decide({ wakeReason }) {
+                return {
+                    proposal: {
+                        actionType: "rebalance_treasury",
+                        actionArgs: {},
+                        thesis: "Rebalance treasury.",
+                        rationale: "Attempt rebalance.",
+                        confidence: 80,
+                        blockedBy: "",
+                        requiresHuman: false,
+                        wakeReason,
+                    },
+                    degradedMode: false,
+                    degradedReason: "",
+                    provider: "test",
+                    model: "deterministic",
+                };
+            },
+            async chat() {
+                return {
+                    reply: "Deterministic test planner chat reply.",
+                    objectivePatch: null,
+                    wakeReason: "chat_message",
+                    degradedMode: false,
+                    degradedReason: "",
+                };
+            },
+            async summarize({ objective }) {
+                return `Goal: ${objective?.goal || "test objective"}`;
+            },
+        });
+
+        services.treasuryManager.rebalance = async () => ({
+            positions: [],
+            optimization: {
+                reason: "reserve_floor_blocked",
+                execution: {
+                    deploymentCount: 0,
+                },
+            },
+        });
+
+        const startResponse = await request(app)
+            .post(`/api/agents/${agentId}/runtime/start`)
+            .set("Authorization", `Bearer ${token}`)
+            .send({
+                executeTreasury: true,
+                executeClaims: true,
+            })
+            .expect(200);
+
+        expect(startResponse.body.code).to.equal("agent_runtime_started");
+        expect(startResponse.body.runtime.lastSummary.treasuryExecuted).to.equal(false);
+
+        const stateResponse = await request(app)
+            .get(`/api/agents/${agentId}/state`)
+            .set("Authorization", `Bearer ${token}`)
+            .expect(200);
+
+        expect(stateResponse.body.state.brain.blockedBy).to.match(/reserve floor/i);
+    });
+
     it("updates the real objective and plans immediately when the objective changes", async () => {
         installAgentBrain({
             async decide({ objective, wakeReason }) {

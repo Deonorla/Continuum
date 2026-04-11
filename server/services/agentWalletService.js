@@ -283,6 +283,7 @@ class AgentWalletService {
                 { type: "u64", value: BigInt(tokenId) },
                 { type: "address", value: to },
             ],
+            sourceAccount: kp.publicKey(),
             signerSecret: kp.secret(),
         });
     }

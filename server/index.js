@@ -215,6 +215,33 @@ function sendActionError(res, error, action, fallbackError) {
     });
 }
 
+function hasNonEmptyObject(value) {
+    return Boolean(value && typeof value === "object" && Object.keys(value).length > 0);
+}
+
+function mergeAssetWithCachedMetadata(incoming = {}, cached = null) {
+    if (!cached) {
+        return incoming;
+    }
+    const merged = { ...incoming };
+    if (!hasNonEmptyObject(merged.publicMetadata) && hasNonEmptyObject(cached.publicMetadata)) {
+        merged.publicMetadata = cached.publicMetadata;
+    }
+    if (!hasNonEmptyObject(merged.metadata) && hasNonEmptyObject(cached.metadata)) {
+        merged.metadata = cached.metadata;
+    }
+    if (!merged.publicMetadataURI && cached.publicMetadataURI) {
+        merged.publicMetadataURI = cached.publicMetadataURI;
+    }
+    if (!merged.metadataURI && cached.metadataURI) {
+        merged.metadataURI = cached.metadataURI;
+    }
+    if (!merged.tokenURI && cached.tokenURI) {
+        merged.tokenURI = cached.tokenURI;
+    }
+    return merged;
+}
+
 async function hydrateAssetMetadata(services, asset) {
     const publicMetadataURI = asset?.publicMetadataURI || asset?.metadataURI;
     if (!publicMetadataURI) {
@@ -242,10 +269,18 @@ async function hydrateAssetMetadata(services, asset) {
         }
         return hydrated;
     } catch (error) {
-        return {
+        const cached = asset?.tokenId != null ? await services.store.getAsset(asset.tokenId).catch(() => null) : null;
+        const merged = mergeAssetWithCachedMetadata({
             ...asset,
-            publicMetadataURI,
-            metadataURI: publicMetadataURI,
+            publicMetadataURI: asset?.publicMetadataURI || publicMetadataURI,
+            metadataURI: asset?.metadataURI || publicMetadataURI,
+            tokenURI: asset?.tokenURI || publicMetadataURI,
+        }, cached);
+        return {
+            ...merged,
+            publicMetadataURI: merged.publicMetadataURI || publicMetadataURI || "",
+            metadataURI: merged.metadataURI || publicMetadataURI || "",
+            tokenURI: merged.tokenURI || publicMetadataURI || "",
         };
     }
 }
@@ -355,7 +390,8 @@ async function primeAssetsFromChain(services, { owner } = {}) {
     const limit = Number(process.env.RWA_BOOTSTRAP_ASSET_LIMIT || 200);
     const snapshots = await services.chainService.listAssetSnapshots({ owner, limit, lightweight: true });
     for (const snapshot of snapshots) {
-        await services.store.upsertAsset(snapshot);
+        const cached = snapshot?.tokenId != null ? await services.store.getAsset(snapshot.tokenId).catch(() => null) : null;
+        await services.store.upsertAsset(mergeAssetWithCachedMetadata(snapshot, cached));
     }
     return snapshots;
 }
@@ -628,10 +664,15 @@ function createApp(config = defaultConfig) {
         if (!Array.isArray(rawAssets)) {
             rawAssets = [];
         }
-        const supportedAssets = rawAssets.filter(isSupportedProductiveTwin);
+        let supportedAssets = rawAssets.filter(isSupportedProductiveTwin);
         if (loadedFromChain) {
-            await Promise.all(
-                supportedAssets.map((asset) => services.store.upsertAsset(asset))
+            supportedAssets = await Promise.all(
+                supportedAssets.map(async (asset) => {
+                    const cached = asset?.tokenId != null ? await services.store.getAsset(asset.tokenId).catch(() => null) : null;
+                    const merged = mergeAssetWithCachedMetadata(asset, cached);
+                    await services.store.upsertAsset(merged);
+                    return merged;
+                })
             );
         }
         const assets = await Promise.all(supportedAssets.map((asset) => hydrateAssetMetadata(services, asset)));
@@ -766,9 +807,27 @@ function createApp(config = defaultConfig) {
 
         const snapshot = await chainService.getAssetSnapshot(mintResult.tokenId);
         if (snapshot) {
-            await services.store.upsertAsset(snapshot);
+            const snapshotWithMetadata = {
+                ...snapshot,
+                publicMetadataURI: resolvedPublicMetadataURI,
+                metadataURI: resolvedPublicMetadataURI,
+                tokenURI: resolvedPublicMetadataURI,
+                publicMetadata: metadataResult.metadata,
+                metadata: metadataResult.metadata,
+            };
+            const cached = await services.store.getAsset(snapshotWithMetadata.tokenId).catch(() => null);
+            await services.store.upsertAsset(mergeAssetWithCachedMetadata(snapshotWithMetadata, cached));
         }
-        const hydratedSnapshot = snapshot ? await hydrateAssetMetadata(services, snapshot) : null;
+        const hydratedSnapshot = snapshot
+            ? await hydrateAssetMetadata(services, {
+                ...snapshot,
+                publicMetadataURI: resolvedPublicMetadataURI,
+                metadataURI: resolvedPublicMetadataURI,
+                tokenURI: resolvedPublicMetadataURI,
+                publicMetadata: metadataResult.metadata,
+                metadata: metadataResult.metadata,
+            })
+            : null;
         let attestationRequirements = collectAttestationRequirements(hydratedSnapshot || {});
         let resolvedVerificationStatus = hydratedSnapshot?.verificationStatusLabel || "";
         if (!resolvedVerificationStatus) {

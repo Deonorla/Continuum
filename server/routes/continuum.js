@@ -56,6 +56,31 @@ async function resolveAgentContext(req) {
     };
 }
 
+function hasNonEmptyObject(value) {
+    return Boolean(value && typeof value === "object" && Object.keys(value).length > 0);
+}
+
+function mergeAssetWithCachedMetadata(incoming = {}, cached = null) {
+    if (!cached) return incoming;
+    const merged = { ...incoming };
+    if (!hasNonEmptyObject(merged.publicMetadata) && hasNonEmptyObject(cached.publicMetadata)) {
+        merged.publicMetadata = cached.publicMetadata;
+    }
+    if (!hasNonEmptyObject(merged.metadata) && hasNonEmptyObject(cached.metadata)) {
+        merged.metadata = cached.metadata;
+    }
+    if (!merged.publicMetadataURI && cached.publicMetadataURI) {
+        merged.publicMetadataURI = cached.publicMetadataURI;
+    }
+    if (!merged.metadataURI && cached.metadataURI) {
+        merged.metadataURI = cached.metadataURI;
+    }
+    if (!merged.tokenURI && cached.tokenURI) {
+        merged.tokenURI = cached.tokenURI;
+    }
+    return merged;
+}
+
 async function hydrateAsset(services, asset) {
     const publicMetadataURI = asset?.publicMetadataURI || asset?.metadataURI;
     if (!publicMetadataURI) {
@@ -82,7 +107,13 @@ async function hydrateAsset(services, asset) {
         }
         return hydrated;
     } catch {
-        return asset;
+        const cached = asset?.tokenId != null ? await services.store.getAsset(asset.tokenId).catch(() => null) : null;
+        return mergeAssetWithCachedMetadata({
+            ...asset,
+            publicMetadataURI: asset?.publicMetadataURI || publicMetadataURI || "",
+            metadataURI: asset?.metadataURI || publicMetadataURI || "",
+            tokenURI: asset?.tokenURI || publicMetadataURI || "",
+        }, cached);
     }
 }
 
@@ -767,13 +798,25 @@ router.get("/market/assets", asyncHandler(async (req, res) => {
     let rawAssets = !forceRefresh
         ? (await services.store.listAssets()).slice(-limit)
         : [];
+    let loadedFromChain = false;
     if (
         (forceRefresh || rawAssets.length === 0)
         && services.chainService?.isConfigured?.()
     ) {
+        loadedFromChain = true;
         rawAssets = await services.chainService.listAssetSnapshots({ limit, lightweight: true });
     }
-    const productiveAssets = rawAssets.filter(productiveOnly);
+    let productiveAssets = rawAssets.filter(productiveOnly);
+    if (loadedFromChain) {
+        productiveAssets = await Promise.all(
+            productiveAssets.map(async (asset) => {
+                const cached = asset?.tokenId != null ? await services.store.getAsset(asset.tokenId).catch(() => null) : null;
+                const merged = mergeAssetWithCachedMetadata(asset, cached);
+                await services.store.upsertAsset(merged).catch(() => {});
+                return merged;
+            })
+        );
+    }
     const activeAuctions = (await services.auctionEngine.listAuctions({ status: "active" }))
         .map((auction) => enrichAuction(auction));
     const activeAuctionByAssetId = new Map(
@@ -839,6 +882,8 @@ router.get("/market/assets/:assetId", asyncHandler(async (req, res) => {
     ) {
         asset = await services.chainService.getAssetSnapshot(tokenId);
         if (asset) {
+            const cached = await services.store.getAsset(tokenId).catch(() => null);
+            asset = mergeAssetWithCachedMetadata(asset, cached);
             await services.store.upsertAsset(asset);
         }
     }

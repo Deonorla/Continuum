@@ -79,7 +79,28 @@ class IPFSService {
             throw new Error("IPFSService: fetch is unavailable");
         }
 
-        const response = await this.fetchImpl(`${this.gatewayBase.replace(/\/$/, "")}/${cid}`);
+        const timeoutMs = Math.max(250, Number(process.env.IPFS_FETCH_TIMEOUT_MS || 3000));
+        const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+        let timeoutHandle = null;
+        if (controller) {
+            timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+        }
+        let response;
+        try {
+            response = await this.fetchImpl(
+                `${this.gatewayBase.replace(/\/$/, "")}/${cid}`,
+                controller ? { signal: controller.signal } : undefined
+            );
+        } catch (error) {
+            if (error?.name === "AbortError") {
+                throw new Error(`IPFSService: metadata fetch timed out for ${cid}`);
+            }
+            throw error;
+        } finally {
+            if (timeoutHandle) {
+                clearTimeout(timeoutHandle);
+            }
+        }
         if (!response.ok) {
             throw new Error(`IPFSService: failed to fetch metadata for ${cid}`);
         }

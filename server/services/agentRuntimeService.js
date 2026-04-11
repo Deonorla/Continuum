@@ -709,8 +709,11 @@ class AgentRuntimeService {
                 outcome: "executed",
                 details: {
                     auctionId: Number(proposal.actionArgs.auctionId),
+                    assetId: Number(result?.auction?.assetId || 0),
+                    assetName: result?.auction?.title || "",
                     bidId: Number(result?.bid?.bidId || 0),
                     amount: result?.bid?.amountDisplay || proposal.actionArgs.amount,
+                    txHash: result?.bid?.txHash || "",
                 },
             };
         }
@@ -1177,6 +1180,25 @@ class AgentRuntimeService {
             });
 
             if (decisionChanged || executed.outcome === "executed") {
+                const executionDetail = executed.outcome === "executed"
+                    ? (
+                        proposal.actionType === "bid"
+                            ? [
+                                `Bid ${executed.details?.amount || proposal.actionArgs?.amount || ""} USDC`,
+                                executed.details?.auctionId ? `auction #${Number(executed.details.auctionId)}` : "",
+                                executed.details?.assetId
+                                    ? `twin #${Number(executed.details.assetId)}${executed.details?.assetName ? ` (${executed.details.assetName})` : ""}`
+                                    : "",
+                                executed.details?.txHash ? `tx ${String(executed.details.txHash).slice(0, 16)}...` : "",
+                            ].filter(Boolean).join(" · ")
+                            : proposal.actionType === "settle_auction"
+                                ? [
+                                    executed.details?.auctionId ? `Settled auction #${Number(executed.details.auctionId)}` : "Auction settled",
+                                    executed.details?.txHash ? `tx ${String(executed.details.txHash).slice(0, 16)}...` : "",
+                                ].filter(Boolean).join(" · ")
+                                : ""
+                    )
+                    : "";
                 await this.agentState.appendJournal(normalizedAgentId, {
                     kind: executed.outcome === "executed" ? "execution" : "plan",
                     message: executed.outcome === "executed"
@@ -1206,6 +1228,7 @@ class AgentRuntimeService {
                             ? "Autonomous agent held position"
                             : `Autonomous agent planned ${proposal.actionType.replace(/_/g, " ")}`,
                     detail: effectiveBlockedBy
+                        || executionDetail
                         || (
                             executed.outcome === "executed"
                             && proposal.actionType === "bid"

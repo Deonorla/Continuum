@@ -477,7 +477,7 @@ async function loadAgentStateBundle(services, { agentId, ownerPublicKey, agentPu
         services.agentState.getDecisionLog(agentId, 50),
         services.agentState.getJournal(agentId, 12),
         services.agentState.getChatMessages(agentId, 20),
-        services.chainService.listAssetSnapshots({ owner: agentPublicKey }),
+        services.chainService.listAssetSnapshots({ owner: agentPublicKey, lightweight: true }),
         services.chainService.listSessions({ owner: agentPublicKey }),
         services.agentRuntime.getState({ agentId }),
         services.agentState.getSavedScreens(agentId),
@@ -771,7 +771,7 @@ router.get("/market/assets", asyncHandler(async (req, res) => {
         (forceRefresh || rawAssets.length === 0)
         && services.chainService?.isConfigured?.()
     ) {
-        rawAssets = await services.chainService.listAssetSnapshots({ limit });
+        rawAssets = await services.chainService.listAssetSnapshots({ limit, lightweight: true });
     }
     const productiveAssets = rawAssets.filter(productiveOnly);
     const activeAuctions = (await services.auctionEngine.listAuctions({ status: "active" }))
@@ -862,7 +862,7 @@ router.get("/market/assets/:assetId/analytics", requirePaidAction("0.10", "Premi
         return res.status(404).json({ error: "Asset not found.", code: "asset_not_found" });
     }
     const rawAssets = services.chainService?.isConfigured?.()
-        ? await services.chainService.listAssetSnapshots({ limit: 200 })
+        ? await services.chainService.listAssetSnapshots({ limit: 200, lightweight: true })
         : await services.store.listAssets();
     const productiveAssets = rawAssets.filter(productiveOnly);
     const activity = await services.store.getActivities(tokenId);
@@ -1051,7 +1051,7 @@ router.get("/market/positions", requireJwt, asyncHandler(async (req, res) => {
     const shouldRefreshSessions = forceRefresh || !Array.isArray(cachedSessions) || cachedSessions.length === 0;
     const [assets, sessions, walletState, mandate, treasury, reservations, performance] = await Promise.all([
         shouldRefreshAssets && services.chainService?.isConfigured?.()
-            ? services.chainService.listAssetSnapshots({ owner: agentPublicKey })
+            ? services.chainService.listAssetSnapshots({ owner: agentPublicKey, lightweight: true })
             : Promise.resolve(cachedAssets || []),
         shouldRefreshSessions && services.chainService?.isConfigured?.()
             ? services.chainService.listSessions({ owner: agentPublicKey })

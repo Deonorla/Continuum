@@ -353,7 +353,7 @@ async function primeAssetsFromChain(services, { owner } = {}) {
     }
 
     const limit = Number(process.env.RWA_BOOTSTRAP_ASSET_LIMIT || 200);
-    const snapshots = await services.chainService.listAssetSnapshots({ owner, limit });
+    const snapshots = await services.chainService.listAssetSnapshots({ owner, limit, lightweight: true });
     for (const snapshot of snapshots) {
         await services.store.upsertAsset(snapshot);
     }
@@ -614,12 +614,12 @@ function createApp(config = defaultConfig) {
         ) {
             loadedFromChain = true;
             if (!ownerPublicKey) {
-                rawAssets = await services.chainService.listAssetSnapshots({ limit });
+                rawAssets = await services.chainService.listAssetSnapshots({ limit, lightweight: true });
             } else {
                 const [ownedAssets, managedAssets] = await Promise.all([
-                    services.chainService.listAssetSnapshots({ owner: ownerPublicKey, limit }),
+                    services.chainService.listAssetSnapshots({ owner: ownerPublicKey, limit, lightweight: true }),
                     managedWallet?.publicKey && String(managedWallet.publicKey).toUpperCase() !== ownerPublicKey.toUpperCase()
-                        ? services.chainService.listAssetSnapshots({ owner: managedWallet.publicKey, limit })
+                        ? services.chainService.listAssetSnapshots({ owner: managedWallet.publicKey, limit, lightweight: true })
                         : Promise.resolve([]),
                 ]);
                 rawAssets = mergeByTokenId([...(ownedAssets || []), ...(managedAssets || [])]).slice(0, limit);

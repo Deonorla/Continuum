@@ -567,8 +567,10 @@ class AgentRuntimeService {
         const capitalBase = normalizeStellarAmount(mandate?.capitalBase || "0");
         const floorPct = BigInt(Number(mandate?.liquidityFloorPct || 10));
         const targetPct = BigInt(Number(mandate?.reservePolicy?.targetLiquidPct || 20));
+        const maxPct = BigInt(Number(mandate?.reservePolicy?.maxLiquidPct || Math.max(Number(mandate?.reservePolicy?.targetLiquidPct || 20), 30)));
         const floorAmount = capitalBase > 0n ? (capitalBase * floorPct) / 100n : 0n;
         const targetAmount = capitalBase > 0n ? (capitalBase * targetPct) / 100n : 0n;
+        const maxAmount = capitalBase > 0n ? (capitalBase * maxPct) / 100n : 0n;
         const immediateBidHeadroom = walletBalance > floorAmount ? walletBalance - floorAmount : 0n;
         return {
             walletBalance: walletBalance.toString(),
@@ -581,9 +583,11 @@ class AgentRuntimeService {
             liquidityFloorAmountDisplay: toDisplayAmount(floorAmount),
             targetReserveAmount: targetAmount.toString(),
             targetReserveAmountDisplay: toDisplayAmount(targetAmount),
+            maxReserveAmount: maxAmount.toString(),
+            maxReserveAmountDisplay: toDisplayAmount(maxAmount),
             immediateBidHeadroom: immediateBidHeadroom.toString(),
             immediateBidHeadroomDisplay: toDisplayAmount(immediateBidHeadroom),
-            outsideTargetBand: walletBalance < floorAmount || walletBalance > targetAmount,
+            outsideTargetBand: walletBalance < floorAmount || walletBalance > maxAmount,
         };
     }
 
@@ -653,6 +657,41 @@ class AgentRuntimeService {
         }
 
         return { valid: true, actionType, actionArgs: proposal.actionArgs || {} };
+    }
+
+    promotePassiveProposal(proposal = {}, context = {}) {
+        const actionType = String(proposal?.actionType || "hold").trim().toLowerCase();
+        const bidFocus = context?.bidFocus || null;
+        const isPassive = ["analyze", "watch"].includes(actionType)
+            || (actionType === "hold" && !String(proposal?.blockedBy || "").trim());
+        if (!isPassive || !bidFocus?.eligible || proposal?.requiresHuman) {
+            return proposal;
+        }
+
+        return {
+            ...proposal,
+            actionType: "bid",
+            actionArgs: {
+                auctionId: Number(bidFocus.auctionId),
+                amount: String(
+                    proposal?.actionArgs?.amount
+                    || bidFocus.nextBidDisplay
+                    || bidFocus.nextBidAmountDisplay
+                    || ""
+                ),
+            },
+            thesis: proposal?.thesis
+                || `Live auction #${Number(bidFocus.auctionId)} is executable within the current mandate.`,
+            rationale: [
+                String(proposal?.rationale || "").trim(),
+                "Promoted from passive analysis because a live bid is already executable within the current mandate and liquidity envelope.",
+            ].filter(Boolean).join(" "),
+            blockedBy: "",
+            confidence: Math.max(
+                Number(proposal?.confidence || 0),
+                Number(bidFocus?.confidence || 70),
+            ),
+        };
     }
 
     async executeDecision({
@@ -1100,6 +1139,9 @@ class AgentRuntimeService {
                 ...decision.proposal,
                 blockedBy: decision.proposal?.blockedBy || "",
             };
+            if (currentRuntime.running) {
+                proposal = this.promotePassiveProposal(proposal, brainContext);
+            }
             const validation = this.validateDecisionProposal(proposal, brainContext);
             if (!validation.valid) {
                 proposal = {
@@ -1129,6 +1171,14 @@ class AgentRuntimeService {
             const effectiveBlockedBy = String(
                 proposal.blockedBy
                 || executed?.details?.blockedBy
+                || (
+                    executed.outcome === "skipped"
+                    && ["hold", "watch", "analyze"].includes(proposal.actionType)
+                    && (
+                        topBidFocus?.blockedReason
+                        || noActionReason
+                    )
+                )
                 || (executed.outcome === "skipped" && proposal.actionType !== "hold" && currentRuntime.running
                     ? `The proposed ${proposal.actionType.replace(/_/g, " ")} action was recorded but not executed.`
                     : "")

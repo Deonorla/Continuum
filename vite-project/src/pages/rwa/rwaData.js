@@ -731,7 +731,24 @@ export function mapApiAssetToUiAsset(asset = {}) {
   const durationSeconds = Math.max(0, Number(stream.stopTime || 0) - Number(stream.startTime || 0));
   const fallbackPerHour = durationSeconds > 0 ? (totalAmount / durationSeconds) * 3600 : 0;
   const assetName = metadata.name || metadata.title || asset.name || `Asset #${asset.tokenId}`;
-  const assetDescription = metadata.description || asset.description || 'Indexed rental asset';
+
+  // description may be stored as { tags, text } from PropertyMint — normalise to a plain string
+  function resolveDescription(raw) {
+    if (!raw) return null;
+    if (typeof raw === 'string') return raw;
+    if (typeof raw === 'object') return raw.text || raw.description || '';
+    return String(raw);
+  }
+  const assetDescription = resolveDescription(metadata.description) || resolveDescription(asset.description) || 'Indexed rental asset';
+
+  // also flatten specialTags out of description.tags if present
+  const specialTagsFromDesc = (() => {
+    const raw = metadata.description || asset.description;
+    if (raw && typeof raw === 'object' && raw.tags) {
+      return Array.isArray(raw.tags) ? raw.tags.join(', ') : String(raw.tags);
+    }
+    return metadata.specialTags || asset.specialTags || '';
+  })();
 
   const verificationStatus = asset.verificationStatusLabel || 'pending_attestation';
   const statusLabel = VERIFICATION_STATUS_LABELS[verificationStatus] || verificationStatus;
@@ -761,12 +778,37 @@ export function mapApiAssetToUiAsset(asset = {}) {
     status: stream.isFrozen ? 'Frozen' : statusLabel,
     completionRatio: durationSeconds > 0 && stream.startTime ? Math.min(1, Math.max(0, (Date.now() / 1000 - Number(stream.startTime)) / durationSeconds)) : 0,
     monthlyYieldTarget,
-    imageUrl: metadata.image || metadata.imageUrl || '',
+    imageUrl: (() => {
+      // Prefer the cover photo from the photos array (uploaded during listing)
+      const photos = metadata.photos;
+      if (Array.isArray(photos) && photos.length > 0) {
+        const cover = photos.find((p) => p.isCover) || photos[0];
+        const cid = cover?.cid;
+        const uri = cover?.uri;
+        if (uri && uri.startsWith('ipfs://')) return `https://ipfs.io/ipfs/${uri.replace('ipfs://', '')}`;
+        if (uri && uri.startsWith('http')) return uri;
+        if (cid) return `https://ipfs.io/ipfs/${cid}`;
+      }
+      // Fallback to legacy image fields
+      return metadata.image || metadata.imageUrl || '';
+    })(),
     ownerAddress: asset.currentOwner || asset.issuer || '',
     issuerAddress: asset.issuer || '',
     renterAddress: null,
     metadata,
-    publicMetadata: metadata,
+    publicMetadata: { ...metadata, specialTags: specialTagsFromDesc || metadata.specialTags || '' },
+    photos: (() => {
+      const raw = metadata.photos;
+      if (!Array.isArray(raw) || raw.length === 0) return [];
+      return raw.map((p) => {
+        const cid = p?.cid;
+        const uri = p?.uri;
+        if (uri && uri.startsWith('ipfs://')) return { ...p, url: `https://ipfs.io/ipfs/${uri.replace('ipfs://', '')}` };
+        if (uri && uri.startsWith('http')) return { ...p, url: uri };
+        if (cid) return { ...p, url: `https://ipfs.io/ipfs/${cid}` };
+        return { ...p, url: '' };
+      }).filter((p) => p.url);
+    })(),
     activity: activities,
     currentOwner: asset.currentOwner || '',
     activeStreamId: Number(asset.activeStreamId || stream.streamId || 0),

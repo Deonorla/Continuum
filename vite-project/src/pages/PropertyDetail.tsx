@@ -104,10 +104,14 @@ function CopyButton({ text }: { text: string }) {
 
 function PhotoGallery({ asset }: { asset: any }) {
   const { id, type, verificationStatus } = asset;
+  const isLand = type === 'land';
+
+  // Use real uploaded photos if available, pad/fallback with Unsplash
+  const realPhotos: string[] = (asset.photos || []).map((p: any) => p.url).filter(Boolean);
   const imgs = [0, 1, 2, 3, 4].map((offset) =>
+    realPhotos[offset] ||
     getAssetImage(type, typeof id === 'number' ? id + offset : String(id).charCodeAt(0) + offset, 800, 600)
   );
-  const isLand = type === 'land';
 
   return (
     <div className="relative w-full h-[420px] rounded-2xl overflow-hidden flex gap-1.5">
@@ -206,9 +210,13 @@ function KeyStatsBar({ asset }: { asset: any }) {
 
 function OverviewTab({ asset }: { asset: any }) {
   const pm = asset.publicMetadata || {};
-  const tags: string[] = pm.specialTags
-    ? pm.specialTags.split(',').map((t: string) => t.trim()).filter(Boolean)
-    : [];
+  const tags: string[] = (() => {
+    const raw = pm.specialTags;
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.map((t: string) => t.trim()).filter(Boolean);
+    if (typeof raw === 'string') return raw.split(',').map((t: string) => t.trim()).filter(Boolean);
+    return [];
+  })();
 
   const rental = asset.rentalActivity || {};
   const readiness = asset.rentalReadiness || {};

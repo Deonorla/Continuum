@@ -29,7 +29,9 @@ const FALLBACK_IMAGES = [
   'photo-1486406146926-c627a92ad1ab',
 ];
 
-export function getAssetImage(type: string, id: string | number, w = 600, h = 450): string {
+export function getAssetImage(type: string, id: string | number, w = 600, h = 450, realUrl?: string): string {
+  // Use the real uploaded photo if available
+  if (realUrl && realUrl.startsWith('http')) return realUrl;
   const list = ASSET_IMAGES[type] ?? FALLBACK_IMAGES;
   const n = typeof id === 'number' ? id : String(id).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
   const photoId = list[n % list.length];
@@ -79,7 +81,7 @@ export function AssetCard({ asset, onDetails }) {
       <div className="relative aspect-[4/3] overflow-hidden">
         <img
           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-          src={getAssetImage(asset.type, asset.id, 600, 450)}
+          src={getAssetImage(asset.type, asset.id, 600, 450, asset.imageUrl)}
           alt={asset.name}
           referrerPolicy="no-referrer"
         />
@@ -202,7 +204,7 @@ export function DetailDrawer({ asset, onClose, renderBody, renderFooter }) {
       >
         <div className="relative aspect-[16/9] shrink-0 overflow-hidden">
           <img
-            src={getAssetImage(asset.type, asset.id, 800, 450)}
+            src={getAssetImage(asset.type, asset.id, 800, 450, asset.imageUrl)}
             alt={asset.name}
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"

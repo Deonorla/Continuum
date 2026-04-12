@@ -103,6 +103,45 @@ function detectObjectivePatch(message = "", currentObjective = {}) {
     return patch;
 }
 
+function buildDecidePrompt({ objective, context, memorySummary, wakeReason }) {
+    // Compact context — only what the LLM needs, keeps token count under free-tier limits
+    const compactContext = {
+        market: context?.market || {},
+        mandate: context?.mandate || {},
+        liquidity: context?.liquidity
+            ? {
+                walletBalance: context.liquidity.walletBalanceDisplay,
+                headroom: context.liquidity.immediateBidHeadroomDisplay,
+                floor: context.liquidity.liquidityFloorAmountDisplay,
+                outsideTargetBand: context.liquidity.outsideTargetBand,
+            }
+            : {},
+        bidFocus: context?.bidFocus || null,
+        opportunities: (context?.opportunities || []).slice(0, 3),
+        readySettlements: (context?.readySettlements || []).slice(0, 2),
+        claimableAssets: (context?.claimableAssets || []).slice(0, 2),
+        riskAlerts: (context?.riskAlerts || []).slice(0, 2),
+        shouldRebalanceTreasury: context?.shouldRebalanceTreasury || false,
+        noActionReason: context?.noActionReason || "",
+        capabilities: context?.capabilities || {},
+    };
+    return `You are the autonomous market planner for Continuum, an agent-first RWA marketplace.
+Return JSON only. Keep all string values under 80 chars.
+
+Rules:
+- Choose exactly one next action.
+- Allowed actions: analyze, bid, settle_auction, claim_yield, route_yield, rebalance_treasury, watch, hold.
+- Never propose minting, physical rental actions, or anything outside trade + treasury scope.
+- If an action is blocked by guardrails, return hold with blockedBy.
+
+Objective: ${JSON.stringify(objective || {})}
+Wake: ${wakeReason || "scheduled"}
+Memory: ${memorySummary ? memorySummary.slice(0, 200) : "none"}
+Context: ${JSON.stringify(compactContext)}
+
+Response: {"actionType":"hold","actionArgs":{},"thesis":"","rationale":"","confidence":0,"blockedBy":"","requiresHuman":false,"wakeReason":"${wakeReason || "scheduled"}"}`;
+}
+
 function buildFallbackDecision({ objective = {}, context = {}, wakeReason = "" }) {
     const readySettlements = Array.isArray(context.readySettlements) ? context.readySettlements : [];
     const claimableAssets = Array.isArray(context.claimableAssets) ? context.claimableAssets : [];
@@ -273,38 +312,7 @@ class GeminiAgentModelProvider {
     }
 
     async decide({ objective, context, memorySummary, wakeReason }) {
-        const prompt = `You are the autonomous market planner for Continuum, an agent-first RWA marketplace.
-Return JSON only.
-
-Rules:
-- Choose exactly one next action.
-- Allowed actions: analyze, bid, settle_auction, claim_yield, route_yield, rebalance_treasury, watch, hold.
-- Never propose minting, physical rental actions, or anything outside trade + treasury scope.
-- If an action is blocked by guardrails, return hold with blockedBy.
-- Keep rationale concise and operator-readable.
-
-Objective:
-${JSON.stringify(objective || {}, null, 2)}
-
-Wake reason: ${wakeReason || "scheduled"}
-
-Memory summary:
-${memorySummary || "No memory summary yet."}
-
-Runtime context:
-${JSON.stringify(context || {}, null, 2)}
-
-Response shape:
-{
-  "actionType": "bid",
-  "actionArgs": {},
-  "thesis": "short thesis",
-  "rationale": "why",
-  "confidence": 0,
-  "blockedBy": "",
-  "requiresHuman": false,
-  "wakeReason": "${wakeReason || "scheduled"}"
-}`;
+        const prompt = buildDecidePrompt({ objective, context, memorySummary, wakeReason });
         return normalizeProposal(await this.generateJson(prompt), wakeReason);
     }
 
@@ -478,6 +486,7 @@ class OpenAICompatibleAgentModelProvider {
                 model: this.modelName,
                 messages,
                 temperature,
+                max_tokens: 512,
                 ...(responseFormat ? { response_format: responseFormat } : {}),
             }),
         });
@@ -505,38 +514,7 @@ class OpenAICompatibleAgentModelProvider {
     }
 
     async decide({ objective, context, memorySummary, wakeReason }) {
-        const prompt = `You are the autonomous market planner for Continuum, an agent-first RWA marketplace.
-Return JSON only.
-
-Rules:
-- Choose exactly one next action.
-- Allowed actions: analyze, bid, settle_auction, claim_yield, route_yield, rebalance_treasury, watch, hold.
-- Never propose minting, physical rental actions, or anything outside trade + treasury scope.
-- If an action is blocked by guardrails, return hold with blockedBy.
-- Keep rationale concise and operator-readable.
-
-Objective:
-${JSON.stringify(objective || {}, null, 2)}
-
-Wake reason: ${wakeReason || "scheduled"}
-
-Memory summary:
-${memorySummary || "No memory summary yet."}
-
-Runtime context:
-${JSON.stringify(context || {}, null, 2)}
-
-Response shape:
-{
-  "actionType": "bid",
-  "actionArgs": {},
-  "thesis": "short thesis",
-  "rationale": "why",
-  "confidence": 0,
-  "blockedBy": "",
-  "requiresHuman": false,
-  "wakeReason": "${wakeReason || "scheduled"}"
-}`;
+        const prompt = buildDecidePrompt({ objective, context, memorySummary, wakeReason });
         return normalizeProposal(await this.generateJson(prompt), wakeReason);
     }
 
@@ -613,7 +591,7 @@ class AgentBrainService {
         this.providers = Array.isArray(config.providers) && config.providers.length
             ? config.providers
             : [config.provider || null, ...this.createProviders()].filter(Boolean);
-        this.providerCooldownMs = Math.max(15_000, Number(config.providerCooldownMs || process.env.AGENT_LLM_PROVIDER_COOLDOWN_MS || 60_000));
+        this.providerCooldownMs = Math.max(15_000, Number(config.providerCooldownMs || process.env.AGENT_LLM_PROVIDER_COOLDOWN_MS || 180_000));
         this.authFailureCooldownMs = Math.max(this.providerCooldownMs, Number(process.env.AGENT_LLM_AUTH_COOLDOWN_MS || 300_000));
         this.cooldowns = new Map();
     }

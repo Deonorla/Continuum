@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
 import { uploadPhotos, submitEvidence, mintRwaAsset } from '../services/rwaApi.js';
+import { useWallet } from '../context/WalletContext';
 import {
   UploadCloud,
   MapPin,
@@ -848,6 +849,7 @@ function CategoryPicker({ selected, onSelect }: CategoryPickerProps) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function PropertyMint() {
+  const { walletAddress } = useWallet() as { walletAddress: string };
   const [category, setCategory] = useState<Category>("estate");
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [photos, setPhotos] = useState<Array<{ file: File; previewUrl: string }>>([]);
@@ -895,6 +897,10 @@ export default function PropertyMint() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!walletAddress) {
+      setMintError('Connect your Stellar wallet before minting.');
+      return;
+    }
     setIsSubmitting(true);
     setMintError(null);
     try {
@@ -1005,7 +1011,7 @@ export default function PropertyMint() {
         },
       };
 
-      // Step 4: Mint
+      // Step 4: Mint — issuer is the connected wallet, backend operator signs the Soroban tx
       const result = await mintRwaAsset({
         propertyType,
         formPayload,
@@ -1013,6 +1019,7 @@ export default function PropertyMint() {
         coverCID,
         evidenceRoot,
         evidenceManifestHash,
+        issuer: walletAddress,
         jurisdiction: form.state || '',
       });
 

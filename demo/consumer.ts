@@ -1,6 +1,6 @@
 import { StreamEngineSDK } from '../sdk/src/StreamEngineSDK';
 import { StreamEngineStellarAdapter } from '../sdk/src/StreamEngineStellarAdapter';
-import { ethers } from 'ethers';
+import { parsePaymentAmount } from '../sdk/src/tokenConfig';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
@@ -47,8 +47,8 @@ async function runDemo() {
       decimals: runtime.paymentTokenDecimals,
     },
     spendingLimits: {
-      dailyLimit: ethers.parseUnits('100', runtime.paymentTokenDecimals),
-      totalLimit: ethers.parseUnits('1000', runtime.paymentTokenDecimals),
+      dailyLimit: parsePaymentAmount('100', runtime.paymentTokenDecimals),
+      totalLimit: parsePaymentAmount('1000', runtime.paymentTokenDecimals),
     },
   });
 

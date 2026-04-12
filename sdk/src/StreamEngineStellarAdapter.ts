@@ -1,5 +1,5 @@
 import axios from "axios";
-import { InterfaceAbi } from "ethers";
+import { ContractAbi } from "./transactionAdapter";
 import { StreamEngineTransactionAdapter, StreamCreationResult } from "./transactionAdapter";
 
 export interface StreamEngineStellarAdapterConfig {
@@ -59,7 +59,7 @@ export class StreamEngineStellarAdapter implements StreamEngineTransactionAdapte
         duration: number,
         amount: bigint,
         metadata: string,
-        _abi: InterfaceAbi,
+        _abi: ContractAbi,
     ): Promise<StreamCreationResult> {
         const response = await axios.post(`${this.apiBaseUrl}/api/sessions`, {
             sender: this.senderAddress,
@@ -99,7 +99,7 @@ export class StreamEngineStellarAdapter implements StreamEngineTransactionAdapte
 
     async callContract(
         _contractAddress: string,
-        _abi: InterfaceAbi,
+        _abi: ContractAbi,
         functionName: string,
         args: unknown[]
     ): Promise<unknown> {
@@ -108,7 +108,7 @@ export class StreamEngineStellarAdapter implements StreamEngineTransactionAdapte
 
     async readContract<T = unknown>(
         _contractAddress: string,
-        _abi: InterfaceAbi,
+        _abi: ContractAbi,
         functionName: string,
         args: unknown[]
     ): Promise<T> {

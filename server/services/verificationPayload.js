@@ -1,4 +1,4 @@
-const { ethers } = require("ethers");
+const { sha256Hex } = require("./unitHelpers");
 const { normalizeCid } = require("./ipfsService");
 const { stableStringify } = require("./rwaModel");
 
@@ -49,7 +49,7 @@ async function buildVerificationPayload({
         return encodedPayload;
     }
 
-    const payloadDigest = ethers.keccak256(ethers.toUtf8Bytes(stableStringify(payload)));
+    const payloadDigest = sha256Hex(stableStringify(payload));
     const signature = await signer.signMessage(payloadDigest);
 
     return encodePayload({

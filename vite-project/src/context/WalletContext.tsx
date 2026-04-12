@@ -8,7 +8,6 @@ import {
   useRef,
 } from "react";
 import { useLocation } from "react-router-dom";
-import { ethers } from "ethers";
 import {
   getNetworkDetails as getFreighterNetworkDetails,
   signMessage as signFreighterMessage,
@@ -37,6 +36,20 @@ import {
 
 const WalletContext = createContext(null);
 const STORED_WALLET_KEY = "se_wallet";
+
+function parseTokenUnits(value, decimals) {
+  const str = String(value || "0");
+  const [whole = "0", frac = ""] = str.split(".");
+  const padded = (frac + "0".repeat(decimals)).slice(0, decimals);
+  return BigInt(whole + padded);
+}
+
+function formatTokenUnits(value, decimals) {
+  const str = String(value).padStart(decimals + 1, "0");
+  const whole = str.slice(0, str.length - decimals) || "0";
+  const frac = str.slice(str.length - decimals);
+  return `${whole}.${frac}`;
+}
 
 function formatAddress(address) {
   if (!address) {
@@ -438,7 +451,7 @@ export function WalletProvider({ children }) {
     const tokenAddress = isNative
       ? (assetOptions?.asset?.tokenAddress || ACTIVE_NETWORK.paymentTokenAddress)
       : (assetOptions?.asset?.tokenAddress || ACTIVE_NETWORK.paymentTokenAddress);
-    const totalAmount = BigInt(ethers.parseUnits(normalizedAmount, paymentTokenDecimals).toString());
+    const totalAmount = parseTokenUnits(normalizedAmount, paymentTokenDecimals);
     const metadataStr = typeof metadata === "string" ? metadata : JSON.stringify(metadata || {});
 
     setIsProcessing(true);
@@ -482,7 +495,7 @@ export function WalletProvider({ children }) {
   const getClaimableBalance = useCallback(async (streamId) => {
     try {
       const session = await fetchPaymentSession(streamId);
-      return ethers.formatUnits(
+      return formatTokenUnits(
         BigInt(String(session?.claimableInitial || computeSessionClaimable(session))),
         paymentTokenDecimals,
       );
@@ -493,7 +506,7 @@ export function WalletProvider({ children }) {
 
   const formatEth = useCallback((value) => {
     try {
-      return Number(ethers.formatUnits(BigInt(String(value || "0")), paymentTokenDecimals)).toFixed(4);
+      return Number(formatTokenUnits(BigInt(String(value || "0")), paymentTokenDecimals)).toFixed(4);
     } catch {
       return "0.0000";
     }

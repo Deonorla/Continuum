@@ -1,5 +1,4 @@
 import axios, { AxiosRequestConfig, AxiosError, AxiosResponse } from 'axios';
-import { ethers, Contract, Wallet, JsonRpcProvider } from 'ethers';
 import { GeminiPaymentBrain } from './GeminiPaymentBrain';
 import { SpendingMonitor, SpendingLimits } from './SpendingMonitor';
 import { PaymentTokenConfig, formatPaymentAmount, parsePaymentAmount, resolvePaymentTokenConfig } from './tokenConfig';
@@ -7,11 +6,10 @@ import { StreamEngineTransactionAdapter } from './transactionAdapter';
 import { normalizeRecipientAddress } from './addressUtils';
 
 export interface StreamEngineConfig {
-    privateKey?: string;
-    rpcUrl: string;
+    rpcUrl?: string;
     apiKey?: string;
     token?: PaymentTokenConfig;
-    adapter?: StreamEngineTransactionAdapter;
+    adapter: StreamEngineTransactionAdapter;
     requestTimeoutMs?: number;
 
     spendingLimits?: SpendingLimits;
@@ -32,11 +30,9 @@ export interface StreamMetadata {
 }
 
 export class StreamEngineSDK {
-    private wallet: Wallet | null;
-    private provider: JsonRpcProvider;
     private apiKey?: string;
     private agentId?: string;
-    private adapter?: StreamEngineTransactionAdapter;
+    private adapter: StreamEngineTransactionAdapter;
 
     private activeStreams: Map<string, StreamMetadata> = new Map();
     public brain: GeminiPaymentBrain;
@@ -46,28 +42,12 @@ export class StreamEngineSDK {
     private tokenDecimals: number;
     private requestTimeoutMs: number;
 
-    private MIN_ABI = [
-        "function createStream(address recipient, uint256 duration, uint256 amount, string metadata) external",
-        "function isStreamActive(uint256 streamId) external view returns (bool)",
-        "function paymentToken() external view returns (address)",
-        "function streams(uint256 streamId) external view returns (address sender, address recipient, uint256 totalAmount, uint256 flowRate, uint256 startTime, uint256 stopTime, uint256 amountWithdrawn, bool isActive, string metadata)",
-        "event StreamCreated(uint256 indexed streamId, address indexed sender, address indexed recipient, uint256 totalAmount, uint256 startTime, uint256 stopTime, string metadata)"
-    ];
-
-    private ERC20_ABI = [
-        "function approve(address spender, uint256 amount) external returns (bool)",
-        "function transfer(address recipient, uint256 amount) external returns (bool)",
-        "function allowance(address owner, address spender) external view returns (uint256)"
-    ];
-
     constructor(config: StreamEngineConfig) {
-        this.provider = new JsonRpcProvider(config.rpcUrl);
-        this.wallet = config.privateKey ? new Wallet(config.privateKey, this.provider) : null;
+        if (!config.adapter) {
+            throw new Error("StreamEngineSDK requires an `adapter`.");
+        }
         this.adapter = config.adapter;
         this.apiKey = config.apiKey;
-        if (!this.wallet && !this.adapter) {
-            throw new Error("StreamEngineSDK requires either `privateKey` or `adapter`.");
-        }
         const tokenConfig = resolvePaymentTokenConfig(config.token);
         this.tokenSymbol = tokenConfig.symbol;
         this.tokenDecimals = tokenConfig.decimals;
@@ -320,24 +300,19 @@ export class StreamEngineSDK {
         metadata: any = {}
     ): Promise<{ streamId: string, startTime: bigint }> {
         const resolvedRecipient = normalizeRecipientAddress(recipient);
-        const streamContract = this.adapter ? null : new Contract(contractAddress, this.MIN_ABI, this.wallet || this.provider);
 
         // If token address is not provided in header, try fetching from contract
         let paymentTokenAddress = tokenAddress;
         if (!paymentTokenAddress) {
-            if (this.adapter?.readContract) {
+            if (this.adapter.readContract) {
                 paymentTokenAddress = await this.adapter.readContract<string>(
                     contractAddress,
-                    this.MIN_ABI,
+                    null,
                     "paymentToken",
                     []
                 );
             } else {
-                try {
-                    paymentTokenAddress = await streamContract!.paymentToken();
-                } catch {
-                    throw new Error("Cannot determine payment token address");
-                }
+                throw new Error("Cannot determine payment token address");
             }
         }
 
@@ -354,61 +329,18 @@ export class StreamEngineSDK {
         };
         const metadataString = JSON.stringify(enrichedMetadata);
 
-        if (this.adapter) {
-            console.log(`[StreamEngineSDK] Approving ${this.tokenSymbol} through adapter...`);
-            await this.adapter.approveToken(paymentTokenAddress, contractAddress, amount);
-            console.log("[StreamEngineSDK] Approved.");
-            console.log(`[StreamEngineSDK] Creating stream to ${resolvedRecipient}...`);
-            return this.adapter.createStream(
-                contractAddress,
-                resolvedRecipient,
-                duration,
-                amount,
-                metadataString,
-                this.MIN_ABI
-            );
-        }
-
-        if (!this.wallet) {
-            throw new Error("StreamEngineSDK wallet is not configured");
-        }
-
-        const token = new Contract(paymentTokenAddress, this.ERC20_ABI, this.wallet);
-        let shouldApprove = true;
-        try {
-            const allowance = await token.allowance(this.wallet.address, contractAddress);
-            shouldApprove = allowance < amount;
-        } catch (error: any) {
-            console.warn("[StreamEngineSDK] Unable to read token allowance through RPC. Falling back to unconditional approval.");
-            console.warn(`[StreamEngineSDK] Allowance read error: ${error?.shortMessage || error?.message || error}`);
-        }
-
-        if (shouldApprove) {
-            console.log(`[StreamEngineSDK] Approving ${this.tokenSymbol}...`);
-            const txApprove = await token.approve(contractAddress, amount);
-            await txApprove.wait();
-            console.log("[StreamEngineSDK] Approved.");
-        }
-
+        console.log(`[StreamEngineSDK] Approving ${this.tokenSymbol} through adapter...`);
+        await this.adapter.approveToken(paymentTokenAddress, contractAddress, amount);
+        console.log("[StreamEngineSDK] Approved.");
         console.log(`[StreamEngineSDK] Creating stream to ${resolvedRecipient}...`);
-
-        const tx = await streamContract!.createStream(resolvedRecipient, duration, amount, metadataString);
-        const receipt = await tx.wait();
-
-        // Parse event to get ID
-        const log = receipt.logs.find((l: any) => {
-            try {
-                return streamContract!.interface.parseLog(l)?.name === 'StreamCreated';
-            } catch { return false; }
-        });
-
-        if (!log) throw new Error("StreamCreated event not found");
-
-        const parsed = streamContract!.interface.parseLog(log);
-        const streamId = parsed?.args[0].toString();
-        const startTime = parsed?.args[4]; // args[4] is startTime based on ABI event def
-
-        return { streamId, startTime };
+        return this.adapter.createStream(
+            contractAddress,
+            resolvedRecipient,
+            duration,
+            amount,
+            metadataString,
+            null
+        );
     }
 
     public calculateClaimable(stream: StreamMetadata): bigint {
@@ -444,23 +376,10 @@ export class StreamEngineSDK {
 
         console.log(`[StreamEngineSDK] Executing Direct Payment of ${formatPaymentAmount(amount, tokenDecimals)} ${tokenSymbol}`);
 
-        if (this.adapter) {
-            const tx = await this.adapter.transferToken(tokenAddress, resolvedRecipient, amount);
-            txHash = (tx as { hash?: string }).hash || "";
-            if (txHash) {
-                console.log(`[StreamEngineSDK] Direct Payment Sent: ${txHash}`);
-            }
-        } else {
-            if (!this.wallet) {
-                throw new Error("StreamEngineSDK wallet is not configured");
-            }
-
-            const token = new Contract(tokenAddress, this.ERC20_ABI, this.wallet);
-            const tx = await token.transfer(resolvedRecipient, amount);
-            await tx.wait();
-            txHash = tx.hash;
-
-            console.log(`[StreamEngineSDK] Direct Payment Sent: ${tx.hash}`);
+        const tx = await this.adapter.transferToken(tokenAddress, resolvedRecipient, amount);
+        txHash = (tx as { hash?: string }).hash || "";
+        if (txHash) {
+            console.log(`[StreamEngineSDK] Direct Payment Sent: ${txHash}`);
         }
 
         const retryOptions = {

@@ -1,5 +1,3 @@
-import { ethers } from "ethers";
-
 export interface PaymentTokenConfig {
     symbol?: string;
     decimals?: number;
@@ -14,10 +12,16 @@ export function resolvePaymentTokenConfig(config: PaymentTokenConfig = {}) {
     };
 }
 
-export function parsePaymentAmount(value: string | number, decimals = 6) {
-    return ethers.parseUnits(String(value), decimals);
+export function parsePaymentAmount(value: string | number, decimals = 6): bigint {
+    const str = String(value);
+    const [whole = "0", frac = ""] = str.split(".");
+    const padded = (frac + "0".repeat(decimals)).slice(0, decimals);
+    return BigInt(whole + padded);
 }
 
-export function formatPaymentAmount(value: bigint, decimals = 6) {
-    return ethers.formatUnits(value, decimals);
+export function formatPaymentAmount(value: bigint, decimals = 6): string {
+    const str = value.toString().padStart(decimals + 1, "0");
+    const whole = str.slice(0, str.length - decimals) || "0";
+    const frac = str.slice(str.length - decimals);
+    return `${whole}.${frac}`;
 }

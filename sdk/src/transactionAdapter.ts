@@ -1,4 +1,5 @@
-import { InterfaceAbi } from "ethers";
+/** Generic contract ABI type — no longer tied to ethers InterfaceAbi */
+export type ContractAbi = unknown;
 
 export interface StreamCreationResult {
     streamId: string;
@@ -16,17 +17,17 @@ export interface StreamEngineTransactionAdapter {
         duration: number,
         amount: bigint,
         metadata: string,
-        abi: InterfaceAbi
+        abi: ContractAbi
     ): Promise<StreamCreationResult>;
     callContract(
         contractAddress: string,
-        abi: InterfaceAbi,
+        abi: ContractAbi,
         functionName: string,
         args: unknown[]
     ): Promise<unknown>;
     readContract?<T = unknown>(
         contractAddress: string,
-        abi: InterfaceAbi,
+        abi: ContractAbi,
         functionName: string,
         args: unknown[]
     ): Promise<T>;

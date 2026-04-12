@@ -1,4 +1,4 @@
-const { ethers } = require("ethers");
+const { parseUnits, formatUnits } = require("../services/unitHelpers");
 
 function normalizeAddress(value = "") {
     return String(value || "").trim().toUpperCase();
@@ -33,7 +33,7 @@ function send402Response(res, routeConfig, config, requiredAmount, tokenDecimals
 
     res.set("X-Payment-Required", "true");
     res.set("X-Stream-Mode", routeConfig.mode || "streaming");
-    res.set("X-Stream-Rate", ethers.formatUnits(requiredAmount, tokenDecimals));
+    res.set("X-Stream-Rate", formatUnits(requiredAmount, tokenDecimals));
     res.set("X-Stream-Token", paymentTokenAddress);
     res.set("X-Stream-Token-Decimals", String(tokenDecimals));
     res.set("X-Payment-Currency", tokenSymbol);
@@ -48,7 +48,7 @@ function send402Response(res, routeConfig, config, requiredAmount, tokenDecimals
         message: "Payment Required",
         requirements: {
             mode: routeConfig.mode || "streaming",
-            price: ethers.formatUnits(requiredAmount, tokenDecimals),
+            price: formatUnits(requiredAmount, tokenDecimals),
             currency: tokenSymbol,
             contract: config.streamEngineContractAddress || "",
             recipient: config.recipientAddress || "",
@@ -96,7 +96,7 @@ const streamEngineMiddleware = (config) => {
             return next();
         }
 
-        const requiredAmount = ethers.parseUnits(routeConfig.price || "0", tokenDecimals);
+        const requiredAmount = parseUnits(routeConfig.price || "0", tokenDecimals);
         const txHashHeader = req.headers["x-stream-tx-hash"];
         const streamIdHeader = req.headers["x-stream-stream-id"];
 

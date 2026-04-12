@@ -796,12 +796,23 @@ function createApp(config = defaultConfig) {
             coverCID,
         } = req.body || {};
 
-        if (!issuer) {
-            return res.status(400).json({ error: "issuer is required" });
-        }
-        if (!propertyRef) {
-            return res.status(400).json({ error: "propertyRef is required" });
-        }
+        // Resolve issuer from the backend operator key — no user-supplied issuer required
+        const resolvedIssuer = issuer
+            || process.env.STELLAR_OPERATOR_PUBLIC_KEY
+            || process.env.STELLAR_PLATFORM_ADDRESS
+            || "";
+
+        // Auto-derive propertyRef from address fields when not supplied
+        const resolvedPropertyRef = propertyRef
+            || (formPayload?.address
+                ? [
+                    formPayload.address.street,
+                    formPayload.address.city,
+                    formPayload.address.state,
+                    formPayload.address.zip,
+                ].filter(Boolean).join(", ")
+                : "")
+            || "";
 
         // Property-type-aware path
         let resolvedPublicMetadataURI;
@@ -894,13 +905,13 @@ function createApp(config = defaultConfig) {
             }
             evidenceRecord = await services.evidenceVault.storeBundle(evidenceBundle, {
                 rightsModel: normalizedRightsModel.label,
-                propertyRef,
+                propertyRef: resolvedPropertyRef,
                 jurisdiction,
             });
         }
 
-        const propertyRefHash = hashText(propertyRef);
-        const resolvedTagHash = tagHash || hashText(tag || `${issuer}:${propertyRef}:${resolvedPublicMetadataURI}`);
+        const propertyRefHash = hashText(resolvedPropertyRef);
+        const resolvedTagHash = tagHash || hashText(tag || `${resolvedIssuer}:${resolvedPropertyRef}:${resolvedPublicMetadataURI}`);
         const cidHash = hashText(resolvedPublicMetadataURI);
 
         let mintResult;
@@ -916,7 +927,7 @@ function createApp(config = defaultConfig) {
                 jurisdiction,
                 cidHash,
                 tagHash: resolvedTagHash,
-                issuer,
+                issuer: resolvedIssuer,
                 statusReason,
             });
         } catch (error) {

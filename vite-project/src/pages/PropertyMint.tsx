@@ -1013,9 +1013,7 @@ export default function PropertyMint() {
         coverCID,
         evidenceRoot,
         evidenceManifestHash,
-        issuer: '', // will be resolved server-side from operator key
         jurisdiction: form.state || '',
-        propertyRef: `${form.street}, ${form.city}, ${form.state} ${form.zip}`,
       });
 
       setMintResult({ tokenId: result.tokenId, metadataURI: result.publicMetadataURI || result.metadataURI, txHash: result.txHash });

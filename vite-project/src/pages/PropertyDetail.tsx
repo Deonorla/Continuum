@@ -706,7 +706,7 @@ function OnChainTab({ asset }: { asset: any }) {
           )}
           {asset.tokenId && (
             <a
-              href={`${ACTIVE_NETWORK.explorerUrl}/contract/${asset.ownerAddress || ''}`}
+              href={`${ACTIVE_NETWORK.explorerUrl}/account/${asset.ownerAddress || ''}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-bold hover:bg-blue-100 transition-colors"

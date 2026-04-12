@@ -900,10 +900,11 @@ function createApp(config = defaultConfig) {
                 return res.status(400).json({ error: "evidenceManifestHash does not match the stored evidence bundle" });
             }
         } else {
-            if (!evidenceBundle || typeof evidenceBundle !== "object") {
-                return res.status(400).json({ error: "evidenceBundle or evidenceRoot is required" });
-            }
-            evidenceRecord = await services.evidenceVault.storeBundle(evidenceBundle, {
+            // Auto-create an empty evidence bundle when none is provided — evidence is optional for property minting
+            const bundle = (evidenceBundle && typeof evidenceBundle === "object")
+                ? evidenceBundle
+                : { documents: {} };
+            evidenceRecord = await services.evidenceVault.storeBundle(bundle, {
                 rightsModel: normalizedRightsModel.label,
                 propertyRef: resolvedPropertyRef,
                 jurisdiction,

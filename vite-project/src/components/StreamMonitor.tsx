@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { ethers } from 'ethers';
 import { CheckCircle, AlertTriangle, AlertOctagon, Square, Waves } from 'lucide-react';
+import { paymentTokenSymbol } from '../contactInfo.js';
 
 // Animated Particle Flow
 const ParticleFlow = ({ isActive }) => {
@@ -234,7 +235,7 @@ const StreamCard = ({ stream, now }) => {
                     <span className="text-4xl font-bold text-gradient-primary">
                         <AnimatedCounter value={claimable} decimals={6} />
                     </span>
-                    <span className="text-lg text-white/40">DOT</span>
+                    <span className="text-lg text-white/40">{stream.paymentTokenSymbol || paymentTokenSymbol}</span>
                 </div>
             </div>
 
@@ -264,7 +265,7 @@ const StreamCard = ({ stream, now }) => {
             <div className="flex items-center justify-between pt-3 border-t border-white/10">
                 <AutoRenewalStatus enabled={stream.autoRenew} />
                 <div className="text-xs text-white/40">
-                    Total: {totalAmount.toFixed(4)} DOT
+                    Total: {totalAmount.toFixed(4)} {stream.paymentTokenSymbol || paymentTokenSymbol}
                 </div>
             </div>
         </div>

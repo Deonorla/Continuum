@@ -1,10 +1,8 @@
 # Root
 node_modules/
 artifacts/
-artifacts-pvm/
 cache/
 .agent-wallets.json
-cache-pvm/
 coverage/
 typechain/
 hardhat.cache
@@ -15,9 +13,6 @@ ignition/deployments/
 /sdk/dist/
 
 # Local chain and wallet data
-/substrate.json
-/substrate-*.json
-/substrate*.json
 /.stellar-cli/
 *.pem
 *.key

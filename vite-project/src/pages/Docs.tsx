@@ -142,10 +142,9 @@ function isPlaceholderRuntimeAddress(value) {
 
 function getExplorerBase(catalog) {
   return String(
-    ACTIVE_NETWORK.explorerUrl
-    || (isStellarRuntime(catalog)
-      ? "https://stellar.expert/explorer/testnet"
-      : "https://westmint.subscan.io"),
+    catalog?.network?.explorerUrl
+    || ACTIVE_NETWORK.explorerUrl
+    || "https://stellar.expert/explorer/testnet",
   ).replace(/\/$/, "");
 }
 
@@ -329,19 +328,20 @@ function buildContractLinks(catalog) {
 function buildSections(catalog) {
   const stellar = isStellarRuntime(catalog);
   const networkName = catalog?.network?.name || "Stellar Testnet";
-  const chainId = catalog?.network?.chainId ?? (stellar ? 0 : 420420421);
+  const chainId = catalog?.network?.chainId ?? ACTIVE_NETWORK.chainId ?? 0;
   const tokenSymbol = catalog?.payments?.tokenSymbol || "USDC";
-  const paymentAssetId = catalog?.payments?.paymentAssetId ?? (stellar ? 0 : 31337);
   const paymentAssetCode = catalog?.payments?.assetCode || tokenSymbol;
   const paymentAssetIssuer = catalog?.payments?.assetIssuer || "";
-  const settlement = catalog?.payments?.settlement || (stellar ? "soroban-sac" : "evm-precompile");
+  const settlement = catalog?.payments?.settlement || (stellar ? "soroban-sac" : "erc20");
   const recipientAddress =
     catalog?.payments?.recipientAddress || "Not configured";
   const paymentTokenLabel = stellar ? `Stellar ${tokenSymbol}` : `Circle ${tokenSymbol}`;
-  const gasToken = stellar ? "XLM" : "WND";
+  const gasToken = stellar
+    ? "XLM"
+    : catalog?.network?.nativeCurrency?.symbol || ACTIVE_NETWORK.nativeCurrency?.symbol || "ETH";
   const paymentAssetLabel = stellar
     ? `${paymentAssetCode}${paymentAssetIssuer ? ` / ${paymentAssetIssuer}` : " via SAC"}`
-    : `Asset id ${paymentAssetId}`;
+    : `${tokenSymbol} payment token`;
 
   return [
     {
@@ -1893,7 +1893,6 @@ function FaqList({ items = [] }) {
 function ArchitectureDiagram({ catalog }) {
   const stellar = isStellarRuntime(catalog);
   const tokenSymbol = catalog?.payments?.tokenSymbol || "USDC";
-  const paymentAssetId = catalog?.payments?.paymentAssetId ?? (stellar ? 0 : 31337);
   const paymentAssetCode = catalog?.payments?.assetCode || tokenSymbol;
   const paymentAssetIssuer = catalog?.payments?.assetIssuer || "";
   const paymentRecipient =
@@ -1901,7 +1900,7 @@ function ArchitectureDiagram({ catalog }) {
   const paymentTokenAddress =
     catalog?.payments?.tokenAddress
     || ACTIVE_NETWORK.paymentTokenAddress
-    || (stellar ? "stellar:usdc-sac" : "0x00007a6900000000000000000000000001200000");
+    || (stellar ? "stellar:usdc-sac" : "");
   const contracts = getDeployedContractDescriptors(catalog);
   const paymentContracts = contracts.filter((contract) => contract.group === "Payment Rail");
   const rwaContracts = contracts.filter((contract) => contract.group === "RWA Rail");
@@ -2012,7 +2011,7 @@ function ArchitectureDiagram({ catalog }) {
                 </div>
                 <div className="rounded-2xl border border-slate-100 bg-white p-4">
                   <div className="text-sm font-semibold text-white">
-                    {stellar ? `Stellar ${tokenSymbol} settlement asset` : `Circle ${tokenSymbol} asset precompile`}
+                    {stellar ? `Stellar ${tokenSymbol} settlement asset` : `${tokenSymbol} payment token`}
                   </div>
                   <div className="mt-2 break-all font-mono text-xs text-blue-600">
                     {paymentTokenAddress}
@@ -2020,7 +2019,7 @@ function ArchitectureDiagram({ catalog }) {
                   <p className="mt-3 text-sm leading-6 text-slate-500">
                     {stellar
                       ? `${paymentAssetCode}${paymentAssetIssuer ? ` / ${paymentAssetIssuer}` : " via SAC"} used for direct settlement, rental funding, and yield operations.`
-                      : `Native payment asset ${paymentAssetId} used for approvals, direct settlement, rental funding, and yield operations.`}
+                      : `${tokenSymbol} is used for approvals, direct settlement, rental funding, and yield operations.`}
                   </p>
                 </div>
                 {paymentContracts.map((contract) => (
@@ -2275,8 +2274,8 @@ export default function Docs() {
                 <p className="text-sm font-bold text-primary">{stellar ? "Stellar" : "Circle"} {catalog?.payments?.tokenSymbol || "USDC"}</p>
               </div>
               <div>
-                <p className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400 mb-2">{stellar ? "Settlement" : "Asset Id"}</p>
-                <p className="text-sm font-bold text-primary">{stellar ? (catalog?.payments?.settlement || "soroban-sac") : String(catalog?.payments?.paymentAssetId || 31337)}</p>
+                <p className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400 mb-2">Settlement</p>
+                <p className="text-sm font-bold text-primary">{catalog?.payments?.settlement || (stellar ? "soroban-sac" : "erc20")}</p>
               </div>
             </div>
             <div className="bg-white p-6 rounded-2xl border border-slate-100 flex items-start gap-4">

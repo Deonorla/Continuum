@@ -36,7 +36,6 @@ function CityProjector({ cityIndex, onProject }) {
 export default function LandingHero({
   networkName = "Stellar Testnet",
   tokenSymbol = "USDC",
-  paymentAssetId = 0,
   routeCount = 0,
   assetCount = 0,
 }) {
@@ -327,7 +326,7 @@ export default function LandingHero({
               cls: "border-success-500/40 text-success-300 bg-success-500/10",
             },
             {
-              label: `${tokenSymbol} asset ${paymentAssetId}`,
+              label: `${tokenSymbol} via SAC`,
               cls: "border-pink-500/40 text-pink-300 bg-pink-500/10",
             },
           ].map((p) => (

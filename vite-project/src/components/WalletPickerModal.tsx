@@ -1,5 +1,4 @@
 import { Wallet, X } from 'lucide-react';
-import { ACTIVE_NETWORK } from '../networkConfig.js';
 
 function WalletIcon({ wallet }) {
   if (wallet.icon) {
@@ -17,11 +16,7 @@ function WalletIcon({ wallet }) {
 
 export default function WalletPickerModal({ isOpen, wallets, isConnecting, activeWalletId, onClose, onSelect, onDisconnect }) {
   if (!isOpen) return null;
-
-  const isStellar = ACTIVE_NETWORK.kind === 'stellar';
-  const emptyCopy = isStellar
-    ? 'No Stellar wallets detected. Install Freighter and reload.'
-    : 'No compatible wallets detected in this browser.';
+  const emptyCopy = 'No Stellar wallets detected. Install Freighter and reload.';
 
   return (
     <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-black/40 px-0 sm:px-4 backdrop-blur-sm">
@@ -32,9 +27,7 @@ export default function WalletPickerModal({ isOpen, wallets, isConnecting, activ
             <div className="text-[10px] font-label font-bold uppercase tracking-widest text-primary mb-1">Wallets</div>
             <h2 className="text-2xl font-headline font-black tracking-tight text-slate-900">Connect Wallet</h2>
             <p className="mt-1 text-sm text-slate-400 leading-relaxed">
-              {isStellar
-                ? 'Connect Freighter to sign Stellar session approvals.'
-                : 'Connect a compatible wallet for the current runtime.'}
+              Connect Freighter to sign Stellar session approvals.
             </p>
           </div>
           <button onClick={onClose}
@@ -60,7 +53,7 @@ export default function WalletPickerModal({ isOpen, wallets, isConnecting, activ
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-bold text-slate-900 font-headline">{wallet.name}</span>
                     <span className="rounded-full bg-blue-50 border border-blue-100 px-2 py-0.5 text-[10px] font-label font-bold uppercase tracking-wider text-primary">
-                      {wallet.type === 'stellar' ? 'Stellar' : wallet.type === 'substrate' ? 'Substrate' : 'EVM'}
+                      Stellar
                     </span>
                     {isActive && (
                       <span className="rounded-full bg-teal-50 border border-teal-100 px-2 py-0.5 text-[10px] font-label font-bold uppercase tracking-wider text-secondary">

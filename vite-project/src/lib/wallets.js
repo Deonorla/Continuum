@@ -2,45 +2,6 @@ import {
   isConnected as freighterIsConnected,
   requestAccess as freighterRequestAccess,
 } from '@stellar/freighter-api';
-import { ACTIVE_NETWORK } from '../networkConfig.js';
-
-const SUPPORTED_WALLETS = [];
-
-function getSupportedWallet(info = {}, provider) {
-  return SUPPORTED_WALLETS.find((wallet) => wallet.matches(info, provider)) || null;
-}
-
-function detectInjectedName(provider) {
-  return getSupportedWallet({}, provider)?.name || '';
-}
-
-function detectInjectedRdns(provider) {
-  return getSupportedWallet({}, provider)?.rdns || '';
-}
-
-function normalizeInjectedWallet(info = {}, provider) {
-  const supportedWallet = getSupportedWallet(info, provider);
-  if (!supportedWallet) {
-    return null;
-  }
-
-  const name = supportedWallet.name;
-  const rdns = supportedWallet.rdns;
-  const uuid = info.uuid || `${rdns}:${name}`.toLowerCase();
-
-  return {
-    id: `injected:${uuid}`,
-    type: 'injected',
-    name,
-    icon: info.icon || '',
-    rdns,
-    description: provider?.isTalisman
-      ? 'Injected Polkadot EVM wallet'
-      : 'Injected EVM wallet',
-    provider,
-    isAvailable: true,
-  };
-}
 
 async function detectFreighterWallet() {
   try {
@@ -81,110 +42,12 @@ async function detectFreighterWallet() {
   }
 }
 
-function appendProvider(walletMap, info, provider) {
-  if (!provider?.request) {
-    return;
-  }
-
-  const wallet = normalizeInjectedWallet(info, provider);
-  if (!wallet) return;
-
-  // Deduplicate by rdns — prefer entry with an icon (EIP-6963 over legacy)
-  const existing = [...walletMap.values()].find(w => w.rdns === wallet.rdns);
-  if (!existing) {
-    walletMap.set(wallet.id, wallet);
-  } else if (!existing.icon && wallet.icon) {
-    walletMap.delete(existing.id);
-    walletMap.set(wallet.id, wallet);
-  }
-}
-
-function appendLegacyProviders(walletMap) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  if (window.talismanEth) {
-    appendProvider(walletMap, {
-      name: 'Talisman',
-      rdns: 'xyz.talisman',
-      uuid: 'talisman-global',
-    }, window.talismanEth);
-  }
-
-  const providers = [];
-  if (Array.isArray(window.ethereum?.providers)) {
-    providers.push(...window.ethereum.providers);
-  } else if (window.ethereum) {
-    providers.push(window.ethereum);
-  }
-
-  providers.forEach((provider) => appendProvider(walletMap, {}, provider));
-}
-
-function sortWallets(wallets) {
-  const priority = ['Freighter'];
-  return [...wallets].sort((left, right) => {
-    const leftIndex = priority.indexOf(left.name);
-    const rightIndex = priority.indexOf(right.name);
-    const normalizedLeft = leftIndex === -1 ? priority.length : leftIndex;
-    const normalizedRight = rightIndex === -1 ? priority.length : rightIndex;
-
-    if (normalizedLeft !== normalizedRight) {
-      return normalizedLeft - normalizedRight;
-    }
-
-    return left.name.localeCompare(right.name);
-  });
-}
-
-export async function discoverInjectedWallets(timeout = 250) {
-  if (typeof window === 'undefined') {
-    return [];
-  }
-
-  const walletMap = new Map();
-
-  await new Promise((resolve) => {
-    const timer = window.setTimeout(() => {
-      window.removeEventListener('eip6963:announceProvider', handleAnnouncement);
-      // Add legacy providers after EIP-6963 so icons from EIP-6963 take priority
-      appendLegacyProviders(walletMap);
-      resolve();
-    }, timeout);
-
-    function handleAnnouncement(event) {
-      const detail = event.detail || {};
-      appendProvider(walletMap, detail.info, detail.provider);
-    }
-
-    window.addEventListener('eip6963:announceProvider', handleAnnouncement);
-    window.dispatchEvent(new Event('eip6963:requestProvider'));
-
-    if (!window.ethereum) {
-      window.clearTimeout(timer);
-      window.removeEventListener('eip6963:announceProvider', handleAnnouncement);
-      appendLegacyProviders(walletMap);
-      resolve();
-    }
-  });
-
-  const wallets = Array.from(walletMap.values());
-
-  const freighterWallet = await detectFreighterWallet();
-  if (!wallets.some((wallet) => wallet.id === freighterWallet.id)) {
-    wallets.push(freighterWallet);
-  }
-
-  return sortWallets(wallets);
+export async function discoverInjectedWallets() {
+  return [await detectFreighterWallet()];
 }
 
 export async function getAvailableWallets() {
-  const wallets = await discoverInjectedWallets();
-  if (ACTIVE_NETWORK.kind === 'stellar') {
-    return wallets.filter((wallet) => wallet.type === 'stellar');
-  }
-  return wallets.filter((wallet) => wallet.type !== 'stellar');
+  return discoverInjectedWallets();
 }
 
 export async function resolveWalletSelection(selection, wallets = []) {
@@ -202,17 +65,9 @@ export async function resolveWalletSelection(selection, wallets = []) {
     return matchedWallet;
   }
 
-  if (ACTIVE_NETWORK.kind === 'stellar' && String(selection) !== 'stellar:freighter') {
+  if (String(selection) !== 'stellar:freighter') {
     return null;
   }
 
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  if (String(selection) === 'stellar:freighter') {
-    return detectFreighterWallet();
-  }
-
-  return null;
+  return detectFreighterWallet();
 }

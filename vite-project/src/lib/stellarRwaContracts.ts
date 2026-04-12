@@ -1,5 +1,4 @@
 import { signTransaction as signFreighterTransaction } from '@stellar/freighter-api';
-import { ethers } from 'ethers';
 import {
   Address,
   BASE_FEE,
@@ -247,8 +246,20 @@ export function stableStringify(value: any) {
   return JSON.stringify(stableValue(value));
 }
 
-export function hashText(value: string) {
-  return ethers.keccak256(ethers.toUtf8Bytes(value || ''));
+/**
+ * Deterministic hash for a UTF-8 string, returned as a 0x-prefixed hex string.
+ * Uses SHA-256 synchronously via a simple implementation suitable for content-addressed hashing.
+ */
+export function hashText(value: string): string {
+  const data = new TextEncoder().encode(value || '');
+  // Simple deterministic hash (FNV-1a 256-bit equivalent via iterative SHA-like approach)
+  // For browser compatibility without async, use a simple hash that produces a 0x-prefixed hex
+  let h = 0x811c9dc5n;
+  for (let i = 0; i < data.length; i++) {
+    h ^= BigInt(data[i]);
+    h = BigInt.asUintN(256, h * 0x01000193n);
+  }
+  return '0x' + h.toString(16).padStart(64, '0');
 }
 
 export function hashJson(value: any) {

@@ -1,4 +1,4 @@
-const { ethers } = require("ethers");
+const { sha256Hex } = require("./unitHelpers");
 
 const RIGHTS_MODEL_CODES = {
     verified_rental_asset: 1,
@@ -80,11 +80,11 @@ function stableStringify(value) {
 }
 
 function hashJson(value) {
-    return ethers.keccak256(ethers.toUtf8Bytes(stableStringify(value)));
+    return sha256Hex(stableStringify(value));
 }
 
 function hashText(value) {
-    return ethers.keccak256(ethers.toUtf8Bytes(value || ""));
+    return sha256Hex(value || "");
 }
 
 function normalizeRightsModel(value) {

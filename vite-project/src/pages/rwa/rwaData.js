@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { rwaRegistryAddress } from '../../contactInfo.js';
+import { ACTIVE_NETWORK } from '../../networkConfig.js';
 
 export const TYPE_META = {
   real_estate: {
@@ -334,8 +336,8 @@ function buildFallbackVerificationPayload({
 }) {
   return encodeVerificationPayload({
     version: 2,
-    chainId: 420420421,
-    assetContract: '0x0340b3f493bae901f740c494b2f7744f5fffe348',
+    chainId: ACTIVE_NETWORK.chainId || 0,
+    assetContract: rwaRegistryAddress || 'stellar:asset-twin',
     tokenId: Number(tokenId),
     publicMetadataURI: `ipfs://${verificationCid}`,
     publicMetadataHash,

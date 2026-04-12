@@ -1,263 +1,67 @@
+import { ACTIVE_NETWORK } from './networkConfig.js';
+
 const env = typeof import.meta !== 'undefined' ? import.meta.env || {} : {};
-const runtimeKind = (env.VITE_STREAM_ENGINE_RUNTIME_KIND || env.VITE_FLOWPAY_RUNTIME_KIND || 'stellar').toLowerCase();
-const resolveStellarRuntimeId = (value, fallback) => {
+
+function resolveContractId(value, fallback) {
   const normalized = String(value || '').trim();
   if (!normalized) {
     return fallback;
   }
-  return runtimeKind === 'stellar' && normalized.startsWith('stellar:') && fallback ? fallback : normalized;
-};
+  return normalized.startsWith('stellar:') && fallback ? fallback : normalized;
+}
 
 export const appName = "Stella's Stream Engine";
-export const streamContractName = runtimeKind === 'stellar' ? 'SessionMeter' : 'StreamEngineStream';
-
-export const contractAddress = resolveStellarRuntimeId(
-  env.VITE_STREAM_ENGINE_CONTRACT_ADDRESS
-  || env.VITE_CONTRACT_ADDRESS
-  || env.VITE_FLOWPAY_CONTRACT_ADDRESS,
-  runtimeKind === 'stellar'
-    ? 'CDS4XG3PAOWRNFVFKMK7LKJEXFQIJXFAMX54F5T3EBNFLNOL3RMGSECX'
-    : '0x75edbf3d9857521f5fb2f581c896779f5110a8a0',
-);
-
-export const paymentTokenAddress = resolveStellarRuntimeId(
-  env.VITE_STREAM_ENGINE_PAYMENT_TOKEN_ADDRESS
-  || env.VITE_FLOWPAY_PAYMENT_TOKEN_ADDRESS,
-  runtimeKind === 'stellar'
-    ? 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA'
-    : '0x00007a6900000000000000000000000001200000',
-);
-
-export const paymentTokenSymbol = env.VITE_STREAM_ENGINE_PAYMENT_TOKEN_SYMBOL || env.VITE_FLOWPAY_PAYMENT_TOKEN_SYMBOL || 'USDC';
+export const streamContractName = 'SessionMeter';
+export const contractAddress = ACTIVE_NETWORK.contractAddress;
+export const paymentTokenAddress = ACTIVE_NETWORK.paymentTokenAddress;
+export const paymentTokenSymbol = env.VITE_STREAM_ENGINE_PAYMENT_TOKEN_SYMBOL || ACTIVE_NETWORK.paymentAssetCode || 'USDC';
 export const paymentTokenDisplayName =
   env.VITE_STREAM_ENGINE_PAYMENT_TOKEN_NAME
-  || env.VITE_FLOWPAY_PAYMENT_TOKEN_NAME
-  || (runtimeKind === 'stellar' ? 'USDC on Stellar' : 'Circle USDC');
+  || `${paymentTokenSymbol} on Stellar`;
 export const paymentTokenDecimals = Number(
   env.VITE_STREAM_ENGINE_PAYMENT_TOKEN_DECIMALS
-  || env.VITE_FLOWPAY_PAYMENT_TOKEN_DECIMALS
-  || (runtimeKind === 'stellar' ? 7 : 6),
+  || 7,
 );
-export const paymentAssetId = Number(env.VITE_STREAM_ENGINE_PAYMENT_ASSET_ID || env.VITE_FLOWPAY_PAYMENT_ASSET_ID || (runtimeKind === 'stellar' ? 0 : 31337));
-export const paymentAssetCode = env.VITE_STELLAR_PAYMENT_ASSET_CODE || paymentTokenSymbol;
-export const paymentAssetIssuer = env.VITE_STELLAR_PAYMENT_ASSET_ISSUER || '';
-export const nativeTokenAddress =
-  resolveStellarRuntimeId(
-    env.VITE_STELLAR_NATIVE_TOKEN_ADDRESS,
-    'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
-  );
-export const rwaRegistryAddress = resolveStellarRuntimeId(
+export const paymentAssetCode = ACTIVE_NETWORK.paymentAssetCode || paymentTokenSymbol;
+export const paymentAssetIssuer = ACTIVE_NETWORK.paymentAssetIssuer || '';
+export const nativeTokenAddress = resolveContractId(
+  env.VITE_STELLAR_NATIVE_TOKEN_ADDRESS,
+  'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+);
+export const rwaRegistryAddress = resolveContractId(
   env.VITE_STREAM_ENGINE_RWA_ASSET_REGISTRY_ADDRESS
   || env.VITE_STREAM_ENGINE_RWA_HUB_ADDRESS,
   'CCQ7RAHNLTGH2CF5BNNWAGFJLCB6EUV76K5ZQ4CWU42VF3FGZ5PJHNYK',
 );
-export const rwaAttestationRegistryAddress = resolveStellarRuntimeId(
+export const rwaAttestationRegistryAddress = resolveContractId(
   env.VITE_STREAM_ENGINE_RWA_ATTESTATION_REGISTRY_ADDRESS,
   'CCSNBJYDCM546LAUAVUFXABRWRCAP7U77TTEU4CKHNXYQMU7BEWTYCGJ',
 );
-export const rwaYieldVaultAddress = resolveStellarRuntimeId(
+export const rwaYieldVaultAddress = resolveContractId(
   env.VITE_STREAM_ENGINE_RWA_ASSET_STREAM_ADDRESS,
   'CBBAIM4NMQEZ5RX3ZIII7SLTZSG5GYZ6DOCEPTQV6N37NYPCYLBL6ZQO',
 );
-export const settlementRecipientAddress =
-  env.VITE_STREAM_ENGINE_RECIPIENT_ADDRESS
-  || env.VITE_FLOWPAY_RECIPIENT_ADDRESS
-  || '';
-export const rwaApiBaseUrl = env.VITE_RWA_API_URL || 'http://localhost:3001';
-export const supportedPaymentAssets = runtimeKind === 'stellar'
-  ? [
-      {
-        symbol: paymentAssetCode || 'USDC',
-        name: paymentTokenDisplayName,
-        decimals: paymentTokenDecimals,
-        tokenAddress: paymentTokenAddress,
-        assetCode: paymentAssetCode || 'USDC',
-        assetIssuer: paymentAssetIssuer,
-        isNative: false,
-      },
-      {
-        symbol: 'XLM',
-        name: 'Stellar Lumens',
-        decimals: 7,
-        tokenAddress: nativeTokenAddress,
-        assetCode: 'XLM',
-        assetIssuer: '',
-        isNative: true,
-      },
-    ].filter((asset, index, all) => all.findIndex((entry) => entry.symbol === asset.symbol) === index)
-  : [
-      {
-        symbol: paymentTokenSymbol,
-        name: paymentTokenDisplayName,
-        decimals: paymentTokenDecimals,
-        assetCode: paymentAssetCode,
-        assetIssuer: paymentAssetIssuer,
-        isNative: false,
-      },
-    ];
-
-// 2. Uses the Vercel Environment Variable for the ABI if it exists, otherwise falls back to the hardcoded ABI.
-const hardcodedABI = [
+export const settlementRecipientAddress = env.VITE_STREAM_ENGINE_RECIPIENT_ADDRESS || '';
+export const supportedPaymentAssets = [
   {
-    "inputs": [{ "internalType": "address", "name": "_paymentToken", "type": "address" }],
-    "stateMutability": "nonpayable",
-    "type": "constructor"
+    symbol: paymentAssetCode || 'USDC',
+    name: paymentTokenDisplayName,
+    decimals: paymentTokenDecimals,
+    tokenAddress: paymentTokenAddress,
+    assetCode: paymentAssetCode || 'USDC',
+    assetIssuer: paymentAssetIssuer,
+    isNative: false,
   },
   {
-    "anonymous": false,
-    "inputs": [
-      { "indexed": true, "internalType": "uint256", "name": "streamId", "type": "uint256" },
-      { "indexed": true, "internalType": "address", "name": "sender", "type": "address" },
-      { "indexed": true, "internalType": "address", "name": "recipient", "type": "address" },
-      { "indexed": false, "internalType": "uint256", "name": "totalAmount", "type": "uint256" },
-      { "indexed": false, "internalType": "uint256", "name": "startTime", "type": "uint256" },
-      { "indexed": false, "internalType": "uint256", "name": "stopTime", "type": "uint256" },
-      { "indexed": false, "internalType": "string", "name": "metadata", "type": "string" }
-    ],
-    "name": "StreamCreated",
-    "type": "event"
+    symbol: 'XLM',
+    name: 'Stellar Lumens',
+    decimals: 7,
+    tokenAddress: nativeTokenAddress,
+    assetCode: 'XLM',
+    assetIssuer: '',
+    isNative: true,
   },
-  {
-    "anonymous": false,
-    "inputs": [
-      { "indexed": true, "internalType": "uint256", "name": "streamId", "type": "uint256" },
-      { "indexed": true, "internalType": "address", "name": "recipient", "type": "address" },
-      { "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" }
-    ],
-    "name": "Withdrawn",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      { "indexed": true, "internalType": "uint256", "name": "streamId", "type": "uint256" },
-      { "indexed": false, "internalType": "address", "name": "sender", "type": "address" },
-      { "indexed": false, "internalType": "address", "name": "recipient", "type": "address" },
-      { "indexed": false, "internalType": "uint256", "name": "senderBalance", "type": "uint256" },
-      { "indexed": false, "internalType": "uint256", "name": "recipientBalance", "type": "uint256" }
-    ],
-    "name": "StreamCancelled",
-    "type": "event"
-  },
-  {
-    "inputs": [
-      { "internalType": "address", "name": "recipient", "type": "address" },
-      { "internalType": "uint256", "name": "duration", "type": "uint256" },
-      { "internalType": "uint256", "name": "amount", "type": "uint256" },
-      { "internalType": "string", "name": "metadata", "type": "string" }
-    ],
-    "name": "createStream",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [{ "internalType": "uint256", "name": "streamId", "type": "uint256" }],
-    "name": "withdrawFromStream",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [{ "internalType": "uint256", "name": "streamId", "type": "uint256" }],
-    "name": "cancelStream",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [{ "internalType": "uint256", "name": "streamId", "type": "uint256" }],
-    "name": "getClaimableBalance",
-    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [{ "internalType": "uint256", "name": "streamId", "type": "uint256" }],
-    "name": "isStreamActive",
-    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "paymentToken",
-    "outputs": [{ "internalType": "contract IERC20", "name": "", "type": "address" }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
-    "name": "streams",
-    "outputs": [
-      { "internalType": "address", "name": "sender", "type": "address" },
-      { "internalType": "address", "name": "recipient", "type": "address" },
-      { "internalType": "uint256", "name": "totalAmount", "type": "uint256" },
-      { "internalType": "uint256", "name": "flowRate", "type": "uint256" },
-      { "internalType": "uint256", "name": "startTime", "type": "uint256" },
-      { "internalType": "uint256", "name": "stopTime", "type": "uint256" },
-      { "internalType": "uint256", "name": "amountWithdrawn", "type": "uint256" },
-      { "internalType": "bool", "name": "isActive", "type": "bool" },
-      { "internalType": "string", "name": "metadata", "type": "string" }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  }
-];
-
-export const contractABI = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_CONTRACT_ABI)
-  ? JSON.parse(import.meta.env.VITE_CONTRACT_ABI)
-  : hardcodedABI;
-
-// Circle USDC precompile ABI subset.
-export const paymentTokenABI = [
-  {
-    "inputs": [],
-    "stateMutability": "nonpayable",
-    "type": "constructor"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      { "indexed": true, "internalType": "address", "name": "owner", "type": "address" },
-      { "indexed": true, "internalType": "address", "name": "spender", "type": "address" },
-      { "indexed": false, "internalType": "uint256", "name": "value", "type": "uint256" }
-    ],
-    "name": "Approval",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      { "indexed": true, "internalType": "address", "name": "from", "type": "address" },
-      { "indexed": true, "internalType": "address", "name": "to", "type": "address" },
-      { "indexed": false, "internalType": "uint256", "name": "value", "type": "uint256" }
-    ],
-    "name": "Transfer",
-    "type": "event"
-  },
-  {
-    "inputs": [
-      { "internalType": "address", "name": "", "type": "address" },
-      { "internalType": "address", "name": "", "type": "address" }
-    ],
-    "name": "allowance",
-    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      { "internalType": "address", "name": "spender", "type": "address" },
-      { "internalType": "uint256", "name": "amount", "type": "uint256" }
-    ],
-    "name": "approve",
-    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [{ "internalType": "address", "name": "", "type": "address" }],
+].filter((asset, index, all) => all.findIndex((entry) => entry.symbol === asset.symbol) === index);
     "name": "balanceOf",
     "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
     "stateMutability": "view",

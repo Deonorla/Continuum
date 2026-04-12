@@ -1,23 +1,15 @@
 # Root
 node_modules/
 artifacts/
-artifacts-pvm/
 cache/
 .agent-wallets.json
-cache-pvm/
 coverage/
-typechain/
-hardhat.cache
 .env
 .env.*
 !.env.example
-ignition/deployments/
 /sdk/dist/
 
 # Local chain and wallet data
-/substrate.json
-/substrate-*.json
-/substrate*.json
 /.stellar-cli/
 *.pem
 *.key
@@ -51,21 +43,6 @@ Thumbs.db
 .history/
 node_modules
 .env
-
-# Hardhat files
-/cache
-/artifacts
-
-# TypeChain files
-/typechain
-/typechain-types
-
-# solidity-coverage files
-/coverage
-/coverage.json
-
-# Hardhat Ignition default folder for deployments against a local node
-ignition/deployments/chain-31337
 
 # Local Netlify folder
 .netlify

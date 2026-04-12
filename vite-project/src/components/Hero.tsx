@@ -151,7 +151,7 @@ const StatisticsBanner = ({ stats }) => {
 
       <div className="text-center p-4 rounded-xl glass hover-glow">
         <div className="text-2xl md:text-3xl font-bold text-gradient-accent">
-          <AnimatedCounter end={stats.totalDOT} duration={2500} prefix="$" suffix="K" />
+          <AnimatedCounter end={stats.totalValueK} duration={2500} prefix="$" suffix="K" />
         </div>
         <div className="text-xs text-white/60 mt-1">USDC Streamed</div>
       </div>
@@ -177,12 +177,12 @@ export default function Hero({ networkName = 'Stellar Testnet', stats }) {
   // Default mock stats if not provided
   const defaultStats = {
     totalStreams: 1247,
-    totalDOT: 89,
+    totalValueK: 89,
     activeAgents: 156,
     txnsSaved: 45892
   };
 
-  const displayStats = stats || defaultStats;
+  const displayStats = { ...defaultStats, ...(stats || {}) };
 
   return (
     <section className="relative mx-auto w-full max-w-7xl px-4 py-12 md:py-16">

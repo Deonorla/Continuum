@@ -447,7 +447,6 @@ function AssetWorkspacePanel({ asset, onAssetChanged }) {
     const { result } = await runAction('Opening asset yield stream on Soroban...', () =>
       approveAndCreateAssetYieldStream({
         signer,
-        substrateSession: null,
         tokenAddress: assetConfig?.tokenAddress,
         streamAddress: null,
         hubAddress: null,
@@ -464,7 +463,6 @@ function AssetWorkspacePanel({ asset, onAssetChanged }) {
     const { result } = await runAction('Claiming accrued yield...', () =>
       claimAssetYield({
         signer,
-        substrateSession: null,
         hubAddress: null,
         tokenId: asset.tokenId,
       })
@@ -483,7 +481,6 @@ function AssetWorkspacePanel({ asset, onAssetChanged }) {
     const { result } = await runAction('Requesting flash advance...', () =>
       flashAdvanceAssetYield({
         signer,
-        substrateSession: null,
         hubAddress: null,
         tokenId: asset.tokenId,
         amount: parsedAmount,
@@ -511,7 +508,6 @@ function AssetWorkspacePanel({ asset, onAssetChanged }) {
     const { result } = await runAction('Republishing public metadata...', () =>
       updateAssetMetadataOnChain({
         signer,
-        substrateSession: null,
         hubAddress: null,
         tokenId: asset.tokenId,
         metadataURI: pinResult.uri,
@@ -552,7 +548,6 @@ function AssetWorkspacePanel({ asset, onAssetChanged }) {
     const { result } = await runAction('Refreshing evidence anchors...', () =>
       updateAssetEvidenceOnChain({
         signer,
-        substrateSession: null,
         hubAddress: null,
         tokenId: asset.tokenId,
         evidenceRoot: storedEvidence.evidenceRoot,
@@ -576,7 +571,6 @@ function AssetWorkspacePanel({ asset, onAssetChanged }) {
     const { result } = await runAction('Updating verification tag...', () =>
       updateAssetVerificationTag({
         signer,
-        substrateSession: null,
         hubAddress: null,
         tokenId: asset.tokenId,
         tag: tagSeed.trim(),
@@ -952,7 +946,6 @@ function MintingTab({ onMinted, portfolioCount }) {
       try {
         await transferAssetOwnershipOnChain({
           signer,
-          substrateSession: null,
           tokenId: mintResult.tokenId,
           to: managedAgentPublicKey,
         });

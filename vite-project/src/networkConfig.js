@@ -36,5 +36,4 @@ export const ACTIVE_NETWORK = {
   recipientAddress: env.VITE_STREAM_ENGINE_RECIPIENT_ADDRESS || '',
 };
 
-export const IS_POLKADOT = false;
 export const IS_READY = Boolean(ACTIVE_NETWORK.contractAddress);

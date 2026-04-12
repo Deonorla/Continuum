@@ -1,5 +1,5 @@
 const express = require("express");
-const { ethers } = require("ethers");
+const { parseUnits, formatUnits } = require("../services/unitHelpers");
 const { generateDueDiligence, aggregateMarketIntel } = require("../services/assetIntelligence");
 const { screenAssets, parseGoal } = require("../services/assetScreener");
 const { formatStellarAmount, normalizeStellarAmount } = require("../services/stellarAnchorService");
@@ -604,7 +604,7 @@ function buildBidSummary(bid, { isLeading = false } = {}) {
         bidId: bid.bidId,
         bidder: bid.bidder,
         amountStroops: bid.amountStroops,
-        amountDisplay: bid.amountDisplay || ethers.formatUnits(BigInt(bid.amountStroops || "0"), 7),
+        amountDisplay: bid.amountDisplay || formatUnits(BigInt(bid.amountStroops || "0"), 7),
         placedAt: Number(bid.placedAt || 0),
         status: bid.status || "active",
         isLeading,
@@ -731,11 +731,11 @@ function defaultSavedScreenName(filters = {}, summary = {}) {
 function send402Response(req, res, price, description) {
     const config = req.app.locals.config || {};
     const decimals = Number(config.tokenDecimals || 7);
-    const requiredAmount = ethers.parseUnits(String(price), decimals);
+    const requiredAmount = parseUnits(String(price), decimals);
     const sessionEndpoint = `${String(config.sessionApiUrl || "").replace(/\/$/, "")}/api/sessions`;
     res.set("X-Payment-Required", "true");
     res.set("X-Stream-Mode", "per-request");
-    res.set("X-Stream-Rate", ethers.formatUnits(requiredAmount, decimals));
+    res.set("X-Stream-Rate", formatUnits(requiredAmount, decimals));
     res.set("X-Stream-Token", config.paymentTokenAddress || "");
     res.set("X-Stream-Token-Decimals", String(decimals));
     res.set("X-Payment-Currency", config.tokenSymbol || "USDC");
@@ -768,7 +768,7 @@ function requirePaidAction(price, description) {
         const services = await req.app.locals.ready;
         const config = req.app.locals.config || {};
         const decimals = Number(config.tokenDecimals || 7);
-        req.streamEngineActionFee = ethers.parseUnits(String(price), decimals).toString();
+        req.streamEngineActionFee = parseUnits(String(price), decimals).toString();
 
         if (txHashHeader) {
             req.streamEngine = {
@@ -1188,7 +1188,7 @@ router.post("/agents/:agentId/sessions", requireJwt, asyncHandler(async (req, re
     const result = await services.agentWallet.openSession({
         owner: ownerPublicKey,
         recipient,
-        totalAmount: ethers.parseUnits(amountInput, decimals).toString(),
+        totalAmount: parseUnits(amountInput, decimals).toString(),
         durationSeconds,
         metadata,
         assetCode: services.chainService.runtime?.paymentAssetCode || config.tokenSymbol || "USDC",

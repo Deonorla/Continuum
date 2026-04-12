@@ -1,6 +1,20 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { ethers } from 'ethers';
 import { CheckCircle, AlertTriangle, AlertOctagon, Square, Waves } from 'lucide-react';
+import { paymentTokenSymbol } from '../contactInfo.js';
+
+const STREAM_TOKEN_DECIMALS = 7;
+
+function formatStreamUnits(value) {
+  try {
+    const bigVal = BigInt(value || 0);
+    const str = bigVal.toString().padStart(STREAM_TOKEN_DECIMALS + 1, '0');
+    const whole = str.slice(0, str.length - STREAM_TOKEN_DECIMALS) || '0';
+    const frac = str.slice(str.length - STREAM_TOKEN_DECIMALS);
+    return parseFloat(`${whole}.${frac}`);
+  } catch {
+    return 0;
+  }
+}
 
 // Animated Particle Flow
 const ParticleFlow = ({ isActive }) => {
@@ -178,7 +192,7 @@ const StreamCard = ({ stream, now }) => {
         const elapsedSeconds = (now - startTimeMs) / 1000;
         try {
             const total = BigInt(stream.rate) * BigInt(Math.floor(elapsedSeconds));
-            return parseFloat(ethers.formatEther(total));
+            return formatStreamUnits(total);
         } catch {
             return 0;
         }
@@ -194,15 +208,15 @@ const StreamCard = ({ stream, now }) => {
 
     // Determine health status
     const healthStatus = useMemo(() => {
-        const totalAmount = parseFloat(ethers.formatEther(stream.amount || 0));
+        const totalAmount = formatStreamUnits(stream.amount || 0);
         const usedPct = totalAmount > 0 ? (claimable / totalAmount) * 100 : 0;
         if (usedPct > 90) return 'critical';
         if (usedPct > 75) return 'low';
         return 'healthy';
     }, [claimable, stream.amount]);
 
-    const rate = stream.rate ? parseFloat(ethers.formatEther(stream.rate)) : 0;
-    const totalAmount = stream.amount ? parseFloat(ethers.formatEther(stream.amount)) : 0;
+    const rate = stream.rate ? formatStreamUnits(stream.rate) : 0;
+    const totalAmount = stream.amount ? formatStreamUnits(stream.amount) : 0;
     const endTime = stream.startTime + (totalAmount / rate) || 0;
 
     return (
@@ -234,7 +248,7 @@ const StreamCard = ({ stream, now }) => {
                     <span className="text-4xl font-bold text-gradient-primary">
                         <AnimatedCounter value={claimable} decimals={6} />
                     </span>
-                    <span className="text-lg text-white/40">DOT</span>
+                    <span className="text-lg text-white/40">{stream.paymentTokenSymbol || paymentTokenSymbol}</span>
                 </div>
             </div>
 
@@ -264,7 +278,7 @@ const StreamCard = ({ stream, now }) => {
             <div className="flex items-center justify-between pt-3 border-t border-white/10">
                 <AutoRenewalStatus enabled={stream.autoRenew} />
                 <div className="text-xs text-white/40">
-                    Total: {totalAmount.toFixed(4)} DOT
+                    Total: {totalAmount.toFixed(4)} {stream.paymentTokenSymbol || paymentTokenSymbol}
                 </div>
             </div>
         </div>

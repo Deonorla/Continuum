@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   appName,
-  contractAddress,
-  paymentTokenAddress,
   paymentTokenDecimals,
   paymentTokenSymbol,
 } from '../contactInfo';
@@ -20,22 +18,21 @@ const DEFAULT_CATALOG = {
     passphrase: ACTIVE_NETWORK.passphrase,
   },
   payments: {
-    tokenAddress: paymentTokenAddress,
+    tokenAddress: ACTIVE_NETWORK.paymentTokenAddress,
     tokenSymbol: paymentTokenSymbol,
     tokenDecimals: paymentTokenDecimals,
     assetCode: ACTIVE_NETWORK.paymentAssetCode,
     assetIssuer: ACTIVE_NETWORK.paymentAssetIssuer,
-    settlement: ACTIVE_NETWORK.kind === 'stellar' ? 'soroban-sac' : 'evm-erc20',
-    paymentAssetId: 31337,
+    settlement: 'soroban-sac',
     recipientAddress: '',
-    contractAddress,
+    contractAddress: ACTIVE_NETWORK.contractAddress,
   },
   rwa: {
-    hubAddress: '',
-    assetNFTAddress: '',
+    hubAddress: 'stellar:policy-orchestrator',
+    assetNFTAddress: 'stellar:asset-twin',
     assetRegistryAddress: '',
+    attestationRegistryAddress: '',
     assetStreamAddress: '',
-    complianceGuardAddress: '',
   },
   routes: [],
 };

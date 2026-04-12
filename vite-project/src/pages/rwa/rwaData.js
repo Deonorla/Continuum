@@ -620,6 +620,11 @@ export function formatIndexerActivity(activity = {}) {
 }
 
 function resolveMetadataType(metadata, assetType) {
+  // Check the explicit propertyType set by the backend builder first
+  const explicitPropertyType = metadata?.propertyType;
+  if (explicitPropertyType === 'ESTATE') return 'real_estate';
+  if (explicitPropertyType === 'LAND') return 'land';
+
   const topLevelType = metadata?.assetType || metadata?.asset_type;
   if (TYPE_META[topLevelType]) {
     return topLevelType;
@@ -632,20 +637,20 @@ function resolveMetadataType(metadata, assetType) {
     return attrType;
   }
 
+  // Only use free-text keyword scan as a last resort — exclude structured fields
+  // that contain land-related words even for estates (e.g. "lot size", "parcel number")
   const freeText = [
     metadata?.name,
     metadata?.title,
     metadata?.description,
     metadata?.location,
     metadata?.category,
-    metadata?.assetType,
-    metadata?.asset_type,
   ]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
 
-  if (['land', 'plot', 'parcel', 'acre', 'lot', 'site', 'farmland'].some((keyword) => freeText.includes(keyword))) {
+  if (['land', 'plot', 'farmland', 'acreage', 'bare land'].some((keyword) => freeText.includes(keyword))) {
     return 'land';
   }
 

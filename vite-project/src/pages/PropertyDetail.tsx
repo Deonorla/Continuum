@@ -339,34 +339,56 @@ function OverviewTab({ asset }: { asset: any }) {
 // ─── Tab: Facts & Features ───────────────────────────────────────────────────
 
 function FactsEstate({ pm }: { pm: any }) {
+  // Helper to join arrays or return string
+  const arr = (v: any) => Array.isArray(v) ? v.join(', ') : (v || undefined);
+
   return (
     <div className="space-y-6">
       {/* Interior */}
       <div className="bg-slate-50 rounded-2xl p-5">
         <SectionHeader>Interior</SectionHeader>
         <div className="divide-y divide-slate-100">
-          <FactRow label="Bedrooms" value={dash(pm.interior?.bedroomsCount ?? pm.beds)} />
-          <FactRow label="Bathrooms" value={dash(pm.interior?.fullBaths ?? pm.baths)} />
-          <FactRow label="Sq Ft" value={(pm.interior?.livingAreaSqft ?? pm.sqft) ? Number(pm.interior?.livingAreaSqft ?? pm.sqft).toLocaleString() : undefined} />
-          <FactRow label="Year Built" value={dash(pm.interior?.yearBuilt ?? pm.yearBuilt)} />
-          <FactRow label="Heating" value={dash(pm.interior?.heating ?? pm.heating)} />
-          <FactRow label="Cooling" value={dash(pm.interior?.cooling ?? pm.cooling)} />
-          <FactRow label="Appliances" value={dash(pm.interior?.appliances ?? pm.appliances)} />
-          <FactRow label="Interior Features" value={dash(pm.interior?.interiorFeatures ?? pm.interiorFeatures)} />
+          <FactRow label="Bedrooms"          value={dash(pm.interior?.bedroomsCount ?? pm.beds)} />
+          <FactRow label="Full Bathrooms"    value={dash(pm.interior?.fullBaths ?? pm.baths)} />
+          <FactRow label="Half Bathrooms"    value={dash(pm.interior?.halfBaths)} />
+          <FactRow label="Sq Ft"             value={(pm.sqft) ? Number(pm.sqft).toLocaleString() : undefined} />
+          <FactRow label="Year Built"        value={dash(pm.yearBuilt)} />
+          <FactRow label="Heating"           value={dash(pm.interior?.heating)} />
+          <FactRow label="Cooling"           value={dash(pm.interior?.cooling)} />
+          <FactRow label="Appliances"        value={arr(pm.interior?.appliances)} />
+          <FactRow label="Interior Features" value={dash(pm.interior?.interiorFeatures)} />
         </div>
       </div>
+
+      {/* Room Dimensions */}
+      {pm.interior?.roomDimensions && Object.values(pm.interior.roomDimensions).some(Boolean) && (
+        <div className="bg-slate-50 rounded-2xl p-5">
+          <SectionHeader>Room Dimensions</SectionHeader>
+          <div className="divide-y divide-slate-100">
+            <FactRow label="Primary Bedroom" value={dash(pm.interior.roomDimensions.primaryBedroom)} />
+            <FactRow label="Bedroom 2"       value={dash(pm.interior.roomDimensions.bedroom2)} />
+            <FactRow label="Bedroom 3"       value={dash(pm.interior.roomDimensions.bedroom3)} />
+            <FactRow label="Kitchen"         value={dash(pm.interior.roomDimensions.kitchen)} />
+            <FactRow label="Living Room"     value={dash(pm.interior.roomDimensions.livingRoom)} />
+          </div>
+        </div>
+      )}
 
       {/* Construction */}
       <div className="bg-slate-50 rounded-2xl p-5">
         <SectionHeader>Construction</SectionHeader>
         <div className="divide-y divide-slate-100">
-          <FactRow label="Property Type" value={dash(pm.construction?.homeType ?? pm.propertyType)} />
-          <FactRow label="Property Subtype" value={dash(pm.construction?.propertySubtype ?? pm.propertySubtype)} />
-          <FactRow label="Architectural Style" value={dash(pm.construction?.architecturalStyle ?? pm.architecturalStyle)} />
-          <FactRow label="Materials" value={dash(pm.construction?.materials ?? pm.materials)} />
-          <FactRow label="Foundation" value={dash(pm.construction?.foundation ?? pm.foundation)} />
-          <FactRow label="Roof" value={dash(pm.construction?.roof ?? pm.roof)} />
-          <FactRow label="Condition" value={dash(pm.construction?.condition ?? pm.condition)} />
+          <FactRow label="Home Type"            value={dash(pm.construction?.homeType)} />
+          <FactRow label="Property Subtype"     value={dash(pm.propertySubtype)} />
+          <FactRow label="Architectural Style"  value={dash(pm.construction?.architecturalStyle)} />
+          <FactRow label="Levels"               value={dash(pm.construction?.levels)} />
+          <FactRow label="Stories"              value={dash(pm.construction?.stories)} />
+          <FactRow label="Patio / Porch"        value={dash(pm.construction?.patioPorch)} />
+          <FactRow label="Spa"                  value={dash(pm.construction?.spa)} />
+          <FactRow label="Exterior Materials"   value={arr(pm.construction?.exteriorMaterials)} />
+          <FactRow label="Foundation"           value={dash(pm.construction?.foundation)} />
+          <FactRow label="Roof"                 value={dash(pm.construction?.roof)} />
+          <FactRow label="Condition"            value={dash(pm.construction?.condition)} />
         </div>
       </div>
 
@@ -374,14 +396,17 @@ function FactsEstate({ pm }: { pm: any }) {
       <div className="bg-slate-50 rounded-2xl p-5">
         <SectionHeader>Parking &amp; Lot</SectionHeader>
         <div className="divide-y divide-slate-100">
-          <FactRow label="Parking Features" value={dash(pm.parkingAndLot?.parkingFeatures ?? pm.parkingFeatures)} />
-          <FactRow label="Lot Size" value={dash(pm.parkingAndLot?.lotSize ?? pm.lotSize)} />
-          <FactRow label="Lot Size (Acres)" value={dash(pm.parkingAndLot?.lotSizeAcres ?? pm.lotSizeAcres)} />
-          <FactRow label="Lot Dimensions" value={dash(pm.parkingAndLot?.lotDimensions ?? pm.lotDimensions)} />
-          <FactRow label="Lot Features" value={dash(pm.parkingAndLot?.lotFeatures ?? pm.lotFeatures)} />
-          <FactRow label="Parcel Number" value={dash(pm.address?.parcelNumber ?? pm.parcelNumber)} />
-          <FactRow label="HOA" value={(pm.parkingAndLot?.hoa ?? pm.hoa) ? `$${pm.parkingAndLot?.hoa ?? pm.hoa}/mo` : undefined} />
-          <FactRow label="Price / Sqft" value={(pm.parkingAndLot?.pricePerSqft ?? pm.pricePerSqft) ? `$${pm.parkingAndLot?.pricePerSqft ?? pm.pricePerSqft}` : undefined} />
+          <FactRow label="Parking Features"  value={dash(pm.parkingAndLot?.parkingFeatures)} />
+          <FactRow label="Carport Spaces"    value={dash(pm.parkingAndLot?.carportSpaces)} />
+          <FactRow label="Uncovered Spaces"  value={dash(pm.parkingAndLot?.uncoveredSpaces)} />
+          <FactRow label="Lot Size (sqft)"   value={pm.lotSizeSqft ? Number(pm.lotSizeSqft).toLocaleString() : undefined} />
+          <FactRow label="Lot Size (acres)"  value={dash(pm.parkingAndLot?.lotSizeAcres)} />
+          <FactRow label="Lot Dimensions"    value={dash(pm.parkingAndLot?.lotDimensions)} />
+          <FactRow label="Lot Features"      value={dash(pm.parkingAndLot?.lotFeatures)} />
+          <FactRow label="Other Equipment"   value={arr(pm.parkingAndLot?.otherEquipment)} />
+          <FactRow label="Parcel Number"     value={dash(pm.address?.parcelNumber)} />
+          <FactRow label="HOA"               value={pm.hoaMonthly ? `$${pm.hoaMonthly}/mo` : undefined} />
+          <FactRow label="Price / Sqft"      value={pm.pricePerSqft ? `$${pm.pricePerSqft}` : undefined} />
         </div>
       </div>
     </div>
@@ -710,7 +735,7 @@ function ActionPanel({ asset }: { asset: any }) {
           <div>
             <p className="text-sm font-semibold text-amber-700">You own this asset</p>
             <p className="text-xs text-amber-600 mt-0.5">
-              Owners cannot rent their own property. Switch to a different wallet to start a rental session.
+              Owners cannot rent their own property. 
             </p>
           </div>
         </div>
@@ -719,19 +744,19 @@ function ActionPanel({ asset }: { asset: any }) {
       )}
 
       {/* Contact Agent */}
-      <button className="w-full py-3 rounded-xl border border-slate-200 text-slate-700 font-semibold text-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2">
+      {/* <button className="w-full py-3 rounded-xl border border-slate-200 text-slate-700 font-semibold text-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2">
         <ExternalLink size={14} /> Contact Agent
-      </button>
+      </button> */}
 
       {/* Share / Save */}
-      <div className="flex gap-2">
+      {/* <div className="flex gap-2">
         <button className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-500 text-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5">
           <Share2 size={14} /> Share
         </button>
         <button className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-500 text-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5">
           <Heart size={14} /> Save
         </button>
-      </div>
+      </div> */}
 
       <div className="border-t border-slate-100 pt-4 space-y-2">
         <SectionHeader>Listing Info</SectionHeader>

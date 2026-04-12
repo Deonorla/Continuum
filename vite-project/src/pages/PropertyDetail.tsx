@@ -5,9 +5,12 @@ import {
   ArrowLeft, Bed, Bath, Maximize2, Calendar, DollarSign, MapPin,
   Shield, Zap, FileText, Home, Car, Thermometer, Wind, TreePine,
   CheckCircle2, XCircle, Clock, Share2, Heart, ChevronRight,
-  Building2, Layers, Mountain, Tag, ExternalLink, Copy
+  Building2, Layers, Mountain, Tag, ExternalLink, Copy, Ban
 } from 'lucide-react';
 import { getAssetImage } from '../components/AssetCard';
+import RentalSessionComposer from '../components/RentalSessionComposer';
+import { useWallet } from '../context/WalletContext';
+import { useAppMode } from '../context/AppModeContext';
 import { PORTFOLIO_ASSETS, TYPE_META, VERIFICATION_STATUS_LABELS } from './rwa/rwaData';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -656,6 +659,22 @@ function ActionPanel({ asset }: { asset: any }) {
   const vstatus = asset.verificationStatus || 'draft';
   const vLabel = VERIFICATION_STATUS_LABELS[vstatus] || vstatus;
   const isLand = asset.type === 'land';
+  const { walletAddress } = useWallet();
+  const { agentPublicKey } = useAppMode();
+
+  const ownerAddress = asset.currentOwner || asset.ownerAddress || asset.assetAddress || '';
+  const issuerAddress = asset.issuerAddress || asset.issuer || '';
+
+  function isSame(a: string, b: string) {
+    return Boolean(a && b && a.trim().toLowerCase() === b.trim().toLowerCase());
+  }
+  const isOwner = Boolean(
+    walletAddress && (
+      isSame(walletAddress, ownerAddress) ||
+      isSame(walletAddress, issuerAddress) ||
+      (agentPublicKey && isSame(agentPublicKey, ownerAddress))
+    )
+  );
 
   return (
     <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-6 space-y-5 sticky top-6">
@@ -670,15 +689,25 @@ function ActionPanel({ asset }: { asset: any }) {
         </p>
       </div>
 
-      {/* CTA buttons */}
-      <div className="space-y-2.5">
-        <button className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 text-white font-semibold text-sm shadow hover:from-blue-700 hover:to-blue-600 transition-all flex items-center justify-center gap-2">
-          <Zap size={15} /> Start Rental Session
-        </button>
-        <button className="w-full py-3 rounded-xl border border-slate-200 text-slate-700 font-semibold text-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2">
-          <ExternalLink size={14} /> Contact Agent
-        </button>
-      </div>
+      {/* Owner notice OR rental composer */}
+      {isOwner ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 flex items-start gap-3">
+          <Ban size={16} className="text-amber-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-amber-700">You own this asset</p>
+            <p className="text-xs text-amber-600 mt-0.5">
+              Owners cannot rent their own property. Switch to a different wallet to start a rental session.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <RentalSessionComposer asset={asset} onStarted={() => {}} />
+      )}
+
+      {/* Contact Agent */}
+      <button className="w-full py-3 rounded-xl border border-slate-200 text-slate-700 font-semibold text-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2">
+        <ExternalLink size={14} /> Contact Agent
+      </button>
 
       {/* Share / Save */}
       <div className="flex gap-2">
@@ -692,25 +721,25 @@ function ActionPanel({ asset }: { asset: any }) {
 
       <div className="border-t border-slate-100 pt-4 space-y-2">
         <SectionHeader>Listing Info</SectionHeader>
-        {pm.mlsNumber && (
+        {pm.listing?.mlsNumber && (
           <div className="flex justify-between text-xs">
             <span className="text-slate-400">MLS #</span>
-            <span className="text-slate-600 font-medium">{pm.mlsNumber}</span>
+            <span className="text-slate-600 font-medium">{pm.listing.mlsNumber}</span>
           </div>
         )}
-        {pm.listingAgent && (
+        {pm.listing?.agentName && (
           <div className="flex justify-between text-xs">
             <span className="text-slate-400">Agent</span>
-            <span className="text-slate-600 font-medium">{pm.listingAgent}</span>
+            <span className="text-slate-600 font-medium">{pm.listing.agentName}</span>
           </div>
         )}
-        {pm.listingSource && (
+        {pm.listing?.source && (
           <div className="flex justify-between text-xs">
             <span className="text-slate-400">Source</span>
-            <span className="text-slate-600 font-medium">{pm.listingSource}</span>
+            <span className="text-slate-600 font-medium">{pm.listing.source}</span>
           </div>
         )}
-        {!pm.mlsNumber && !pm.listingAgent && !pm.listingSource && (
+        {!pm.listing?.mlsNumber && !pm.listing?.agentName && !pm.listing?.source && (
           <p className="text-xs text-slate-400 italic">No listing info available.</p>
         )}
       </div>

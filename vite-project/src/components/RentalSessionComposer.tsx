@@ -77,9 +77,22 @@ export default function RentalSessionComposer({ asset, onStarted }) {
   const renterHours = durationSeconds / 3600;
   const budgetAmount = Number((Number(asset?.pricePerHour || 0) * renterHours).toFixed(6));
   const ownerAddress = asset?.currentOwner || asset?.ownerAddress || asset?.assetAddress || '';
+  const issuerAddress = asset?.issuerAddress || asset?.issuer || '';
   const rentalReadiness = resolveRentalReadiness(asset);
   const hasValidRecipient = Boolean(rentalReadiness.ready);
-  const isOwner = Boolean(walletAddress && walletAddress === ownerAddress);
+  const { agentPublicKey } = useAppMode();
+
+  // Block if the connected wallet is the owner, issuer, or the managed agent holding the asset
+  function isSameAddress(a: string, b: string) {
+    return Boolean(a && b && a.trim().toLowerCase() === b.trim().toLowerCase());
+  }
+  const isOwner = Boolean(
+    walletAddress && (
+      isSameAddress(walletAddress, ownerAddress) ||
+      isSameAddress(walletAddress, issuerAddress) ||
+      (agentPublicKey && isSameAddress(agentPublicKey, ownerAddress))
+    )
+  );
   const linkedSession = useMemo(() => {
     const currentTokenId = String(asset?.tokenId || asset?.id || '');
     return (outgoingStreams || []).find((stream) => {

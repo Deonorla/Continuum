@@ -29,6 +29,13 @@ const FALLBACK_IMAGES = [
   'photo-1486406146926-c627a92ad1ab',
 ];
 
+function resolveDesc(raw: any): string {
+  if (!raw) return '';
+  if (typeof raw === 'string') return raw;
+  if (typeof raw === 'object') return raw.text || raw.description || '';
+  return String(raw);
+}
+
 export function getAssetImage(type: string, id: string | number, w = 600, h = 450, realUrl?: string): string {
   // Use the real uploaded photo if available
   if (realUrl && realUrl.startsWith('http')) return realUrl;
@@ -115,7 +122,7 @@ export function AssetCard({ asset, onDetails }) {
           <span className="text-[10px] font-label font-bold uppercase tracking-widest text-slate-400">{asset.location}</span>
         </div>
         <h3 className="text-xl font-headline font-bold text-slate-900 mb-2">{asset.name}</h3>
-        <p className="text-sm text-slate-500 line-clamp-2 mb-4">{asset.description}</p>
+        <p className="text-sm text-slate-500 line-clamp-2 mb-4">{resolveDesc(asset.description)}</p>
         <div className={`mb-4 flex items-center gap-2 text-xs ${
           rentalActivity.status === 'rented' ? 'text-emerald-600'
           : rentalActivity.status === 'idle'  ? 'text-blue-500'
@@ -252,7 +259,7 @@ export function DetailDrawer({ asset, onClose, renderBody, renderFooter }) {
             </div>
           )}
 
-          <p className="text-slate-600 text-sm leading-relaxed">{asset.description}</p>
+          <p className="text-slate-600 text-sm leading-relaxed">{resolveDesc(asset.description)}</p>
 
           {rentalReadiness.reason && (
             <div className={`rounded-2xl border px-4 py-3 text-xs ${

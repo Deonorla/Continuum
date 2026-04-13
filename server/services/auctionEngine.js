@@ -104,19 +104,38 @@ class AuctionEngine {
         force = false,
         note = "",
     }) {
-        const wallet = await this.agentWallet.getWallet(sellerOwnerPublicKey);
-        if (!wallet?.publicKey) {
-            throw Object.assign(new Error("Managed agent wallet not found for this seller."), {
-                status: 404,
-                code: "agent_wallet_not_found",
+        // In force mode, skip wallet lookup — use operator signer as the seller
+        let wallet = null;
+        let sellerAgentPublicKey;
+        let profile;
+
+        if (!force) {
+            wallet = await this.agentWallet.getWallet(sellerOwnerPublicKey);
+            if (!wallet?.publicKey) {
+                throw Object.assign(new Error("Managed agent wallet not found for this seller."), {
+                    status: 404,
+                    code: "agent_wallet_not_found",
+                });
+            }
+            sellerAgentPublicKey = wallet.publicKey;
+            profile = await this.agentState.ensureAgentProfile({
+                ownerPublicKey: sellerOwnerPublicKey,
+                agentPublicKey: sellerAgentPublicKey,
             });
+        } else {
+            // Force mode: try wallet lookup but fall back to operator signer
+            try {
+                wallet = await this.agentWallet.getWallet(sellerOwnerPublicKey);
+            } catch { /* ignore */ }
+            sellerAgentPublicKey = wallet?.publicKey || this.chainService?.signer?.address || sellerOwnerPublicKey;
+            try {
+                profile = await this.agentState.ensureAgentProfile({
+                    ownerPublicKey: sellerOwnerPublicKey,
+                    agentPublicKey: sellerAgentPublicKey,
+                });
+            } catch { profile = { agentId: sellerAgentPublicKey }; }
         }
 
-        const sellerAgentPublicKey = wallet.publicKey;
-        const profile = await this.agentState.ensureAgentProfile({
-            ownerPublicKey: sellerOwnerPublicKey,
-            agentPublicKey: sellerAgentPublicKey,
-        });
         const asset = await this.chainService.getAssetSnapshot(Number(tokenId));
         if (!asset) {
             throw Object.assign(new Error(`Asset ${tokenId} was not found.`), {

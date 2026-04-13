@@ -1,9 +1,10 @@
 import React, { useState, useRef } from "react";
-import { uploadPhotos, submitEvidence, mintRwaAsset } from '../services/rwaApi.js';
+import { uploadPhotos, submitEvidence, mintRwaAsset, createMarketAuction } from '../services/rwaApi.js';
 import { ACTIVE_NETWORK } from '../networkConfig.js';
 import { useWallet } from '../context/WalletContext';
+import { useAppMode } from '../context/AppModeContext';
+import { transferAssetOwnershipOnChain } from '../services/rwaContractApi.js';
 import {
-  UploadCloud,
   MapPin,
   Home,
   Bed,
@@ -850,7 +851,12 @@ function CategoryPicker({ selected, onSelect }: CategoryPickerProps) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function PropertyMint() {
-  const { walletAddress } = useWallet() as { walletAddress: string };
+  const { walletAddress, signer } = useWallet() as { walletAddress: string; signer: any };
+  const { activateAgent, agentPublicKey } = useAppMode() as { activateAgent: (addr: string) => Promise<any>; agentPublicKey: string };
+
+  const AUTO_AUCTION_RESERVE_PRICE = '250';
+  const AUTO_AUCTION_DURATION_HOURS = 24;
+
   const [category, setCategory] = useState<Category>("estate");
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [photos, setPhotos] = useState<Array<{ file: File; previewUrl: string }>>([]);
@@ -1024,6 +1030,30 @@ export default function PropertyMint() {
         jurisdiction: form.state || '',
       });
 
+      // Step 5: Transfer twin to managed agent wallet + open live auction
+      const activation = await activateAgent(walletAddress);
+      const managedAgentPublicKey = activation?.agentPublicKey || agentPublicKey || '';
+      if (managedAgentPublicKey) {
+        await transferAssetOwnershipOnChain({
+          signer,
+          tokenId: result.tokenId,
+          to: managedAgentPublicKey,
+        });
+        const auctionPayload = {
+          reservePrice: AUTO_AUCTION_RESERVE_PRICE,
+          startTime: Math.floor(Date.now() / 1000),
+          endTime: Math.floor(Date.now() / 1000) + (AUTO_AUCTION_DURATION_HOURS * 3600),
+          note: 'Auto-listed from Property Mint',
+        };
+        try {
+          await createMarketAuction(result.tokenId, auctionPayload);
+        } catch (auctionErr: unknown) {
+          // Retry once after a short delay (ownership indexing lag)
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+          await createMarketAuction(result.tokenId, auctionPayload);
+        }
+      }
+
       setMintResult({ tokenId: result.tokenId, metadataURI: result.publicMetadataURI || result.metadataURI, txHash: result.txHash });
       setSubmitted(true);
     } catch (err: unknown) {
@@ -1042,7 +1072,7 @@ export default function PropertyMint() {
           </div>
           <h2 className="text-xl font-bold text-slate-800 mb-2">Listing Submitted!</h2>
           <p className="text-sm text-slate-500 mb-6">
-            Your {category === "estate" ? "property" : "land"} has been submitted for RWA tokenization on Stellar.
+            Your {category === "estate" ? "property" : "land"} has been tokenized on Stellar and listed for auction. AI agents can now bid on it.
           </p>
           {mintResult && (
             <div className="mb-6 text-left bg-slate-50 rounded-2xl p-4 space-y-3 text-xs text-slate-700 break-all">

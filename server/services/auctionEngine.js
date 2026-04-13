@@ -172,11 +172,9 @@ class AuctionEngine {
         }
 
         const auctionId = await this.store.nextCounter("continuumAuctionId");
-        // In force mode, use the asset's actual currentOwner as seller so the
-        // operator/agent wallet can still bid on these auctions
-        const effectiveSeller = force && asset.currentOwner
-            ? String(asset.currentOwner).toUpperCase()
-            : sellerAgentPublicKey;
+        // Seller is always the owner's public key (human wallet), not the managed agent wallet.
+        // The agent wallet is just the custodian — using it as seller would block the agent from bidding.
+        const effectiveSeller = String(sellerOwnerPublicKey || asset.currentOwner || sellerAgentPublicKey).toUpperCase();
 
         const auction = {
             auctionId,

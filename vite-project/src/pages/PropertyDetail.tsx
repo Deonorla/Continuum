@@ -287,7 +287,11 @@ function OverviewTab({ asset }: { asset: any }) {
       {(asset.description || pm.description) && (
         <div>
           <SectionHeader>About this property</SectionHeader>
-          <p className="text-sm text-slate-600 leading-relaxed">{asset.description || pm.description}</p>
+          <p className="text-sm text-slate-600 leading-relaxed">
+            {typeof (asset.description || pm.description) === 'object'
+              ? ((asset.description || pm.description) as any).text || ''
+              : (asset.description || pm.description)}
+          </p>
         </div>
       )}
 

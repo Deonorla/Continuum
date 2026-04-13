@@ -110,6 +110,45 @@ function formatCountdown(endTime?: number) {
   return `${hours}h ${minutes}m left`;
 }
 
+// ─── Friendly error parser ────────────────────────────────────────────────────
+const OP_CODE_LABELS: Record<string, string> = {
+  op_no_trust:          'Agent wallet is missing a USDC trustline. Add USDC trust in Stellar Laboratory.',
+  op_underfunded:       'Insufficient balance to complete the transaction.',
+  op_bad_auth:          'Transaction authorisation failed — check the signing key.',
+  op_no_account:        'The destination account does not exist on Stellar.',
+  op_not_authorized:    'The asset issuer has not authorised this account.',
+  op_line_full:         'The destination account trustline is full.',
+  tx_bad_seq:           'Transaction sequence number mismatch — retry the action.',
+  tx_insufficient_fee:  'Transaction fee was too low.',
+  tx_failed:            'Transaction was rejected by the Stellar network.',
+};
+
+function friendlyError(raw: string): string {
+  if (!raw) return '';
+  // Try to parse as Horizon JSON error
+  try {
+    const parsed = JSON.parse(raw);
+    const ops: string[] = parsed?.extras?.result_codes?.operations || [];
+    const tx: string = parsed?.extras?.result_codes?.transaction || '';
+    // Find the first meaningful op code
+    const opMsg = ops.map((c: string) => OP_CODE_LABELS[c]).find(Boolean);
+    if (opMsg) return opMsg;
+    const txMsg = OP_CODE_LABELS[tx];
+    if (txMsg) return txMsg;
+    // Fall back to the Horizon title
+    if (parsed?.title) return parsed.title;
+  } catch {}
+  // Strip raw JSON blobs, XDR, and long hashes from plain strings
+  return raw
+    .replace(/\{.*\}/gs, '')           // remove JSON objects
+    .replace(/[A-Za-z0-9+/]{40,}={0,2}/g, '[encoded]')  // strip base64/XDR
+    .replace(/0x[0-9a-fA-F]{20,}/g, '[hash]')            // strip hex hashes
+    .replace(/https?:\/\/\S+/g, '')    // strip URLs
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200) || 'An unexpected error occurred.';
+}
+
 function formatShortAddress(value?: string | null) {
   if (!value) return 'Not connected';
   return `${value.slice(0, 6)}…${value.slice(-4)}`;
@@ -121,6 +160,7 @@ function formatMoney(value: string | number | undefined, suffix = 'USDC') {
 }
 
 function LogRow({ entry }: { entry: LogEntry }) {
+  const [expanded, setExpanded] = useState(false);
   const icons = {
     action:   { Icon: Zap,           color: 'text-blue-500',   bg: 'bg-blue-50',    dot: 'bg-blue-400' },
     decision: { Icon: Bot,           color: 'text-purple-500', bg: 'bg-purple-50',  dot: 'bg-purple-400' },
@@ -130,15 +170,34 @@ function LogRow({ entry }: { entry: LogEntry }) {
   };
   const cfg = icons[entry.type] || icons.info;
   const time = new Date(entry.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  // Friendly error messages — strip stack traces and long hashes
+  const friendlyMessage = entry.type === 'error'
+    ? entry.message.replace(/0x[0-9a-fA-F]{20,}/g, '[hash]').split('\n')[0].slice(0, 120)
+    : entry.message;
+
+  const detail = entry.detail || '';
+  const isLong = detail.length > 100;
+  const displayDetail = isLong && !expanded ? detail.slice(0, 100) + '…' : detail;
+
   return (
     <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-      className="flex items-start gap-3 py-3 border-b border-slate-50 last:border-0 group">
+      className={`flex items-start gap-3 py-3 border-b border-slate-50 last:border-0 group ${entry.type === 'error' ? 'bg-red-50/40 rounded-xl px-2 -mx-2' : ''}`}>
       <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${cfg.bg}`}>
         <cfg.Icon size={13} className={cfg.color} />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-slate-800 font-medium leading-snug">{entry.message}</p>
-        {entry.detail && <p className="text-xs text-slate-400 mt-0.5">{entry.detail}</p>}
+        <p className="text-sm text-slate-800 font-medium leading-snug break-words">{friendlyMessage}</p>
+        {displayDetail && (
+          <p className="text-xs text-slate-400 mt-0.5 break-words">{displayDetail}
+            {isLong && (
+              <button onClick={() => setExpanded(v => !v)}
+                className="ml-1 text-blue-400 hover:text-blue-600 font-medium">
+                {expanded ? 'less' : 'more'}
+              </button>
+            )}
+          </p>
+        )}
       </div>
       <div className="text-right shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
         {entry.amount && (
@@ -147,6 +206,27 @@ function LogRow({ entry }: { entry: LogEntry }) {
         <p className="text-[10px] text-slate-300 mt-0.5">{time}</p>
       </div>
     </motion.div>
+  );
+}
+
+function ChatBubble({ message, content, isLong, MAX }: { message: any; content: string; isLong: boolean; MAX: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const display = isLong && !expanded ? content.slice(0, MAX) + '…' : content;
+  return (
+    <div className={cn('rounded-xl border px-3 py-2.5 min-w-0',
+      message.role === 'assistant' ? 'bg-blue-50 border-blue-100' : 'bg-white border-slate-100')}>
+      <p className={cn('text-[9px] font-bold uppercase tracking-widest mb-1',
+        message.role === 'assistant' ? 'text-blue-400' : 'text-slate-400')}>
+        {message.role === 'assistant' ? '🤖 Agent' : '👤 You'}
+      </p>
+      <p className="text-sm text-slate-700 leading-relaxed break-all overflow-hidden whitespace-pre-wrap">{display}</p>
+      {isLong && (
+        <button onClick={() => setExpanded(v => !v)}
+          className="mt-1 text-[10px] text-blue-400 hover:text-blue-600 font-bold">
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -604,7 +684,7 @@ export default function AgentConsolePage() {
   const totalReservations = reservations.reduce((sum: number, reservation: any) => sum + Number(reservation.reservedAmount || 0) / 1e7, 0);
 
   return (
-    <div className="min-h-screen bg-slate-50/50">
+    <div className="min-h-screen bg-slate-50/50 overflow-x-hidden">
 
       {/* ── Hero header ── */}
       <div className="bg-white border-b border-slate-100 px-6 py-5">
@@ -691,10 +771,10 @@ export default function AgentConsolePage() {
       )}
 
       {/* ── Body ── */}
-      <div className="max-w-[1400px] mx-auto px-6 py-6 grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6">
+      <div className="max-w-[1400px] mx-auto px-6 py-6 grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6 overflow-x-hidden">
 
         {/* ── Left column ── */}
-        <div className="space-y-5">
+        <div className="space-y-5 min-w-0">
 
           {/* Decision Log */}
           <SectionCard title="Decision Log" icon={Activity} iconColor="text-blue-500"
@@ -761,29 +841,45 @@ export default function AgentConsolePage() {
                       {degradedMode ? 'Degraded' : 'Healthy'}
                     </span>
                   </div>
-                  <div ref={chatScrollRef} className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  <div ref={chatScrollRef} className="space-y-2 max-h-64 overflow-y-auto overflow-x-hidden pr-1">
                     {chatPreview.length === 0 ? (
                       <p className="text-sm text-slate-400">Ask the agent what it plans to do, why it held, or how you want it to trade.</p>
-                    ) : chatPreview.map((message: any) => (
-                      <div key={message.id} className={cn('rounded-xl border px-3 py-2',
-                        message.role === 'assistant' ? 'bg-white border-blue-100' : 'bg-white border-slate-100')}>
-                        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">{message.role}</p>
-                        <p className="text-sm text-slate-700 leading-relaxed">{message.content}</p>
+                    ) : chatPreview.map((message: any) => {
+                      const MAX = 400;
+                      const content = String(message.content || '');
+                      const isLong = content.length > MAX;
+                      return (
+                        <ChatBubble key={message.id} message={message} content={content} isLong={isLong} MAX={MAX} />
+                      );
+                    })}
+                    {chatPending && (
+                      <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-blue-400 mb-1">🤖 Agent</p>
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </div>
                       </div>
-                    ))}
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <textarea value={chatInput}
                       onChange={e => setChatInput(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendAgentChat(); } }}                      rows={3}
-                      placeholder="Why didn’t you bid? Focus more on land. Tighten risk."
+                      placeholder="Why didn't you bid? Focus more on land. Tighten risk."
                       className="flex-1 bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm text-slate-800 resize-none focus:outline-none focus:ring-2 focus:ring-blue-200" />
                     <button onClick={() => void sendAgentChat()} disabled={!agentPublicKey || chatPending || !chatInput.trim()}
                       className="self-end rounded-xl bg-primary text-white text-xs font-bold px-3 py-2.5 hover:opacity-90 disabled:opacity-50 transition-all">
-                      {chatPending ? 'Sending…' : 'Send'}
+                      {chatPending ? '…' : 'Send'}
                     </button>
                   </div>
-                  {chatError && <p className="text-xs text-red-500">{chatError}</p>}
+                  {chatError && (
+                    <div className="flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2.5">
+                      <AlertTriangle size={13} className="text-red-400 shrink-0 mt-0.5" />
+                      <p className="text-xs text-red-600 break-words">{chatError}</p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-slate-50 rounded-xl border border-slate-100 p-3 space-y-3">
@@ -1111,7 +1207,7 @@ export default function AgentConsolePage() {
               </div>
               <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
                 <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Why No Action / Blocker</p>
-                <p className="text-sm text-slate-600 leading-relaxed">{blockedBy || 'No blocker recorded. The planner has an executable path.'}</p>
+                <p className="text-sm text-slate-600 leading-relaxed">{friendlyError(blockedBy) || 'No blocker recorded. The planner has an executable path.'}</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <KV label="Confidence" value={`${Number(brain.confidence || 0)}%`} />
@@ -1125,8 +1221,14 @@ export default function AgentConsolePage() {
                   <div key={entry.id} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-xs font-bold text-slate-800">{entry.message}</p>
-                      <span className="text-[10px] text-slate-300">
-                        {entry.ts ? new Date(Number(entry.ts)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                      <span className="text-[10px] text-slate-300 shrink-0">
+                        {entry.ts ? (() => {
+                          const diff = Math.floor((Date.now() - Number(entry.ts)) / 1000);
+                          if (diff < 60) return `${diff}s ago`;
+                          if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+                          if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+                          return new Date(Number(entry.ts)).toLocaleDateString([], { month: 'short', day: 'numeric' });
+                        })() : ''}
                       </span>
                     </div>
                     {(entry.detail || entry.blockedBy) && (
@@ -1157,8 +1259,9 @@ export default function AgentConsolePage() {
               {String(runtime.lastSummary?.opportunities || 0)} opportunities · {String(runtime.lastSummary?.autoBids || 0)} bids · {String(runtime.lastSummary?.settledAuctions || 0)} settlements
             </div>
             {runtime.lastError && (
-              <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600 mb-3">
-                {runtime.lastError}
+              <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-xs text-red-700 mb-3 flex items-start gap-2">
+                <AlertTriangle size={13} className="text-red-400 shrink-0 mt-0.5" />
+                <span>{friendlyError(runtime.lastError)}</span>
               </div>
             )}
             <div className="grid grid-cols-2 gap-2">

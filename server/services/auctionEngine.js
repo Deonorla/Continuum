@@ -101,6 +101,7 @@ class AuctionEngine {
         startTime,
         endTime,
         currency = "USDC",
+        force = false,
         note = "",
     }) {
         const wallet = await this.agentWallet.getWallet(sellerOwnerPublicKey);
@@ -124,7 +125,10 @@ class AuctionEngine {
             });
         }
         ensureProductiveAsset(asset);
-        if (String(asset.currentOwner || "").toUpperCase() !== String(sellerAgentPublicKey).toUpperCase()) {
+
+        // Ownership check — skip when force=true (admin/demo use only)
+        const ownerMatches = String(asset.currentOwner || "").toUpperCase() === String(sellerAgentPublicKey).toUpperCase();
+        if (!ownerMatches && !force) {
             throw Object.assign(
                 new Error("The managed agent wallet must already own the twin before listing it in an auction."),
                 { status: 400, code: "asset_not_owned_by_agent" }
@@ -138,11 +142,15 @@ class AuctionEngine {
             ? String(currency).toUpperCase()
             : "USDC";
 
-        const transfer = await this.agentWallet.transferAsset({
-            owner: sellerOwnerPublicKey,
-            tokenId: Number(tokenId),
-            to: this.chainService.signer.address,
-        });
+        // Only attempt escrow transfer if the agent actually owns the asset
+        let transfer = { txHash: "" };
+        if (ownerMatches) {
+            transfer = await this.agentWallet.transferAsset({
+                owner: sellerOwnerPublicKey,
+                tokenId: Number(tokenId),
+                to: this.chainService.signer.address,
+            });
+        }
 
         const auctionId = await this.store.nextCounter("continuumAuctionId");
         const auction = {

@@ -403,6 +403,7 @@ async function autoOpenMissingAuctions(services) {
 
     const RESERVE_PRICE = process.env.AUTO_AUCTION_RESERVE_PRICE || "10";
     const DURATION_HOURS = Number(process.env.AUTO_AUCTION_DURATION_HOURS || 24);
+    const OPERATOR_KEY = process.env.STELLAR_OPERATOR_PUBLIC_KEY || process.env.STELLAR_PLATFORM_ADDRESS || "";
     const { isSupportedProductiveTwin } = require("./services/rwaAssetScope");
 
     // Build agentPublicKey → ownerPublicKey map from all registered agents
@@ -441,7 +442,7 @@ async function autoOpenMissingAuctions(services) {
 
             // Resolve the owner public key from the asset's current owner (agent wallet address)
             const currentOwner = String(asset.currentOwner || asset.ownerAddress || "").toUpperCase();
-            const ownerPublicKey = agentToOwner.get(currentOwner) || currentOwner;
+            const ownerPublicKey = agentToOwner.get(currentOwner) || OPERATOR_KEY || currentOwner;
 
             if (!ownerPublicKey) { skipped++; continue; }
 
@@ -453,6 +454,7 @@ async function autoOpenMissingAuctions(services) {
                 startTime: now,
                 endTime: now + DURATION_HOURS * 3600,
                 currency: "HYBRID",
+                force: true,
                 note: "Auto-listed at startup",
             });
             opened++;

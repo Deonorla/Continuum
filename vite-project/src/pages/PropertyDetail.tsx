@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
-import { fetchRwaAsset } from '../services/rwaApi.js';
+import { fetchRwaAsset, fetchAuction, placeAuctionBid } from '../services/rwaApi.js';
 import {
   ArrowLeft, Bed, Bath, Maximize2, Calendar, DollarSign, MapPin,
   Shield, Zap, FileText, Home, Car, Thermometer, Wind, TreePine,
@@ -733,6 +733,10 @@ function ActionPanel({ asset, onRented }: { asset: any; onRented?: () => void })
   const { walletAddress } = useWallet();
   const { agentPublicKey } = useAppMode();
 
+  const [bidding, setBidding] = useState(false);
+  const [bidError, setBidError] = useState<string | null>(null);
+  const [bidSuccess, setBidSuccess] = useState<string | null>(null);
+
   const ownerAddress = asset.currentOwner || asset.ownerAddress || asset.assetAddress || '';
   const issuerAddress = asset.issuerAddress || asset.issuer || '';
 
@@ -746,6 +750,31 @@ function ActionPanel({ asset, onRented }: { asset: any; onRented?: () => void })
       (agentPublicKey && isSame(agentPublicKey, ownerAddress))
     )
   );
+
+  const liveAuction = asset.market?.activeAuction || null;
+  const hasLiveAuction = Boolean(liveAuction && liveAuction.status === 'active');
+
+  const handleBid = async () => {
+    if (!walletAddress) { setBidError('Connect your wallet to bid.'); return; }
+    if (!hasLiveAuction) { setBidError('No live auction for this asset.'); return; }
+    setBidding(true);
+    setBidError(null);
+    setBidSuccess(null);
+    try {
+      const minBid = liveAuction.highestBid
+        ? (Number(liveAuction.highestBid.amountDisplay || 0) + 1).toFixed(2)
+        : liveAuction.reservePriceDisplay || '250';
+      await placeAuctionBid(liveAuction.auctionId, {
+        amount: minBid,
+        ownerPublicKey: walletAddress,
+      });
+      setBidSuccess(`Bid of ${minBid} USDC placed on auction #${liveAuction.auctionId}`);
+    } catch (err: unknown) {
+      setBidError(err instanceof Error ? err.message : 'Bid failed. Try again.');
+    } finally {
+      setBidding(false);
+    }
+  };
 
   return (
     <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-6 space-y-5 sticky top-6">
@@ -773,6 +802,38 @@ function ActionPanel({ asset, onRented }: { asset: any; onRented?: () => void })
         </div>
       ) : (
         <RentalSessionComposer asset={asset} onStarted={onRented ?? (() => {})} />
+      )}
+
+      {/* Bid / Buy section — always visible regardless of rental status */}
+      {!isOwner && (
+        <div className="space-y-2">
+          {hasLiveAuction ? (
+            <>
+              <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                <span>Live auction</span>
+                <span className="font-semibold text-slate-700">
+                  {liveAuction.highestBidDisplay
+                    ? `${liveAuction.highestBidDisplay} USDC (current)`
+                    : `${liveAuction.reservePriceDisplay || '250'} USDC reserve`}
+                </span>
+              </div>
+              <button
+                onClick={handleBid}
+                disabled={bidding}
+                className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 text-white font-semibold text-sm shadow hover:from-blue-700 hover:to-blue-600 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                <Zap size={15} />
+                {bidding ? 'Placing bid…' : 'Place Bid'}
+              </button>
+              {bidSuccess && <p className="text-xs text-emerald-600 text-center">{bidSuccess}</p>}
+              {bidError && <p className="text-xs text-red-500 text-center">{bidError}</p>}
+            </>
+          ) : (
+            <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-center">
+              <p className="text-xs text-slate-400">No live auction — asset not currently for sale</p>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Contact Agent */}

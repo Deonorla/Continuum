@@ -119,7 +119,7 @@ export default function RentalSessionComposer({ asset, onStarted }) {
       <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
       <div>
         <p className="text-xs font-bold text-blue-700">Currently Rented</p>
-        <p className="text-[10px] text-blue-600 mt-0.5">This asset is under an active rental session. It will be available once the session ends or is cancelled.</p>
+        <p className="text-[10px] text-blue-600 mt-0.5">An active rental session is running. New rentals open once this session ends — but the asset can still be purchased.</p>
       </div>
     </div>
   );

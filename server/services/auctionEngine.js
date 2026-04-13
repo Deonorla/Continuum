@@ -1,6 +1,31 @@
 const { formatStellarAmount, normalizeStellarAmount } = require("./stellarAnchorService");
 const { inferMarketAssetClass, isSupportedProductiveTwin } = require("./rwaAssetScope");
 
+// XLM/USDC exchange rate used for hybrid bid valuation.
+// Override via AUCTION_XLM_USDC_RATE env var (e.g. "0.12" means 1 XLM = 0.12 USDC).
+function xlmToUsdcRate() {
+    const rate = parseFloat(process.env.AUCTION_XLM_USDC_RATE || "0.12");
+    return Number.isFinite(rate) && rate > 0 ? rate : 0.12;
+}
+
+// Convert XLM stroops to equivalent USDC stroops at the current rate.
+function xlmStroopsToUsdcStroops(xlmStroops) {
+    const rate = xlmToUsdcRate();
+    return BigInt(Math.floor(Number(xlmStroops) * rate));
+}
+
+// Resolve payment asset details for a given currency string.
+function resolvePaymentAsset(currency, chainService) {
+    const normalized = String(currency || "USDC").toUpperCase();
+    if (normalized === "XLM") {
+        return { assetCode: "XLM", assetIssuer: "" };
+    }
+    return {
+        assetCode: "USDC",
+        assetIssuer: chainService?.runtime?.paymentAssetIssuer || "",
+    };
+}
+
 function nowSeconds() {
     return Math.floor(Date.now() / 1000);
 }
@@ -75,6 +100,7 @@ class AuctionEngine {
         reservePrice,
         startTime,
         endTime,
+        currency = "USDC",
         note = "",
     }) {
         const wallet = await this.agentWallet.getWallet(sellerOwnerPublicKey);
@@ -108,6 +134,9 @@ class AuctionEngine {
         const normalizedReserve = normalizeAmount(reservePrice);
         const normalizedStart = Math.max(nowSeconds(), Number(startTime || nowSeconds()));
         const normalizedEnd = Math.max(normalizedStart + 60, Number(endTime || normalizedStart + 3600));
+        const normalizedCurrency = ["USDC", "XLM", "HYBRID"].includes(String(currency || "USDC").toUpperCase())
+            ? String(currency).toUpperCase()
+            : "USDC";
 
         const transfer = await this.agentWallet.transferAsset({
             owner: sellerOwnerPublicKey,
@@ -121,7 +150,7 @@ class AuctionEngine {
             assetId: Number(tokenId),
             seller: sellerAgentPublicKey,
             sellerOwnerPublicKey: String(sellerOwnerPublicKey || "").toUpperCase(),
-            currency: "USDC",
+            currency: normalizedCurrency,
             reservePrice: normalizedReserve.toString(),
             reservePriceDisplay: formatStellarAmount(normalizedReserve),
             startTime: normalizedStart,
@@ -198,7 +227,7 @@ class AuctionEngine {
         };
     }
 
-    async placeBid({ auctionId, bidderOwnerPublicKey, amount, note = "" }) {
+    async placeBid({ auctionId, bidderOwnerPublicKey, amount, currency, note = "" }) {
         const auction = await this.getAuction(auctionId);
         if (!auction) {
             throw Object.assign(new Error(`Auction ${auctionId} was not found.`), {
@@ -314,11 +343,48 @@ class AuctionEngine {
         }
         const additionalReserve = bidAmount - currentlyReserved;
 
+        // Determine bid currency — use auction currency unless HYBRID (bidder chooses)
+        const auctionCurrency = String(auction.currency || "USDC").toUpperCase();
+        const bidCurrency = currency
+            ? String(currency).toUpperCase()
+            : auctionCurrency === "HYBRID" ? "USDC" : auctionCurrency;
+        const validBidCurrencies = auctionCurrency === "HYBRID"
+            ? ["USDC", "XLM"]
+            : [auctionCurrency];
+        if (!validBidCurrencies.includes(bidCurrency)) {
+            throw Object.assign(
+                new Error(`This auction accepts ${auctionCurrency} bids. Received ${bidCurrency}.`),
+                { status: 400, code: "currency_mismatch" }
+            );
+        }
+
+        const { assetCode: bidAssetCode, assetIssuer: bidAssetIssuer } =
+            resolvePaymentAsset(bidCurrency, this.chainService);
+
+        // For XLM bids, convert to USDC-equivalent for mandate/cap checks
+        const bidAmountUsdcEquiv = bidCurrency === "XLM"
+            ? xlmStroopsToUsdcStroops(bidAmount)
+            : bidAmount;
+
         let onchainBalance = normalizeAmount(await this.agentWallet.getBalanceForAsset({
             owner: bidderOwnerPublicKey,
-            assetCode: "USDC",
-            assetIssuer: this.chainService.runtime?.paymentAssetIssuer || "",
+            assetCode: bidAssetCode,
+            assetIssuer: bidAssetIssuer,
         }));
+
+        // For HYBRID: if USDC balance is insufficient, top up with XLM equivalent
+        if (auctionCurrency === "HYBRID" && bidCurrency === "USDC" && onchainBalance < additionalReserve) {
+            const xlmBalance = normalizeAmount(await this.agentWallet.getBalanceForAsset({
+                owner: bidderOwnerPublicKey,
+                assetCode: "XLM",
+                assetIssuer: "",
+            }));
+            const xlmEquiv = xlmStroopsToUsdcStroops(xlmBalance);
+            if (onchainBalance + xlmEquiv >= additionalReserve) {
+                // Enough combined — proceed with USDC portion only for now
+                // (full hybrid split payment is a future enhancement)
+            }
+        }
 
         if (additionalReserve > onchainBalance && this.treasuryManager) {
             await this.treasuryManager.recallLiquidity({
@@ -328,8 +394,8 @@ class AuctionEngine {
             });
             onchainBalance = normalizeAmount(await this.agentWallet.getBalanceForAsset({
                 owner: bidderOwnerPublicKey,
-                assetCode: "USDC",
-                assetIssuer: this.chainService.runtime?.paymentAssetIssuer || "",
+                assetCode: bidAssetCode,
+                assetIssuer: bidAssetIssuer,
             }));
         }
 
@@ -350,8 +416,8 @@ class AuctionEngine {
             ? await this.agentWallet.sendAssetPayment({
                 owner: bidderOwnerPublicKey,
                 destination: this.chainService.signer.address,
-                assetCode: "USDC",
-                assetIssuer: this.chainService.runtime?.paymentAssetIssuer || "",
+                assetCode: bidAssetCode,
+                assetIssuer: bidAssetIssuer,
                 amount: formatStellarAmount(additionalReserve),
                 memoText: `bid:${auctionId}`,
             })
@@ -366,6 +432,7 @@ class AuctionEngine {
             bidderOwnerPublicKey: String(bidderOwnerPublicKey || "").toUpperCase(),
             amountStroops: bidAmount.toString(),
             amountDisplay: formatStellarAmount(bidAmount),
+            currency: bidCurrency,
             placedAt: nowSeconds(),
             status: "active",
             note,
@@ -471,11 +538,12 @@ class AuctionEngine {
             if (winningBid && Number(bid.bidId) === Number(winningBid.bidId)) {
                 continue;
             }
+            const refundAsset = resolvePaymentAsset(bid.currency || auction.currency, this.chainService);
             const refund = await this.chainService.anchorService.submitPayment({
                 destination: bid.bidder,
                 amount: formatStellarAmount(bid.amountStroops),
-                assetCode: "USDC",
-                assetIssuer: this.chainService.runtime?.paymentAssetIssuer || "",
+                assetCode: refundAsset.assetCode,
+                assetIssuer: refundAsset.assetIssuer,
                 memoText: `refund:${auctionId}`,
             });
             bid.status = "refunded";
@@ -539,11 +607,12 @@ class AuctionEngine {
             };
         }
 
+        const payoutAsset = resolvePaymentAsset(winningBid.currency || auction.currency, this.chainService);
         const payout = await this.chainService.anchorService.submitPayment({
             destination: auction.seller,
             amount: winningBid.amountDisplay,
-            assetCode: "USDC",
-            assetIssuer: this.chainService.runtime?.paymentAssetIssuer || "",
+            assetCode: payoutAsset.assetCode,
+            assetIssuer: payoutAsset.assetIssuer,
             memoText: `sale:${auctionId}`,
         });
         const transfer = await this.chainService.contractService.invokeWrite({

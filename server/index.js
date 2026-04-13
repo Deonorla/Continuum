@@ -405,7 +405,23 @@ async function autoOpenMissingAuctions(services) {
     const DURATION_HOURS = Number(process.env.AUTO_AUCTION_DURATION_HOURS || 24);
     const { isSupportedProductiveTwin } = require("./services/rwaAssetScope");
 
-    // Get all assets from the store
+    // Build agentPublicKey → ownerPublicKey map from all registered agents
+    const agentToOwner = new Map();
+    try {
+        const agentIds = await services.agentState.listAgentIds();
+        for (const agentId of agentIds) {
+            const profile = await services.agentState.getAgentProfile(agentId).catch(() => null);
+            if (profile?.agentPublicKey && profile?.ownerPublicKey) {
+                agentToOwner.set(
+                    String(profile.agentPublicKey).toUpperCase(),
+                    String(profile.ownerPublicKey).toUpperCase()
+                );
+            }
+        }
+    } catch (err) {
+        console.warn("[auto-auction] Could not load agent profiles:", err?.message);
+    }
+
     let assets = [];
     try {
         assets = await services.store.listAssets();
@@ -423,13 +439,11 @@ async function autoOpenMissingAuctions(services) {
             const existing = await services.auctionEngine.listAuctions({ tokenId: asset.tokenId, status: "active" });
             if (existing.length > 0) { skipped++; continue; }
 
-            // Find the owner's managed agent wallet
-            const ownerKey = asset.currentOwner || asset.ownerAddress || "";
-            if (!ownerKey) { skipped++; continue; }
+            // Resolve the owner public key from the asset's current owner (agent wallet address)
+            const currentOwner = String(asset.currentOwner || asset.ownerAddress || "").toUpperCase();
+            const ownerPublicKey = agentToOwner.get(currentOwner) || currentOwner;
 
-            // Try to find which owner public key maps to this agent wallet
-            const agentProfile = await services.agentState.getAgentProfile(ownerKey).catch(() => null);
-            const ownerPublicKey = agentProfile?.ownerPublicKey || ownerKey;
+            if (!ownerPublicKey) { skipped++; continue; }
 
             const now = Math.floor(Date.now() / 1000);
             await services.auctionEngine.createAuction({

@@ -5,6 +5,7 @@ import { useWallet } from '../context/WalletContext';
 import { useAppMode } from '../context/AppModeContext';
 import { transferAssetOwnershipOnChain } from '../services/rwaContractApi.js';
 import {
+  UploadCloud,
   MapPin,
   Home,
   Bed,

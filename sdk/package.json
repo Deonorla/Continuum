@@ -1,7 +1,7 @@
 {
-    "name": "stream-engine-sdk",
+    "name": "continuum-sdk",
     "version": "1.0.0",
-    "description": "TypeScript SDK for Stella's Stream Engine x402 negotiation and stream settlement",
+    "description": "TypeScript SDK for Continuum x402 negotiation and stream settlement",
     "main": "dist/StreamEngineSDK.js",
     "types": "dist/StreamEngineSDK.d.ts",
     "scripts": {

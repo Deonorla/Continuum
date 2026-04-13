@@ -55,12 +55,17 @@ export default function LandingPage() {
               <Link to="/app" className="ethereal-gradient text-white px-10 py-5 rounded-full font-headline text-lg font-bold shadow-2xl shadow-blue-500/20 hover:opacity-90 transition-all">
                 Launch Continuum
               </Link>
-              <button className="flex items-center gap-2 group">
+              <a 
+                href="https://youtu.be/BdYVTlPQknU" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 group"
+              >
                 <span className="w-10 h-10 flex items-center justify-center rounded-full border border-slate-200 group-hover:bg-surface transition-colors">
                   <Play size={16} className="fill-current" />
                 </span>
                 <span className="font-headline font-bold text-sm uppercase tracking-widest">Watch Demo</span>
-              </button>
+              </a>
             </motion.div>
           </div>
           <div className="absolute right-0 bottom-0 top-0 w-1/2 z-10 hidden lg:block">

@@ -1,7 +1,7 @@
 {
-    "name": "stream-engine-server",
+    "name": "continuum-server",
     "version": "1.0.0",
-    "description": "x402 Express middleware server for Stella's Stream Engine",
+    "description": "x402 Express middleware server for Continuum",
     "main": "index.js",
     "scripts": {
         "start": "node index.js",

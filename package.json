@@ -1,7 +1,7 @@
 {
-  "name": "stream-engine",
+  "name": "continuum",
   "version": "1.0.0",
-  "description": "Stella's Stream Engine - x402-compatible agent payments and rental RWA verification on Stellar",
+  "description": "Continuum - x402-compatible agent payments and rental RWA verification on Stellar",
   "main": "index.js",
   "scripts": {
     "test": "npm run test:sdk && npm run test:web",

@@ -436,10 +436,3 @@ export type {
     PlaceBidParams,
     RuntimeControlParams,
 } from './ContinuumAgentClient';
-export { StreamEngineRWAClient } from './StreamEngineRWAClient';
-export type {
-    RWAClientConfig,
-    MintAssetParams,
-    StoreEvidenceParams,
-    SubmitAttestationParams,
-} from './StreamEngineRWAClient';
